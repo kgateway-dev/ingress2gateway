@@ -4,8 +4,6 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/client-body-buffer-size: 10m
     ingress2gateway.kubernetes.io/implementation: kgateway
-    nginx.ingress.kubernetes.io/enable-cors: "true"
-    nginx.ingress.kubernetes.io/cors-allow-origin: "https://example.com, https://another.com"
     nginx.ingress.kubernetes.io/limit-rpm: "600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "30s"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "45s"
@@ -35,8 +33,6 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/client-body-buffer-size: 20m
     ingress2gateway.kubernetes.io/implementation: kgateway
-    nginx.ingress.kubernetes.io/enable-cors: "true"
-    nginx.ingress.kubernetes.io/cors-allow-origin: "https://example.com, https://another.com"
     nginx.ingress.kubernetes.io/limit-rps: "10"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60" # No "s" suffix, should still be parsed correctly
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60" # No "s" suffix, should still be parsed correctly
@@ -62,8 +58,6 @@ kind: Ingress
 metadata:
   annotations:
     nginx.ingress.kubernetes.io/client-body-buffer-size: 40m
-    nginx.ingress.kubernetes.io/enable-cors: "true"
-    nginx.ingress.kubernetes.io/cors-allow-origin: "https://example.com, https://another.com"
     ingress2gateway.kubernetes.io/implementation: kgateway
     nginx.ingress.kubernetes.io/limit-rps: "50"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"

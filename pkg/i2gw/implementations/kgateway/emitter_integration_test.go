@@ -119,19 +119,14 @@ func canonicalizeMultiDocYAML(t *testing.T, in []byte) []byte {
 	return buf.Bytes()
 }
 
-func TestKgatewayIngressNginxIntegration_Golden(t *testing.T) {
+// runGoldenTest is a reusable helper for feature-scoped integration tests.
+func runGoldenTest(t *testing.T, inputRel, goldenRel string) {
 	t.Helper()
 
 	moduleRoot := getModuleRoot(t)
 
-	inputPath := filepath.Join(
-		moduleRoot,
-		"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input.yaml",
-	)
-	goldenPath := filepath.Join(
-		moduleRoot,
-		"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output.yaml",
-	)
+	inputPath := filepath.Join(moduleRoot, inputRel)
+	goldenPath := filepath.Join(moduleRoot, goldenRel)
 
 	cmd := exec.Command(
 		"go", "run", ".",
@@ -182,5 +177,40 @@ func TestKgatewayIngressNginxIntegration_Golden(t *testing.T) {
 
 	if diff := cmp.Diff(string(want), string(got)); diff != "" {
 		t.Fatalf("golden output mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestKgatewayIngressNginxIntegration_Golden(t *testing.T) {
+	t.Helper()
+
+	tests := []struct {
+		name      string
+		inputRel  string
+		goldenRel string
+	}{
+		{
+			name: "all_features",
+			inputRel: filepath.Join(
+				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "golden.yaml",
+			),
+			goldenRel: filepath.Join(
+				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "golden.yaml",
+			),
+		},
+		{
+			name: "cors",
+			inputRel: filepath.Join(
+				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "cors.yaml",
+			),
+			goldenRel: filepath.Join(
+				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "cors.yaml",
+			),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runGoldenTest(t, tt.inputRel, tt.goldenRel)
+		})
 	}
 }

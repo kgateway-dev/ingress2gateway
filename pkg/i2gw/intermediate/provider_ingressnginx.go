@@ -41,8 +41,34 @@ type PolicyIndex struct {
 
 // CorsPolicy defines a CORS policy that has been extracted from ingress-nginx annotations.
 type CorsPolicy struct {
-	Enable      bool
+	// Enable corresponds to nginx.ingress.kubernetes.io/enable-cors and indicates whether CORS
+	// is enabled.
+	Enable bool
+
+	// AllowOrigin corresponds to nginx.ingress.kubernetes.io/cors-allow-origin and controls what
+	// is the accepted Origin for CORS.
 	AllowOrigin []string
+
+	// AllowCredentials corresponds to nginx.ingress.kubernetes.io/cors-allow-credentials and controls
+	// if credentials can be passed during CORS operations. When nil, the provider has not specified a value.
+	AllowCredentials *bool
+
+	// AllowHeaders corresponds to nginx.ingress.kubernetes.io/cors-allow-headers and controls which
+	// headers are accepted. Values are stored as raw header names; case-insensitivity is handled by consumers.
+	AllowHeaders []string
+
+	// ExposeHeaders corresponds to nginx.ingress.kubernetes.io/cors-expose-headers.
+	// Values are header names as they appeared in the annotation, trimmed of
+	// surrounding whitespace but otherwise case-preserving.
+	ExposeHeaders []string
+
+	// AllowMethods corresponds to nginx.ingress.kubernetes.io/cors-allow-methods and controls which methods
+	// are accepted. Values are stored as raw method names; consumers can normalize/validate.
+	AllowMethods []string
+
+	// MaxAge corresponds to nginx.ingress.kubernetes.io/cors-max-age, in seconds and controls how long preflight
+	// requests can be cached. When nil, the provider has not specified a value.
+	MaxAge *int32
 }
 
 // ExtAuthPolicy defines an external authentication policy that has been extracted from ingress-nginx annotations.
@@ -80,9 +106,12 @@ type SessionAffinityPolicy struct {
 type Policy struct {
 	// ClientBodyBufferSize defines the size of the buffer used for client request bodies.
 	ClientBodyBufferSize *resource.Quantity
+
 	// ProxyBodySize defines the maximum allowed size of the client request body.
 	ProxyBodySize *resource.Quantity
-	Cors          *CorsPolicy
+
+	// Cors defines the CORS policy derived from ingress-nginx annotations.
+	Cors *CorsPolicy
 
 	// RateLimit is a generic rate limit policy derived from ingress-nginx annotations.
 	RateLimit *RateLimitPolicy
@@ -108,6 +137,13 @@ type Policy struct {
 	// SessionAffinity defines the session affinity policy.
 	SessionAffinity *SessionAffinityPolicy
 
+	// RuleBackendSources lists the (rule, backend) pairs within a merged HTTPRoute
+	// that this policy applies to.
+	//
+	// Each entry is a PolicyIndex struct identifying a (rule, backend) pair.
+	//
+	// This slice may contain duplicates; use AddRuleBackendSources to add entries
+	// while ensuring uniqueness.
 	RuleBackendSources []PolicyIndex
 
 	// ruleBackendIndexSet is an internal helper used to deduplicate RuleBackendSources entries.

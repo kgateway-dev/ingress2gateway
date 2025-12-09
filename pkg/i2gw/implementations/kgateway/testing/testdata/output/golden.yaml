@@ -220,10 +220,6 @@ metadata:
 spec:
   buffer:
     maxRequestSize: 10m
-  cors:
-    allowOrigins:
-    - https://example.com
-    - https://another.com
   extAuth:
     extensionRef:
       name: auth-example-com-extauth
@@ -248,10 +244,6 @@ metadata:
 spec:
   buffer:
     maxRequestSize: 20m
-  cors:
-    allowOrigins:
-    - https://example.com
-    - https://another.com
   rateLimit:
     local:
       tokenBucket:
@@ -275,10 +267,6 @@ spec:
       name: basic-auth-secret
   buffer:
     maxRequestSize: 100m
-  cors:
-    allowOrigins:
-    - https://example.com
-    - https://another.com
   rateLimit:
     local:
       tokenBucket:

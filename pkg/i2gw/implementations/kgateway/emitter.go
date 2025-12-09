@@ -335,47 +335,6 @@ func applyBufferPolicy(
 	return true
 }
 
-// applyCorsPolicy projects the CORS policy IR into a Kgateway TrafficPolicy,
-// returning true if it modified/created a TrafficPolicy for the given ingress.
-func applyCorsPolicy(
-	pol intermediate.Policy,
-	ingressName, namespace string,
-	tp map[string]*kgateway.TrafficPolicy,
-) bool {
-	if pol.Cors == nil || !pol.Cors.Enable || len(pol.Cors.AllowOrigin) == 0 {
-		return false
-	}
-
-	// Dedupe origins while preserving order.
-	seen := make(map[string]struct{}, len(pol.Cors.AllowOrigin))
-	var origins []gwv1.CORSOrigin
-	for _, o := range pol.Cors.AllowOrigin {
-		if o == "" {
-			continue
-		}
-		if _, ok := seen[o]; ok {
-			continue
-		}
-		seen[o] = struct{}{}
-		origins = append(origins, gwv1.CORSOrigin(o))
-	}
-	if len(origins) == 0 {
-		return false
-	}
-
-	t := ensureTrafficPolicy(tp, ingressName, namespace)
-
-	if t.Spec.Cors == nil {
-		t.Spec.Cors = &kgateway.CorsPolicy{}
-	}
-	if t.Spec.Cors.HTTPCORSFilter == nil {
-		t.Spec.Cors.HTTPCORSFilter = &gwv1.HTTPCORSFilter{}
-	}
-
-	t.Spec.Cors.HTTPCORSFilter.AllowOrigins = origins
-	return true
-}
-
 // ensureTrafficPolicy returns the TrafficPolicy for the given ingressName,
 // creating and initializing it if needed.
 func ensureTrafficPolicy(

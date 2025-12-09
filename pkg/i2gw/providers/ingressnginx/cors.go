@@ -17,6 +17,7 @@ limitations under the License.
 package ingressnginx
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
@@ -27,18 +28,17 @@ import (
 )
 
 const (
-	nginxEnableCORSAnnotation      = "nginx.ingress.kubernetes.io/enable-cors"
-	nginxCORSAllowOriginAnnotation = "nginx.ingress.kubernetes.io/cors-allow-origin"
+	corsEnabledAnnotation           = "nginx.ingress.kubernetes.io/enable-cors"
+	corsAllowOriginAnnotation      = "nginx.ingress.kubernetes.io/cors-allow-origin"
+	corsAllowCredentialsAnnotation = "nginx.ingress.kubernetes.io/cors-allow-credentials"
+	corsAllowHeadersAnnotation     = "nginx.ingress.kubernetes.io/cors-allow-headers"
+	corsExposeHeadersAnnotation    = "nginx.ingress.kubernetes.io/cors-expose-headers"
+	corsAllowMethodsAnnotation     = "nginx.ingress.kubernetes.io/cors-allow-methods"
+	corsMaxAgeAnnotation           = "nginx.ingress.kubernetes.io/cors-max-age"
 )
 
-// corsPolicyFeature is a FeatureParser that projects enable-cors/cors-allow-origin
-// into the ingress-nginx ProviderSpecificIR.
-//
-// Semantics:
-//   - If enable-cors is "true" (case-sensitive),
-//   - and cors-allow-origin is non-empty (comma-separated list),
-//   - we record a CorsPolicy for that Ingress and mark which
-//     (rule,backend) indices in the merged HTTPRoute it contributed.
+// corsPolicyFeature is a FeatureParser that projects CORS-related annotations into
+// the Ingress NGINX ProviderSpecificIR.
 func corsPolicyFeature(
 	ingresses []networkingv1.Ingress,
 	_ map[types.NamespacedName]map[string]int32,
@@ -54,12 +54,13 @@ func corsPolicyFeature(
 			continue
 		}
 
-		enableRaw := strings.TrimSpace(ing.Annotations[nginxEnableCORSAnnotation])
+		enableRaw := strings.TrimSpace(ing.Annotations[corsEnabledAnnotation])
 		if enableRaw == "" || enableRaw != "true" {
 			continue
 		}
 
-		allowRaw := strings.TrimSpace(ing.Annotations[nginxCORSAllowOriginAnnotation])
+		// Handle allow-origin annotation.
+		allowRaw := strings.TrimSpace(ing.Annotations[corsAllowOriginAnnotation])
 		if allowRaw == "" {
 			// Common nginx behavior is to default to "*".
 			allowRaw = "*"
@@ -73,15 +74,91 @@ func corsPolicyFeature(
 			}
 		}
 		if len(origins) == 0 {
+			// No valid origins (nothing to do).
 			continue
+		}
+
+		// Handle allow-credentials annotation.
+		var allowCreds *bool
+		if raw := strings.TrimSpace(ing.Annotations[corsAllowCredentialsAnnotation]); raw != "" {
+			switch {
+			case strings.EqualFold(raw, "true"):
+				v := true
+				allowCreds = &v
+			case strings.EqualFold(raw, "false"):
+				v := false
+				allowCreds = &v
+			default:
+				// Ignore invalid values.
+			}
+		}
+
+		// Handle allow-headers annotation.
+		var allowHeaders []string
+		if raw := strings.TrimSpace(ing.Annotations[corsAllowHeadersAnnotation]); raw != "" {
+			for _, part := range strings.Split(raw, ",") {
+				v := strings.TrimSpace(part)
+				if v != "" {
+					allowHeaders = append(allowHeaders, v)
+				}
+			}
+		}
+
+		// Handle expose-headers annotation.
+		var exposeHeaders []string
+		if raw := strings.TrimSpace(ing.Annotations[corsExposeHeadersAnnotation]); raw != "" {
+			for _, part := range strings.Split(raw, ",") {
+				v := strings.TrimSpace(part)
+				if v != "" {
+					exposeHeaders = append(exposeHeaders, v)
+				}
+			}
+		}
+
+		// Handle allow-methods annotation.
+		var allowMethods []string
+		if raw := strings.TrimSpace(ing.Annotations[corsAllowMethodsAnnotation]); raw != "" {
+			for _, part := range strings.Split(raw, ",") {
+				v := strings.TrimSpace(part)
+				if v != "" {
+					allowMethods = append(allowMethods, v)
+				}
+			}
+		}
+
+		// Handle max-age annotation.
+		var maxAge *int32
+		if raw := strings.TrimSpace(ing.Annotations[corsMaxAgeAnnotation]); raw != "" {
+			if secs, err := strconv.ParseInt(raw, 10, 32); err == nil && secs > 0 {
+				v := int32(secs)
+				maxAge = &v
+			}
 		}
 
 		pol := ing2pol[ing.Name]
 		if pol.Cors == nil {
 			pol.Cors = &intermediate.CorsPolicy{}
 		}
+
 		pol.Cors.Enable = true
 		pol.Cors.AllowOrigin = append(pol.Cors.AllowOrigin, origins...)
+
+		if allowCreds != nil {
+			pol.Cors.AllowCredentials = allowCreds
+		}
+		if len(allowHeaders) > 0 {
+			pol.Cors.AllowHeaders = append(pol.Cors.AllowHeaders, allowHeaders...)
+		}
+		if len(exposeHeaders) > 0 {
+			pol.Cors.ExposeHeaders = append(pol.Cors.ExposeHeaders, exposeHeaders...)
+		}
+		if len(allowMethods) > 0 {
+			pol.Cors.AllowMethods = append(pol.Cors.AllowMethods, allowMethods...)
+		}
+		if maxAge != nil {
+			pol.Cors.MaxAge = maxAge
+		}
+
 		ing2pol[ing.Name] = pol
 	}
 
@@ -128,7 +205,30 @@ func corsPolicyFeature(
 				existing.Cors = pol.Cors
 			} else {
 				existing.Cors.Enable = existing.Cors.Enable || pol.Cors.Enable
+
+				// Origins: append and dedupe later in the emitter.
 				existing.Cors.AllowOrigin = append(existing.Cors.AllowOrigin, pol.Cors.AllowOrigin...)
+
+				// Latest non-nil AllowCredentials wins.
+				if pol.Cors.AllowCredentials != nil {
+					existing.Cors.AllowCredentials = pol.Cors.AllowCredentials
+				}
+
+				// Headers and methods: append and dedupe later in the emitter.
+				if len(pol.Cors.AllowHeaders) > 0 {
+					existing.Cors.AllowHeaders = append(existing.Cors.AllowHeaders, pol.Cors.AllowHeaders...)
+				}
+				if len(pol.Cors.ExposeHeaders) > 0 {
+					existing.Cors.ExposeHeaders = append(existing.Cors.ExposeHeaders, pol.Cors.ExposeHeaders...)
+				}
+				if len(pol.Cors.AllowMethods) > 0 {
+					existing.Cors.AllowMethods = append(existing.Cors.AllowMethods, pol.Cors.AllowMethods...)
+				}
+
+				// Latest non-nil MaxAge wins.
+				if pol.Cors.MaxAge != nil {
+					existing.Cors.MaxAge = pol.Cors.MaxAge
+				}
 			}
 
 			// Dedupe (rule, backend) pairs.
