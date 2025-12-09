@@ -49,6 +49,11 @@ The command should generate Gateway API and Kgateway resources.
 - `nginx.ingress.kubernetes.io/proxy-body-size`
 - `nginx.ingress.kubernetes.io/enable-cors`
 - `nginx.ingress.kubernetes.io/cors-allow-origin`
+- `nginx.ingress.kubernetes.io/cors-allow-credentials`
+- `nginx.ingress.kubernetes.io/cors-allow-headers`
+- `nginx.ingress.kubernetes.io/cors-expose-headers`
+- `nginx.ingress.kubernetes.io/cors-allow-methods`
+- `nginx.ingress.kubernetes.io/cors-max-age`
 - `nginx.ingress.kubernetes.io/limit-rps`
 - `nginx.ingress.kubernetes.io/limit-rpm`
 - `nginx.ingress.kubernetes.io/limit-burst-multiplier`
@@ -78,6 +83,7 @@ The command should generate Gateway API and Kgateway resources.
 - `nginx.ingress.kubernetes.io/auth-secret`: Specifies the secret containing basic auth credentials in `namespace/name` format (or just `name` if in the same namespace). Maps to `TrafficPolicy.spec.basicAuth.secretRef.name`.
 
 ### Access Logging
+
 - `nginx.ingress.kubernetes.io/enable-access-log`: If enabled, will create an HTTPListenerPolicy that will configure a basic policy for envoy access logging. Maps to `HTTPListenerPolicy.spec.accessLog[].fileSink`. This can be further customized as needed, see [docs](https://kgateway.dev/docs/envoy/2.0.x/security/access-logging/).
 
 ## TrafficPolicy Projection
@@ -121,8 +127,7 @@ the lowest timeout wins and a warning is emitted.
 - Only the **ingress-nginx provider** is currently supported by the Kgateway emitter.
 - Some NGINX behaviors cannot be reproduced exactly due to Envoy/Kgateway differences.
 
-
-## Supported but not tranlated Annotations 
+## Supported but not tranlated Annotations
 
 The following annotations have equivalents in kgateway but are not (as of yet) translated by this tool.
 
@@ -130,7 +135,7 @@ The following annotations have equivalents in kgateway but are not (as of yet) t
 
 Supported in TrafficPolicy
 
-```
+```yaml
 spec:
   extAuth:
     httpService:
@@ -139,5 +144,3 @@ spec:
         - key: x-forwarded-host
           value: "%DOWNSTREAM_REMOTE_ADDRESS%"
 ```
-
-

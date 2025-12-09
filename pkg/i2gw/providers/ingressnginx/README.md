@@ -36,11 +36,20 @@ The ingress-nginx provider currently supports translating the following annotati
 
 ### CORS
 
-- `nginx.ingress.kubernetes.io/enable-cors`: Enables CORS policy generation.
-
-- `nginx.ingress.kubernetes.io/cors-allow-origin`: Comma-separated list of origins. For the Kgateway implementation, this maps to `TrafficPolicy.spec.cors.allowOrigins`.
-
----
+- `nginx.ingress.kubernetes.io/enable-cors`: Enables CORS policy generation. When set to "true", enables CORS handling for the Ingress.
+  Maps to creation of a TrafficPolicy with `spec.cors` populated.
+- `nginx.ingress.kubernetes.io/cors-allow-origin`: Comma-separated list of origins (e.g. "https://example.com, https://another.com").
+  For the Kgateway implementation, this maps to `TrafficPolicy.spec.cors.allowOrigins`.
+- `nginx.ingress.kubernetes.io/cors-allow-credentials`: Controls whether credentials are allowed in cross-origin requests ("true" / "false").
+  For the Kgateway implementation, this maps to `TrafficPolicy.spec.cors.allowCredentials`.
+- `nginx.ingress.kubernetes.io/cors-allow-headers`: A comma-separated list of allowed request headers. For the Kgateway implementation,
+  this maps to `TrafficPolicy.spec.cors.allowHeaders`.
+- `nginx.ingress.kubernetes.io/cors-expose-headers`: A comma-separated list of HTTP response headers that can be exposed to client-side
+  scripts in response to a cross-origin request. For the Kgateway implementation, this maps to `TrafficPolicy.spec.cors.exposeHeaders`.
+- `nginx.ingress.kubernetes.io/cors-allow-methods`: A comma-separated list of allowed HTTP methods (e.g. "GET, POST, OPTIONS").
+  For the Kgateway implementation, this maps to `TrafficPolicy.spec.cors.allowMethods`.
+- `nginx.ingress.kubernetes.io/cors-max-age`: Controls how long preflight responses may be cached (in seconds). For the Kgateway
+  implementation, this maps to `TrafficPolicy.spec.cors.maxAge`.
 
 ### Rate Limiting
 
