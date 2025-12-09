@@ -206,6 +206,15 @@ func TestKgatewayIngressNginxIntegration_Golden(t *testing.T) {
 				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "cors.yaml",
 			),
 		},
+		{
+			name: "load_balance",
+			inputRel: filepath.Join(
+				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "load_balance.yaml",
+			),
+			goldenRel: filepath.Join(
+				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "load_balance.yaml",
+			),
+		},
 	}
 
 	for _, tt := range tests {
