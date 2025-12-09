@@ -137,6 +137,10 @@ type Policy struct {
 	// SessionAffinity defines the session affinity policy.
 	SessionAffinity *SessionAffinityPolicy
 
+	// LoadBalancing controls the upstream load-balancing algorithm. Only round_robin is supported;
+	// other values are ignored.
+	LoadBalancing *BackendLoadBalancingPolicy
+
 	// RuleBackendSources lists the (rule, backend) pairs within a merged HTTPRoute
 	// that this policy applies to.
 	//
@@ -169,6 +173,16 @@ type RateLimitPolicy struct {
 	// BurstMultiplier is applied on top of the base limit to compute the bucket size.
 	// If zero, treat as 1.
 	BurstMultiplier int32
+}
+
+// LoadBalancingStrategy represents the upstream load-balancing mode requested by the Ingress NGINX annotations.
+// Currently only round_robin is supported; other values are ignored.
+type LoadBalancingStrategy string
+
+const LoadBalancingStrategyRoundRobin LoadBalancingStrategy = "round_robin"
+
+type BackendLoadBalancingPolicy struct {
+	Strategy LoadBalancingStrategy
 }
 
 // AddRuleBackendSources returns a copy of p with idxs added to

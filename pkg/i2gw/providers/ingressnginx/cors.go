@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	corsEnabledAnnotation           = "nginx.ingress.kubernetes.io/enable-cors"
+	corsEnabledAnnotation          = "nginx.ingress.kubernetes.io/enable-cors"
 	corsAllowOriginAnnotation      = "nginx.ingress.kubernetes.io/cors-allow-origin"
 	corsAllowCredentialsAnnotation = "nginx.ingress.kubernetes.io/cors-allow-credentials"
 	corsAllowHeadersAnnotation     = "nginx.ingress.kubernetes.io/cors-allow-headers"

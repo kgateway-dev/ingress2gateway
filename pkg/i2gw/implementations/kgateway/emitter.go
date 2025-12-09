@@ -135,6 +135,16 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 				backendCfg,
 			)
 
+			// Apply explicit round_robin load balancing via BackendConfigPolicy.
+			// Note: This must come AFTER applySessionAffinityPolicy so ring-hash
+			// (session affinity) always takes precedence for a given Service.
+			applyLoadBalancingPolicy(
+				pol,
+				httpRouteKey,
+				httpRouteContext,
+				backendCfg,
+			)
+
 			// Apply enable-access-log via HTTPListenerPolicy.
 			applyAccessLogPolicy(
 				pol,
