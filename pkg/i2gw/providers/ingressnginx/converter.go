@@ -50,6 +50,7 @@ func newResourcesToIRConverter() *resourcesToIRConverter {
 			sessionAffinityFeature,
 			loadBalancingFeature,
 			backendTLSFeature,
+			serviceUpstreamFeature,
 		},
 	}
 }

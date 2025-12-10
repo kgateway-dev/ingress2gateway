@@ -73,6 +73,7 @@ The command should generate Gateway API and Kgateway resources.
 - `nginx.ingress.kubernetes.io/session-cookie-expires`: Sets the TTL/expiration time for the cookie. Maps to `BackendConfigPolicy.spec.loadBalancer.ringHash.hashPolicies[].cookie.ttl`.
 - `nginx.ingress.kubernetes.io/session-cookie-max-age`: Sets the TTL/expiration time for the cookie (takes precedence over `session-cookie-expires`). Maps to `BackendConfigPolicy.spec.loadBalancer.ringHash.hashPolicies[].cookie.ttl`.
 - `nginx.ingress.kubernetes.io/session-cookie-secure`: Sets the Secure flag on the cookie. Maps to `BackendConfigPolicy.spec.loadBalancer.ringHash.hashPolicies[].cookie.secure`.
+- `nginx.ingress.kubernetes.io/service-upstream`: When set to `"true"`, configures Kgateway to route to the Service’s cluster IP (or equivalent static host) instead of individual Pod IPs. For each covered Service, the emitter creates a `Backend` resource with `spec.type: Static` and rewrites the corresponding `HTTPRoute.spec.rules[].backendRefs[]` to reference that `Backend` (group `gateway.kgateway.dev`, kind `Backend`).
 
 ### External Auth
 
@@ -123,12 +124,26 @@ Currently supported:
 If multiple Ingresses target the same Service with conflicting `proxy-connect-timeout` values,
 the lowest timeout wins and a warning is emitted.
 
+## Backend Projection
+
+Annotations that change how upstreams are represented (rather than how they are load balanced or configured)
+can be projected into Kgateway `Backend` resources.
+
+Currently supported:
+
+- `nginx.ingress.kubernetes.io/service-upstream`:
+  - For each Service backend covered by an Ingress with `service-upstream: "true"`, the emitter creates a `Backend` with:
+    - `spec.type: Static`
+    - `spec.static.hosts` containing a single `{host, port}` entry derived from the Service (e.g. `myservice.default.svc.cluster.local:80`).
+  - Matching `HTTPRoute.spec.rules[].backendRefs[]` are rewritten to reference this `Backend` instead of the core Service.
+
 ### Summary of Policy Types
 
-| Annotation Type              | Kgateway Resource     |
-|------------------------------|-----------------------|
-| Request/response behavior    | `TrafficPolicy`       |
-| Upstream connection behavior | `BackendConfigPolicy` |
+| Annotation Type                    | Kgateway Resource     |
+|------------------------------------|-----------------------|
+| Request/response behavior          | `TrafficPolicy`       |
+| Upstream connection behavior       | `BackendConfigPolicy` |
+| Upstream representation (static IP)| `Backend`             |
 
 ## Limitations
 

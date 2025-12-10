@@ -19,6 +19,7 @@ package intermediate
 import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // IngressNginxGatewayIR is the provider-specific IR for ingress-nginx.
@@ -168,8 +169,26 @@ type Policy struct {
 	// while ensuring uniqueness.
 	RuleBackendSources []PolicyIndex
 
+	// Backends holds all proxied backends that cannot be rendered as a standard k8s service, i.e. kgateway Backend.
+	Backends map[types.NamespacedName]Backend
+
 	// ruleBackendIndexSet is an internal helper used to deduplicate RuleBackendSources entries.
 	ruleBackendIndexSet map[PolicyIndex]struct{}
+}
+
+// Backend defines a proxied backend that cannot be rendered as a standard k8s Service.
+type Backend struct {
+	// Namespace defines the namespace of the backend.
+	Namespace string
+
+	// Name defines the name of the backend.
+	Name string
+
+	// Port defines the port of the backend.
+	Port int32
+
+	// Host defines the host (IP or DNS name) of the backend.
+	Host string
 }
 
 // RateLimitUnit defines the unit of rate limiting.
