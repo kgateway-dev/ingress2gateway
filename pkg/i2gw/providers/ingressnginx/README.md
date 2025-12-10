@@ -89,6 +89,20 @@ The ingress-nginx provider currently supports translating the following annotati
 
 ---
 
+### Backend TLS
+
+- `nginx.ingress.kubernetes.io/proxy-ssl-secret`: Specifies a Secret containing client certificate (`tls.crt`), client key (`tls.key`), and optionally CA certificate (`ca.crt`) in PEM format. The secret name can be specified as `secretName` (same namespace) or `namespace/secretName`. For the Kgateway implementation, this maps to `BackendConfigPolicy.spec.tls.secretRef`. **Note:** The secret must be in the same namespace as the BackendConfigPolicy.
+
+- `nginx.ingress.kubernetes.io/proxy-ssl-verify`: Enables or disables verification of the proxied HTTPS server certificate. Values: `"on"` or `"off"` (default: `"off"`). For the Kgateway implementation, this maps to `BackendConfigPolicy.spec.tls.insecureSkipVerify` (inverted: `"on"` = `false`, `"off"` = `true`).
+
+- `nginx.ingress.kubernetes.io/proxy-ssl-name`: Overrides the server name used to verify the certificate of the proxied HTTPS server. This value is also passed through SNI (Server Name Indication) when establishing a connection. For the Kgateway implementation, this maps to `BackendConfigPolicy.spec.tls.sni`. Setting this value automatically enables SNI.
+
+- `nginx.ingress.kubernetes.io/proxy-ssl-server-name`: **Note:** This annotation is not handled separately. In Kgateway, SNI is automatically enabled when `proxy-ssl-name` is set.
+
+**Note:** For the Kgateway implementation, backend TLS configuration is applied via `BackendConfigPolicy` resources. If multiple Ingress resources reference the same Service with different backend TLS settings, ingress2gateway will create a single `BackendConfigPolicy` per Service, and conflicting settings may result in warnings.
+
+---
+
 ### Session Affinity
 
 - `nginx.ingress.kubernetes.io/affinity`: Enables and sets the affinity type in all Upstreams of an Ingress. The only affinity type available for NGINX is "cookie". For the Kgateway implementation, this maps to `BackendConfigPolicy.spec.loadBalancer.ringHash.hashPolicies` with cookie-based hash policy.
