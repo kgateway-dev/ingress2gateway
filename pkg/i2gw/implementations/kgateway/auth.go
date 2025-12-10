@@ -31,18 +31,18 @@ import (
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// ParsedAuthURL contains the fields you can use to build a BackendObjectReference.
-type ParsedAuthURL struct {
-	Service   string
-	Namespace string
-	Port      int32
-	Path      string
-	External  bool // true if host is not a Kubernetes service
+// parsedAuthURL contains the fields you can use to build a BackendObjectReference.
+type parsedAuthURL struct {
+	service   string
+	namespace string
+	port      int32
+	path      string
+	external  bool // true if host is not a Kubernetes service
 }
 
 // ParseAuthURL parses an nginx.ingress.kubernetes.io/auth-url value into a ParsedAuthURL.
 // ingressNS = namespace of the Ingress (used when namespace is omitted).
-func ParseAuthURL(raw string, ingressNS string) (*ParsedAuthURL, error) {
+func ParseAuthURL(raw string, ingressNS string) (*parsedAuthURL, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("auth-url is empty")
 	}
@@ -71,9 +71,9 @@ func ParseAuthURL(raw string, ingressNS string) (*ParsedAuthURL, error) {
 
 	// Detect external hostname (not a Kubernetes service)
 	if !strings.Contains(hostname, ".svc") {
-		return &ParsedAuthURL{
-			External: true,
-			Path:     path,
+		return &parsedAuthURL{
+			external: true,
+			path:     path,
 		}, nil
 	}
 
@@ -109,12 +109,12 @@ func ParseAuthURL(raw string, ingressNS string) (*ParsedAuthURL, error) {
 		}
 	}
 
-	return &ParsedAuthURL{
-		Service:   service,
-		Namespace: namespace,
-		Port:      port,
-		Path:      path,
-		External:  false,
+	return &parsedAuthURL{
+		service:   service,
+		namespace: namespace,
+		port:      port,
+		path:      path,
+		external:  false,
 	}, nil
 }
 
@@ -146,7 +146,7 @@ func applyExtAuthPolicy(
 	}
 
 	// Skip external URLs as we can only reference Kubernetes Services.
-	if parsed.External {
+	if parsed.external {
 		return false
 	}
 
@@ -156,12 +156,12 @@ func applyExtAuthPolicy(
 		extHttpService := &kgateway.ExtHttpService{
 			BackendRef: gwv1.BackendRef{
 				BackendObjectReference: gwv1.BackendObjectReference{
-					Name:      gwv1.ObjectName(parsed.Service),
-					Namespace: ptr.To(gwv1.Namespace(parsed.Namespace)), // TODO: confirm that different namespace works
-					Port:      ptr.To(gwv1.PortNumber(parsed.Port)),
+					Name:      gwv1.ObjectName(parsed.service),
+					Namespace: ptr.To(gwv1.Namespace(parsed.namespace)), // TODO: confirm that different namespace works
+					Port:      ptr.To(gwv1.PortNumber(parsed.port)),
 				},
 			},
-			PathPrefix: parsed.Path,
+			PathPrefix: parsed.path,
 		}
 
 		// Set AuthorizationResponse if response headers are specified.
@@ -173,7 +173,7 @@ func applyExtAuthPolicy(
 
 		ge := &kgateway.GatewayExtension{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("%s-extauth", parsed.Service),
+				Name:      fmt.Sprintf("%s-extauth", parsed.service),
 				Namespace: namespace,
 			},
 			Spec: kgateway.GatewayExtensionSpec{
@@ -199,4 +199,3 @@ func applyExtAuthPolicy(
 
 	return true
 }
-
