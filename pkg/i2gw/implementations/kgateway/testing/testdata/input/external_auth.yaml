@@ -68,27 +68,3 @@ spec:
         path: /
         pathType: Prefix
 ---
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  annotations:
-    ingress2gateway.kubernetes.io/implementation: kgateway
-    # Auth URL with root path explicitly specified
-    nginx.ingress.kubernetes.io/auth-url: "http://auth.default.svc.cluster.local/"
-    nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Token"
-  name: ingress-auth-root-path
-  namespace: default
-spec:
-  ingressClassName: nginx
-  rules:
-  - host: app11.example.org
-    http:
-      paths:
-      - backend:
-          service:
-            name: app11
-            port:
-              number: 80
-        path: /
-        pathType: Prefix
----

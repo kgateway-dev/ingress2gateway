@@ -177,7 +177,9 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 				// Full coverage via targetRefs.
 				t.Spec.TargetRefs = []shared.LocalPolicyTargetReferenceWithSectionName{{
 					LocalPolicyTargetReference: shared.LocalPolicyTargetReference{
-						Name: gwv1.ObjectName(httpRouteKey.Name),
+						Group: gwv1.Group("gateway.networking.k8s.io"),
+						Kind:  gwv1.Kind("HTTPRoute"),
+						Name:  gwv1.ObjectName(httpRouteKey.Name),
 					},
 				}}
 			} else {

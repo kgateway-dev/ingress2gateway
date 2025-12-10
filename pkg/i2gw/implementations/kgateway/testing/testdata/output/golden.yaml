@@ -27,6 +27,29 @@ kind: HTTPRoute
 metadata:
   annotations:
     gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: ingress-sessionaffinity-sessionaffinity-example-org
+  namespace: default
+spec:
+  hostnames:
+  - sessionaffinity.example.org
+  parentRefs:
+  - name: nginx
+  rules:
+  - backendRefs:
+    - name: httpbin
+      port: 80
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+status:
+  parents: []
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
   name: ingress-myservicea1-myservicea-foo-org
   namespace: default
 spec:
@@ -79,29 +102,6 @@ spec:
   rules:
   - backendRefs:
     - name: myserviceb
-      port: 80
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
-status:
-  parents: []
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
-  name: ingress-sessionaffinity-sessionaffinity-example-org
-  namespace: default
-spec:
-  hostnames:
-  - sessionaffinity.example.org
-  parentRefs:
-  - name: nginx
-  rules:
-  - backendRefs:
-    - name: httpbin
       port: 80
     matches:
     - path:
@@ -238,8 +238,8 @@ spec:
         maxTokens: 250
         tokensPerFill: 50
   targetRefs:
-  - group: ""
-    kind: ""
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
     name: ingress-myserviceb-myserviceb-foo-org
   timeouts:
     request: 1m30s

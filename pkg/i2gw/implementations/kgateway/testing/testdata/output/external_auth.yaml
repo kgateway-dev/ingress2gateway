@@ -12,10 +12,6 @@ spec:
     name: app1-example-org-http
     port: 80
     protocol: HTTP
-  - hostname: app11.example.org
-    name: app11-example-org-http
-    port: 80
-    protocol: HTTP
   - hostname: app3.example.org
     name: app3-example-org-http
     port: 80
@@ -41,29 +37,6 @@ spec:
   rules:
   - backendRefs:
     - name: app1
-      port: 80
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
-status:
-  parents: []
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
-  name: ingress-auth-root-path-app11-example-org
-  namespace: default
-spec:
-  hostnames:
-  - app11.example.org
-  parentRefs:
-  - name: nginx
-  rules:
-  - backendRefs:
-    - name: app11
       port: 80
     matches:
     - path:
@@ -126,43 +99,6 @@ metadata:
 spec:
   extAuth:
     httpService:
-      authorizationResponse:
-        headersToBackend:
-        - X-Auth-Token
-        - X-User-ID
-      backendRef:
-        name: auth
-        namespace: default
-        port: 80
-      pathPrefix: /
-status: {}
----
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: GatewayExtension
-metadata:
-  name: auth-extauth
-  namespace: default
-spec:
-  extAuth:
-    httpService:
-      authorizationResponse:
-        headersToBackend:
-        - X-Auth-Token
-      backendRef:
-        name: auth
-        namespace: default
-        port: 80
-      pathPrefix: /
-status: {}
----
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: GatewayExtension
-metadata:
-  name: auth-extauth
-  namespace: default
-spec:
-  extAuth:
-    httpService:
       backendRef:
         name: auth
         namespace: default
@@ -186,6 +122,25 @@ spec:
 status: {}
 ---
 apiVersion: gateway.kgateway.dev/v1alpha1
+kind: GatewayExtension
+metadata:
+  name: auth-extauth
+  namespace: default
+spec:
+  extAuth:
+    httpService:
+      authorizationResponse:
+        headersToBackend:
+        - X-Auth-Token
+        - X-User-ID
+      backendRef:
+        name: auth
+        namespace: default
+        port: 80
+      pathPrefix: /
+status: {}
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
 kind: TrafficPolicy
 metadata:
   name: ingress-auth-different-ns
@@ -196,8 +151,8 @@ spec:
       name: auth-extauth
       namespace: default
   targetRefs:
-  - group: ""
-    kind: ""
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
     name: ingress-auth-different-ns-app4-example-org
 status:
   ancestors: null
@@ -213,26 +168,9 @@ spec:
       name: auth-extauth
       namespace: default
   targetRefs:
-  - group: ""
-    kind: ""
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
     name: ingress-auth-full-fqdn-app1-example-org
-status:
-  ancestors: null
----
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: TrafficPolicy
-metadata:
-  name: ingress-auth-root-path
-  namespace: default
-spec:
-  extAuth:
-    extensionRef:
-      name: auth-extauth
-      namespace: default
-  targetRefs:
-  - group: ""
-    kind: ""
-    name: ingress-auth-root-path-app11-example-org
 status:
   ancestors: null
 ---
@@ -247,8 +185,8 @@ spec:
       name: auth-extauth
       namespace: default
   targetRefs:
-  - group: ""
-    kind: ""
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
     name: ingress-auth-same-ns-app3-example-org
 status:
   ancestors: null
