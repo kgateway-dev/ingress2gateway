@@ -84,6 +84,12 @@ The command should generate Gateway API and Kgateway resources.
 - `nginx.ingress.kubernetes.io/auth-type`: Must be set to `"basic"` to enable basic authentication. Maps to `TrafficPolicy.spec.basicAuth`.
 - `nginx.ingress.kubernetes.io/auth-secret`: Specifies the secret containing basic auth credentials in `namespace/name` format (or just `name` if in the same namespace). Maps to `TrafficPolicy.spec.basicAuth.secretRef.name`.
 
+### Backend TLS
+
+- `nginx.ingress.kubernetes.io/proxy-ssl-secret`: Maps to `BackendConfigPolicy.spec.tls.secretRef`
+- `nginx.ingress.kubernetes.io/proxy-ssl-verify`: Maps to `BackendConfigPolicy.spec.tls.insecureSkipVerify` (inverted: `"on"` = `false`, `"off"` = `true`)
+- `nginx.ingress.kubernetes.io/proxy-ssl-name`: Maps to `BackendConfigPolicy.spec.tls.sni` (automatically enables SNI)
+
 ### Access Logging
 
 - `nginx.ingress.kubernetes.io/enable-access-log`: If enabled, will create an HTTPListenerPolicy that will configure a basic policy for envoy access logging. Maps to `HTTPListenerPolicy.spec.accessLog[].fileSink`. This can be further customized as needed, see [docs](https://kgateway.dev/docs/envoy/2.0.x/security/access-logging/).
