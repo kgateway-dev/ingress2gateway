@@ -18,6 +18,7 @@ package kgateway
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"sort"
 	"strings"
@@ -81,9 +82,6 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 
 	// Track GatewayExtensions per auth URL (for external auth).
 	gatewayExtensions := map[string]*kgateway.GatewayExtension{}
-
-	// Track Backends per auth URL hostname (for static backends).
-	backends := map[string]*kgateway.Backend{}
 
 	for httpRouteKey, httpRouteContext := range ir.HTTPRoutes {
 		ingx := httpRouteContext.ProviderSpecificIR.IngressNginx
@@ -154,7 +152,7 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 			)
 
 			// Apply auth-url via GatewayExtension and ExtAuthPolicy.
-			if applyExtAuthPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, tp, gatewayExtensions, backends) {
+			if applyExtAuthPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, tp, gatewayExtensions) {
 				touched = true
 			}
 
@@ -225,11 +223,6 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 	// Collect all GatewayExtensions computed across HTTPRoutes.
 	for _, ge := range gatewayExtensions {
 		out = append(out, ge)
-	}
-
-	// Collect all Backends computed across HTTPRoutes.
-	for _, backend := range backends {
-		out = append(out, backend)
 	}
 
 	// Emit warnings for conflicting service timeouts
@@ -752,20 +745,106 @@ func applyAccessLogPolicy(
 	return true
 }
 
-// applyExtAuthPolicy projects the ExtAuth IR policy into a Kgateway Backend,
-// GatewayExtension and ExtAuthPolicy in TrafficPolicy.
+// ParsedAuthURL contains the fields you can use to build a BackendObjectReference.
+type ParsedAuthURL struct {
+	Service   string
+	Namespace string
+	Port      int32
+	Path      string
+	External  bool // true if host is not a Kubernetes service
+}
+
+// ParseAuthURL parses an nginx.ingress.kubernetes.io/auth-url value into a ParsedAuthURL.
+// ingressNS = namespace of the Ingress (used when namespace is omitted).
+func ParseAuthURL(raw string, ingressNS string) (*ParsedAuthURL, error) {
+	if raw == "" {
+		return nil, fmt.Errorf("auth-url is empty")
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid auth-url: %w", err)
+	}
+
+	// Default path
+	path := u.Path
+	if path == "" {
+		path = "/"
+	}
+
+	host := u.Host
+
+	// Split host and port
+	var hostname, portStr string
+	if h, p, err := net.SplitHostPort(host); err == nil {
+		hostname = h
+		portStr = p
+	} else {
+		hostname = host
+	}
+
+	// Detect external hostname (not a Kubernetes service)
+	if !strings.Contains(hostname, ".svc") {
+		return &ParsedAuthURL{
+			External: true,
+			Path:     path,
+		}, nil
+	}
+
+	// Normalize cluster-local suffixes
+	hostname = strings.TrimSuffix(hostname, ".cluster.local")
+	hostname = strings.TrimSuffix(hostname, ".svc")
+
+	parts := strings.Split(hostname, ".")
+	if len(parts) < 1 {
+		return nil, fmt.Errorf("unable to extract service from hostname %q", hostname)
+	}
+
+	service := parts[0]
+
+	// Determine namespace
+	namespace := ingressNS
+	if len(parts) >= 2 {
+		namespace = parts[1]
+	}
+
+	// Port
+	var port int32
+	if portStr != "" {
+		var parsed int
+		fmt.Sscanf(portStr, "%d", &parsed)
+		port = int32(parsed)
+	} else {
+		switch u.Scheme {
+		case "https":
+			port = 443
+		default:
+			port = 80
+		}
+	}
+
+	return &ParsedAuthURL{
+		Service:   service,
+		Namespace: namespace,
+		Port:      port,
+		Path:      path,
+		External:  false,
+	}, nil
+}
+
+// applyExtAuthPolicy projects the ExtAuth IR policy into a GatewayExtension
+// and ExtAuthPolicy in TrafficPolicy.
 //
 // Semantics:
-//   - We create one Static Backend per unique hostname:port combination.
 //   - We create one GatewayExtension per unique auth-url.
-//   - That GatewayExtension's Spec.ExtAuth.HttpService references the Static Backend.
+//   - That GatewayExtension's Spec.ExtAuth.HttpService references an existing Service
+//     (parsed from the auth URL).
 //   - An ExtAuthPolicy is added to TrafficPolicy that references the GatewayExtension.
 func applyExtAuthPolicy(
 	pol intermediate.Policy,
 	ingressName, namespace string,
 	tp map[string]*kgateway.TrafficPolicy,
 	gatewayExtensions map[string]*kgateway.GatewayExtension,
-	backends map[string]*kgateway.Backend,
 ) bool {
 	if pol.ExtAuth == nil || pol.ExtAuth.AuthURL == "" {
 		return false
@@ -773,77 +852,30 @@ func applyExtAuthPolicy(
 
 	authURL := pol.ExtAuth.AuthURL
 
-	// Parse the URL to extract components.
-	parsedURL, err := url.Parse(authURL)
+	// Parse the auth URL to extract service information.
+	parsed, err := ParseAuthURL(authURL, namespace)
 	if err != nil {
 		// Invalid URL, skip it.
 		return false
 	}
 
-	// Extract hostname and port from the URL.
-	hostname := parsedURL.Hostname()
-	if hostname == "" {
+	// Skip external URLs as we can only reference Kubernetes Services.
+	if parsed.External {
 		return false
-	}
-
-	// Determine port (default to 80 for http, 443 for https).
-	port := parsedURL.Port()
-	portNum := int32(80) // default HTTP port
-	if port != "" {
-		var p int
-		if _, err := fmt.Sscanf(port, "%d", &p); err == nil {
-			portNum = int32(p)
-		}
-	} else if parsedURL.Scheme == "https" {
-		portNum = 443
-	}
-
-	// Create a key for the backend based on hostname:port.
-	backendKey := fmt.Sprintf("%s:%d", hostname, portNum)
-
-	// Create Static Backend if it doesn't exist.
-	if _, exists := backends[backendKey]; !exists {
-		backend := &kgateway.Backend{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      sanitizeNameForK8s(fmt.Sprintf("%s-backend", hostname)),
-				Namespace: namespace,
-			},
-			Spec: kgateway.BackendSpec{
-				Type: kgateway.BackendTypeStatic,
-				Static: &kgateway.StaticBackend{
-					Hosts: []kgateway.Host{
-						{
-							Host: hostname,
-							Port: gwv1.PortNumber(portNum),
-						},
-					},
-				},
-			},
-		}
-		backend.SetGroupVersionKind(BackendGVK)
-		backends[backendKey] = backend
 	}
 
 	// Use the URL as a key to deduplicate GatewayExtensions.
 	if _, exists := gatewayExtensions[authURL]; !exists {
-		// Extract path prefix from the URL.
-		pathPrefix := parsedURL.Path
-		if pathPrefix == "" {
-			pathPrefix = "/"
-		}
-
-		backend := backends[backendKey]
-
 		// Create GatewayExtension with ExtAuth using HttpService.
 		extHttpService := &kgateway.ExtHttpService{
 			BackendRef: gwv1.BackendRef{
 				BackendObjectReference: gwv1.BackendObjectReference{
-					Group: ptr.To(gwv1.Group("gateway.kgateway.dev")),
-					Kind:  ptr.To(gwv1.Kind("Backend")),
-					Name:  gwv1.ObjectName(backend.Name),
+					Name:      gwv1.ObjectName(parsed.Service),
+					Namespace: ptr.To(gwv1.Namespace(parsed.Namespace)), // TODO: confirm that different namespace works
+					Port:      ptr.To(gwv1.PortNumber(parsed.Port)),
 				},
 			},
-			PathPrefix: pathPrefix,
+			PathPrefix: parsed.Path,
 		}
 
 		// Set AuthorizationResponse if response headers are specified.
@@ -855,7 +887,7 @@ func applyExtAuthPolicy(
 
 		ge := &kgateway.GatewayExtension{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      sanitizeNameForK8s(fmt.Sprintf("%s-extauth", hostname)),
+				Name:      fmt.Sprintf("%s-extauth", parsed.Service),
 				Namespace: namespace,
 			},
 			Spec: kgateway.GatewayExtensionSpec{
@@ -903,35 +935,4 @@ func applyBasicAuthPolicy(
 		},
 	}
 	return true
-}
-
-// sanitizeNameForK8s converts a string to a valid Kubernetes resource name.
-// It replaces invalid characters with hyphens and ensures the name is valid.
-func sanitizeNameForK8s(name string) string {
-	// Replace invalid characters with hyphens.
-	reg := strings.NewReplacer(
-		".", "-",
-		"_", "-",
-		":", "-",
-		"/", "-",
-	)
-	sanitized := reg.Replace(name)
-
-	// Remove leading/trailing hyphens and ensure it starts with a letter or number.
-	sanitized = strings.Trim(sanitized, "-")
-	if len(sanitized) == 0 {
-		sanitized = "extauth"
-	}
-
-	// Ensure it starts with a lowercase letter or number.
-	if len(sanitized) > 0 && !((sanitized[0] >= 'a' && sanitized[0] <= 'z') || (sanitized[0] >= '0' && sanitized[0] <= '9')) {
-		sanitized = "extauth-" + sanitized
-	}
-
-	// Limit length to 253 characters (Kubernetes limit).
-	if len(sanitized) > 253 {
-		sanitized = sanitized[:253]
-	}
-
-	return sanitized
 }

@@ -111,19 +111,6 @@ status:
   parents: []
 ---
 apiVersion: gateway.kgateway.dev/v1alpha1
-kind: Backend
-metadata:
-  name: auth-example-com-backend
-  namespace: default
-spec:
-  static:
-    hosts:
-    - host: auth.example.com
-      port: 443
-  type: Static
-status: {}
----
-apiVersion: gateway.kgateway.dev/v1alpha1
 kind: BackendConfigPolicy
 metadata:
   name: httpbin-backend-config
@@ -176,7 +163,7 @@ status:
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: GatewayExtension
 metadata:
-  name: auth-example-com-extauth
+  name: auth-extauth
   namespace: default
 spec:
   extAuth:
@@ -186,9 +173,9 @@ spec:
         - X-Auth-Token
         - X-User-ID
       backendRef:
-        group: gateway.kgateway.dev
-        kind: Backend
-        name: auth-example-com-backend
+        name: auth
+        namespace: default
+        port: 80
       pathPrefix: /
 status: {}
 ---
@@ -222,7 +209,7 @@ spec:
     maxRequestSize: 10m
   extAuth:
     extensionRef:
-      name: auth-example-com-extauth
+      name: auth-extauth
       namespace: default
   rateLimit:
     local:
