@@ -42,4 +42,10 @@ var (
 		Version: "v1alpha1",
 		Kind:    "GatewayExtension",
 	}
+	// BackendGVK is the GroupVersionKind for Backend.
+	BackendGVK = schema.GroupVersionKind{
+		Group:   "gateway.kgateway.dev",
+		Version: "v1alpha1",
+		Kind:    "Backend",
+	}
 )

@@ -81,6 +81,9 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 	// Track GatewayExtensions per ingress name (for external auth).
 	gatewayExtensions := map[string]*kgateway.GatewayExtension{}
 
+	// Track Backends per (namespace, svcName) for service-upstream.
+	staticBackends := map[types.NamespacedName]*kgateway.Backend{}
+
 	for httpRouteKey, httpRouteContext := range ir.HTTPRoutes {
 		ingx := httpRouteContext.ProviderSpecificIR.IngressNginx
 		if ingx == nil {
@@ -150,6 +153,15 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 				backendCfg,
 			)
 
+			// Apply service-upstream via Backend and HTTPRoute backendRef rewrites.
+			applyServiceUpstreamBackend(
+				pol,
+				polSourceIngressName,
+				httpRouteKey,
+				&httpRouteContext,
+				staticBackends,
+			)
+
 			// Apply enable-access-log via HTTPListenerPolicy.
 			applyAccessLogPolicy(
 				pol,
@@ -217,6 +229,11 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 		for _, tp := range tp {
 			out = append(out, tp)
 		}
+	}
+
+	// Collect all static Backends computed across HTTPRoutes.
+	for _, b := range staticBackends {
+		out = append(out, b)
 	}
 
 	// Collect all BackendConfigPolicies computed across HTTPRoutes.
