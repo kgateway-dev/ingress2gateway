@@ -145,6 +145,15 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 				backendCfg,
 			)
 
+			// Apply backend TLS via BackendConfigPolicy.
+			// Note: "touched" is not updated here, as this does not affect TrafficPolicy.
+			applyBackendTLSPolicy(
+				pol,
+				httpRouteKey,
+				httpRouteContext,
+				backendCfg,
+			)
+
 			// Apply enable-access-log via HTTPListenerPolicy.
 			applyAccessLogPolicy(
 				pol,
