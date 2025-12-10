@@ -216,6 +216,15 @@ func TestKgatewayIngressNginxIntegration_Golden(t *testing.T) {
 			),
 		},
 		{
+			name: "backend_tls",
+			inputRel: filepath.Join(
+				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "backend_tls.yaml",
+			),
+			goldenRel: filepath.Join(
+				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "backend_tls.yaml",
+			),
+		},
+		{
 			name: "external_auth",
 			inputRel: filepath.Join(
 				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "external_auth.yaml",
