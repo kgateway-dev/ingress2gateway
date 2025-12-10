@@ -83,7 +83,10 @@ The ingress-nginx provider currently supports translating the following annotati
 
 ### Backend (Upstream) Configuration
 
-- `nginx.ingress.kubernetes.io/proxy-connect-timeout`: Controls the upstream connection timeout. For the Kgateway implementation, this maps to `BackendConfigPolicy.spec.connectTimeout`.
+- `nginx.ingress.kubernetes.io/proxy-connect-timeout`: Controls the upstream connection timeout. For the Kgateway implementation,
+  this maps to `BackendConfigPolicy.spec.connectTimeout`.
+- `nginx.ingress.kubernetes.io/load-balance`: Sets the algorithm to use for load balancing. The only supported value is `round_robin`.
+  For the Kgateway implementation, this maps to `BackendConfigPolicy.spec.loadBalancer`.
 
 **Note:** For the Kgateway implementation, if multiple Ingress resources reference the same Service with different `proxy-connect-timeout` values, ingress2gateway will emit warnings because Kgateway cannot safely apply multiple conflicting `BackendConfigPolicy` resources to the same Service.
 

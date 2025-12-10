@@ -18,7 +18,6 @@ package kgateway
 
 import (
 	"fmt"
-	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -79,11 +78,8 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 	// Track HTTPListenerPolicies per Gateway (for access logging).
 	httpListenerPolicies := map[types.NamespacedName]*kgateway.HTTPListenerPolicy{}
 
-	// Track GatewayExtensions per auth URL (for external auth).
+	// Track GatewayExtensions per ingress name (for external auth).
 	gatewayExtensions := map[string]*kgateway.GatewayExtension{}
-
-	// Track Backends per auth URL hostname (for static backends).
-	backends := map[string]*kgateway.Backend{}
 
 	for httpRouteKey, httpRouteContext := range ir.HTTPRoutes {
 		ingx := httpRouteContext.ProviderSpecificIR.IngressNginx
@@ -163,7 +159,7 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 			)
 
 			// Apply auth-url via GatewayExtension and ExtAuthPolicy.
-			if applyExtAuthPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, tp, gatewayExtensions, backends) {
+			if applyExtAuthPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, tp, gatewayExtensions) {
 				touched = true
 			}
 
@@ -190,7 +186,9 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 				// Full coverage via targetRefs.
 				t.Spec.TargetRefs = []shared.LocalPolicyTargetReferenceWithSectionName{{
 					LocalPolicyTargetReference: shared.LocalPolicyTargetReference{
-						Name: gwv1.ObjectName(httpRouteKey.Name),
+						Group: gwv1.Group("gateway.networking.k8s.io"),
+						Kind:  gwv1.Kind("HTTPRoute"),
+						Name:  gwv1.ObjectName(httpRouteKey.Name),
 					},
 				}}
 			} else {
@@ -234,11 +232,6 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 	// Collect all GatewayExtensions computed across HTTPRoutes.
 	for _, ge := range gatewayExtensions {
 		out = append(out, ge)
-	}
-
-	// Collect all Backends computed across HTTPRoutes.
-	for _, backend := range backends {
-		out = append(out, backend)
 	}
 
 	// Emit warnings for conflicting service timeouts
@@ -761,136 +754,6 @@ func applyAccessLogPolicy(
 	return true
 }
 
-// applyExtAuthPolicy projects the ExtAuth IR policy into a Kgateway Backend,
-// GatewayExtension and ExtAuthPolicy in TrafficPolicy.
-//
-// Semantics:
-//   - We create one Static Backend per unique hostname:port combination.
-//   - We create one GatewayExtension per unique auth-url.
-//   - That GatewayExtension's Spec.ExtAuth.HttpService references the Static Backend.
-//   - An ExtAuthPolicy is added to TrafficPolicy that references the GatewayExtension.
-func applyExtAuthPolicy(
-	pol intermediate.Policy,
-	ingressName, namespace string,
-	tp map[string]*kgateway.TrafficPolicy,
-	gatewayExtensions map[string]*kgateway.GatewayExtension,
-	backends map[string]*kgateway.Backend,
-) bool {
-	if pol.ExtAuth == nil || pol.ExtAuth.AuthURL == "" {
-		return false
-	}
-
-	authURL := pol.ExtAuth.AuthURL
-
-	// Parse the URL to extract components.
-	parsedURL, err := url.Parse(authURL)
-	if err != nil {
-		// Invalid URL, skip it.
-		return false
-	}
-
-	// Extract hostname and port from the URL.
-	hostname := parsedURL.Hostname()
-	if hostname == "" {
-		return false
-	}
-
-	// Determine port (default to 80 for http, 443 for https).
-	port := parsedURL.Port()
-	portNum := int32(80) // default HTTP port
-	if port != "" {
-		var p int
-		if _, err := fmt.Sscanf(port, "%d", &p); err == nil {
-			portNum = int32(p)
-		}
-	} else if parsedURL.Scheme == "https" {
-		portNum = 443
-	}
-
-	// Create a key for the backend based on hostname:port.
-	backendKey := fmt.Sprintf("%s:%d", hostname, portNum)
-
-	// Create Static Backend if it doesn't exist.
-	if _, exists := backends[backendKey]; !exists {
-		backend := &kgateway.Backend{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      sanitizeNameForK8s(fmt.Sprintf("%s-backend", hostname)),
-				Namespace: namespace,
-			},
-			Spec: kgateway.BackendSpec{
-				Type: kgateway.BackendTypeStatic,
-				Static: &kgateway.StaticBackend{
-					Hosts: []kgateway.Host{
-						{
-							Host: hostname,
-							Port: gwv1.PortNumber(portNum),
-						},
-					},
-				},
-			},
-		}
-		backend.SetGroupVersionKind(BackendGVK)
-		backends[backendKey] = backend
-	}
-
-	// Use the URL as a key to deduplicate GatewayExtensions.
-	if _, exists := gatewayExtensions[authURL]; !exists {
-		// Extract path prefix from the URL.
-		pathPrefix := parsedURL.Path
-		if pathPrefix == "" {
-			pathPrefix = "/"
-		}
-
-		backend := backends[backendKey]
-
-		// Create GatewayExtension with ExtAuth using HttpService.
-		extHttpService := &kgateway.ExtHttpService{
-			BackendRef: gwv1.BackendRef{
-				BackendObjectReference: gwv1.BackendObjectReference{
-					Group: ptr.To(gwv1.Group("gateway.kgateway.dev")),
-					Kind:  ptr.To(gwv1.Kind("Backend")),
-					Name:  gwv1.ObjectName(backend.Name),
-				},
-			},
-			PathPrefix: pathPrefix,
-		}
-
-		// Set AuthorizationResponse if response headers are specified.
-		if len(pol.ExtAuth.ResponseHeaders) > 0 {
-			extHttpService.AuthorizationResponse = &kgateway.AuthorizationResponse{
-				HeadersToBackend: pol.ExtAuth.ResponseHeaders,
-			}
-		}
-
-		ge := &kgateway.GatewayExtension{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      sanitizeNameForK8s(fmt.Sprintf("%s-extauth", hostname)),
-				Namespace: namespace,
-			},
-			Spec: kgateway.GatewayExtensionSpec{
-				ExtAuth: &kgateway.ExtAuthProvider{
-					HttpService: extHttpService,
-				},
-			},
-		}
-		ge.SetGroupVersionKind(GatewayExtensionGVK)
-		gatewayExtensions[authURL] = ge
-	}
-
-	// Add ExtAuthPolicy to TrafficPolicy.
-	t := ensureTrafficPolicy(tp, ingressName, namespace)
-	ge := gatewayExtensions[authURL]
-
-	t.Spec.ExtAuth = &kgateway.ExtAuthPolicy{
-		ExtensionRef: &shared.NamespacedObjectReference{
-			Name:      gwv1.ObjectName(ge.Name),
-			Namespace: ptr.To(gwv1.Namespace(ge.Namespace)),
-		},
-	}
-
-	return true
-}
-
 // applyBasicAuthPolicy projects the BasicAuth IR policy into a Kgateway TrafficPolicy,
 // returning true if it modified/created a TrafficPolicy for this ingress.
 //
@@ -912,35 +775,4 @@ func applyBasicAuthPolicy(
 		},
 	}
 	return true
-}
-
-// sanitizeNameForK8s converts a string to a valid Kubernetes resource name.
-// It replaces invalid characters with hyphens and ensures the name is valid.
-func sanitizeNameForK8s(name string) string {
-	// Replace invalid characters with hyphens.
-	reg := strings.NewReplacer(
-		".", "-",
-		"_", "-",
-		":", "-",
-		"/", "-",
-	)
-	sanitized := reg.Replace(name)
-
-	// Remove leading/trailing hyphens and ensure it starts with a letter or number.
-	sanitized = strings.Trim(sanitized, "-")
-	if len(sanitized) == 0 {
-		sanitized = "extauth"
-	}
-
-	// Ensure it starts with a lowercase letter or number.
-	if len(sanitized) > 0 && !((sanitized[0] >= 'a' && sanitized[0] <= 'z') || (sanitized[0] >= '0' && sanitized[0] <= '9')) {
-		sanitized = "extauth-" + sanitized
-	}
-
-	// Limit length to 253 characters (Kubernetes limit).
-	if len(sanitized) > 253 {
-		sanitized = sanitized[:253]
-	}
-
-	return sanitized
 }

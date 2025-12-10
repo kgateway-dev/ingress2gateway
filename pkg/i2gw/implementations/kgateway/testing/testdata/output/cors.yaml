@@ -90,17 +90,17 @@ metadata:
   namespace: default
 spec:
   cors:
-    allowOrigins:
-    - https://example.com
-    - https://another.com
     allowCredentials: false
+    allowHeaders:
+    - X-Requested-With
+    - Content-Type
     allowMethods:
     - GET
     - POST
     - OPTIONS
-    allowHeaders:
-    - X-Requested-With
-    - Content-Type
+    allowOrigins:
+    - https://example.com
+    - https://another.com
     exposeHeaders:
     - X-Expose-One
     - X-Expose-Two
@@ -132,11 +132,11 @@ spec:
     - https://example.com
     - https://another.com
     exposeHeaders:
-    - "*"
+    - '*'
     - X-CustomResponseHeader
   targetRefs:
-  - group: ""
-    kind: ""
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
     name: ingress-myserviceb-myserviceb-foo-org
 status:
   ancestors: null

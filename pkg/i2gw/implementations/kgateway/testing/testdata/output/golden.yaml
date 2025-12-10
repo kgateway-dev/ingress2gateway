@@ -31,48 +31,6 @@ kind: HTTPRoute
 metadata:
   annotations:
     gateway.networking.k8s.io/generator: ingress2gateway-dev
-  name: ingress-myservicea1-myservicea-foo-org
-  namespace: default
-spec:
-  hostnames:
-  - myservicea.foo.org
-  parentRefs:
-  - name: nginx
-  rules:
-  - backendRefs:
-    - filters:
-      - extensionRef:
-          group: gateway.kgateway.dev
-          kind: TrafficPolicy
-          name: ingress-myservicea1
-        type: ExtensionRef
-      name: myservicea
-      port: 80
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
-  - backendRefs:
-    - filters:
-      - extensionRef:
-          group: gateway.kgateway.dev
-          kind: TrafficPolicy
-          name: ingress-myservicea2
-        type: ExtensionRef
-      name: myservicea
-      port: 80
-    matches:
-    - path:
-        type: PathPrefix
-        value: /2
-status:
-  parents: []
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
   name: ingress-myserviceb-myserviceb-foo-org
   namespace: default
 spec:
@@ -137,18 +95,47 @@ spec:
 status:
   parents: []
 ---
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: Backend
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
-  name: auth-example-com-backend
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: ingress-myservicea1-myservicea-foo-org
   namespace: default
 spec:
-  static:
-    hosts:
-    - host: auth.example.com
-      port: 443
-  type: Static
-status: {}
+  hostnames:
+  - myservicea.foo.org
+  parentRefs:
+  - name: nginx
+  rules:
+  - backendRefs:
+    - filters:
+      - extensionRef:
+          group: gateway.kgateway.dev
+          kind: TrafficPolicy
+          name: ingress-myservicea1
+        type: ExtensionRef
+      name: myservicea
+      port: 80
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+  - backendRefs:
+    - filters:
+      - extensionRef:
+          group: gateway.kgateway.dev
+          kind: TrafficPolicy
+          name: ingress-myservicea2
+        type: ExtensionRef
+      name: myservicea
+      port: 80
+    matches:
+    - path:
+        type: PathPrefix
+        value: /2
+status:
+  parents: []
 ---
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: BackendConfigPolicy
@@ -218,25 +205,6 @@ status:
   ancestors: null
 ---
 apiVersion: gateway.kgateway.dev/v1alpha1
-kind: GatewayExtension
-metadata:
-  name: auth-example-com-extauth
-  namespace: default
-spec:
-  extAuth:
-    httpService:
-      authorizationResponse:
-        headersToBackend:
-        - X-Auth-Token
-        - X-User-ID
-      backendRef:
-        group: gateway.kgateway.dev
-        kind: Backend
-        name: auth-example-com-backend
-      pathPrefix: /
-status: {}
----
-apiVersion: gateway.kgateway.dev/v1alpha1
 kind: HTTPListenerPolicy
 metadata:
   name: nginx-access-log
@@ -264,10 +232,6 @@ metadata:
 spec:
   buffer:
     maxRequestSize: 10m
-  extAuth:
-    extensionRef:
-      name: auth-example-com-extauth
-      namespace: default
   rateLimit:
     local:
       tokenBucket:
@@ -318,8 +282,8 @@ spec:
         maxTokens: 250
         tokensPerFill: 50
   targetRefs:
-  - group: ""
-    kind: ""
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
     name: ingress-myserviceb-myserviceb-foo-org
   timeouts:
     request: 1m30s

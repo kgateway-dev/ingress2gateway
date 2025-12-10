@@ -62,7 +62,9 @@ The command should generate Gateway API and Kgateway resources.
 
 ### Backend Behavior
 
-- `nginx.ingress.kubernetes.io/proxy-connect-timeout`
+- `nginx.ingress.kubernetes.io/proxy-connect-timeout`: Sets the timeout for establishing a connection with a proxied server. It should be noted that this timeout
+  cannot usually exceed 75 seconds.
+- `nginx.ingress.kubernetes.io/load-balance`: Sets the algorithm to use for load balancing to a proxied server. The only supported value is `round_robin`.
 - `nginx.ingress.kubernetes.io/affinity`: Enables session affinity (only "cookie" type is supported). Maps to `BackendConfigPolicy.spec.loadBalancer.ringHash.hashPolicies`.
 - `nginx.ingress.kubernetes.io/session-cookie-name`: Specifies the name of the cookie used for session affinity. Maps to `BackendConfigPolicy.spec.loadBalancer.ringHash.hashPolicies[].cookie.name`.
 - `nginx.ingress.kubernetes.io/session-cookie-path`: Defines the path that will be set on the cookie. Maps to `BackendConfigPolicy.spec.loadBalancer.ringHash.hashPolicies[].cookie.path`.
