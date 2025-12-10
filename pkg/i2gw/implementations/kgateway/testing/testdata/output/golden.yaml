@@ -161,25 +161,6 @@ status:
   ancestors: null
 ---
 apiVersion: gateway.kgateway.dev/v1alpha1
-kind: GatewayExtension
-metadata:
-  name: auth-extauth
-  namespace: default
-spec:
-  extAuth:
-    httpService:
-      authorizationResponse:
-        headersToBackend:
-        - X-Auth-Token
-        - X-User-ID
-      backendRef:
-        name: auth
-        namespace: default
-        port: 80
-      pathPrefix: /
-status: {}
----
-apiVersion: gateway.kgateway.dev/v1alpha1
 kind: HTTPListenerPolicy
 metadata:
   name: nginx-access-log
@@ -207,10 +188,6 @@ metadata:
 spec:
   buffer:
     maxRequestSize: 10m
-  extAuth:
-    extensionRef:
-      name: auth-extauth
-      namespace: default
   rateLimit:
     local:
       tokenBucket:
