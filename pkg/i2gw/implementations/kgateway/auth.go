@@ -40,9 +40,9 @@ type parsedAuthURL struct {
 	external  bool // true if host is not a Kubernetes service
 }
 
-// ParseAuthURL parses an nginx.ingress.kubernetes.io/auth-url value into a ParsedAuthURL.
+// parseAuthURL parses an nginx.ingress.kubernetes.io/auth-url value into a ParsedAuthURL.
 // ingressNS = namespace of the Ingress (used when namespace is omitted).
-func ParseAuthURL(raw string, ingressNS string) (*parsedAuthURL, error) {
+func parseAuthURL(raw string, ingressNS string) (*parsedAuthURL, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("auth-url is empty")
 	}
@@ -139,7 +139,7 @@ func applyExtAuthPolicy(
 	authURL := pol.ExtAuth.AuthURL
 
 	// Parse the auth URL to extract service information.
-	parsed, err := ParseAuthURL(authURL, namespace)
+	parsed, err := parseAuthURL(authURL, namespace)
 	if err != nil {
 		// Invalid URL, skip it.
 		return false
