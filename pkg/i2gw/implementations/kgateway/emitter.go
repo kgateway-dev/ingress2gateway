@@ -78,7 +78,7 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 	// Track HTTPListenerPolicies per Gateway (for access logging).
 	httpListenerPolicies := map[types.NamespacedName]*kgateway.HTTPListenerPolicy{}
 
-	// Track GatewayExtensions per auth URL (for external auth).
+	// Track GatewayExtensions per ingress name (for external auth).
 	gatewayExtensions := map[string]*kgateway.GatewayExtension{}
 
 	for httpRouteKey, httpRouteContext := range ir.HTTPRoutes {

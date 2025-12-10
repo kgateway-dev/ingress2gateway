@@ -150,45 +150,40 @@ func applyExtAuthPolicy(
 		return false
 	}
 
-	// Use the URL as a key to deduplicate GatewayExtensions.
-	if _, exists := gatewayExtensions[authURL]; !exists {
-		// Create GatewayExtension with ExtAuth using HttpService.
-		extHttpService := &kgateway.ExtHttpService{
-			BackendRef: gwv1.BackendRef{
-				BackendObjectReference: gwv1.BackendObjectReference{
-					Name:      gwv1.ObjectName(parsed.service),
-					Namespace: ptr.To(gwv1.Namespace(parsed.namespace)), // TODO: confirm that different namespace works
-					Port:      ptr.To(gwv1.PortNumber(parsed.port)),
-				},
+	// Create GatewayExtension with ExtAuth using HttpService.
+	extHttpService := &kgateway.ExtHttpService{
+		BackendRef: gwv1.BackendRef{
+			BackendObjectReference: gwv1.BackendObjectReference{
+				Name:      gwv1.ObjectName(parsed.service),
+				Namespace: ptr.To(gwv1.Namespace(parsed.namespace)), // TODO: confirm that different namespace works
+				Port:      ptr.To(gwv1.PortNumber(parsed.port)),
 			},
-			PathPrefix: parsed.path,
-		}
-
-		// Set AuthorizationResponse if response headers are specified.
-		if len(pol.ExtAuth.ResponseHeaders) > 0 {
-			extHttpService.AuthorizationResponse = &kgateway.AuthorizationResponse{
-				HeadersToBackend: pol.ExtAuth.ResponseHeaders,
-			}
-		}
-
-		ge := &kgateway.GatewayExtension{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("%s-extauth", parsed.service),
-				Namespace: namespace,
-			},
-			Spec: kgateway.GatewayExtensionSpec{
-				ExtAuth: &kgateway.ExtAuthProvider{
-					HttpService: extHttpService,
-				},
-			},
-		}
-		ge.SetGroupVersionKind(GatewayExtensionGVK)
-		gatewayExtensions[authURL] = ge
+		},
+		PathPrefix: parsed.path,
 	}
+
+	// Set AuthorizationResponse if response headers are specified.
+	if len(pol.ExtAuth.ResponseHeaders) > 0 {
+		extHttpService.AuthorizationResponse = &kgateway.AuthorizationResponse{
+			HeadersToBackend: pol.ExtAuth.ResponseHeaders,
+		}
+	}
+
+	ge := &kgateway.GatewayExtension{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-extauth", ingressName),
+			Namespace: namespace,
+		},
+		Spec: kgateway.GatewayExtensionSpec{
+			ExtAuth: &kgateway.ExtAuthProvider{
+				HttpService: extHttpService,
+			},
+		},
+	}
+	ge.SetGroupVersionKind(GatewayExtensionGVK)
 
 	// Add ExtAuthPolicy to TrafficPolicy.
 	t := ensureTrafficPolicy(tp, ingressName, namespace)
-	ge := gatewayExtensions[authURL]
 
 	t.Spec.ExtAuth = &kgateway.ExtAuthPolicy{
 		ExtensionRef: &shared.NamespacedObjectReference{
@@ -197,5 +192,6 @@ func applyExtAuthPolicy(
 		},
 	}
 
+	gatewayExtensions[ingressName] = ge
 	return true
 }
