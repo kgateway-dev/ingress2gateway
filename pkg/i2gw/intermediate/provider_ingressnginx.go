@@ -164,6 +164,11 @@ type Policy struct {
 	// BackendTLS defines the backend TLS policy.
 	BackendTLS *BackendTLSPolicy
 
+	// SSLRedirect indicates whether SSL redirect is enabled, corresponding to
+	// nginx.ingress.kubernetes.io/ssl-redirect. When true, requests should be
+	// redirected to HTTPS.
+	SSLRedirect *bool
+
 	// RuleBackendSources lists the (rule, backend) pairs within a merged HTTPRoute
 	// that this policy applies to.
 	//

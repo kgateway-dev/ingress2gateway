@@ -180,6 +180,9 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 				touched = true
 			}
 
+			// Apply SSL redirect via RequestRedirect filter on HTTPRoute rules.
+			applySSLRedirectPolicy(pol, httpRouteKey, &httpRouteContext, coverage)
+
 			if !touched {
 				// No TrafficPolicy fields set for this policy; skip coverage wiring.
 				continue

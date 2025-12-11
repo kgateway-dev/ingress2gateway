@@ -59,6 +59,8 @@ The command should generate Gateway API and Kgateway resources.
 - `nginx.ingress.kubernetes.io/limit-burst-multiplier`
 - `nginx.ingress.kubernetes.io/proxy-send-timeout`
 - `nginx.ingress.kubernetes.io/proxy-read-timeout`
+- `nginx.ingress.kubernetes.io/ssl-redirect`: When set to `"true"`, adds a `RequestRedirect` filter to HTTPRoute rules that redirects HTTP to HTTPS with a 301 status code.
+- `nginx.ingress.kubernetes.io/force-ssl-redirect`: When set to `"true"`, adds a `RequestRedirect` filter to HTTPRoute rules that redirects HTTP to HTTPS with a 301 status code. Treated identically to `ssl-redirect`.
 
 ### Backend Behavior
 
@@ -111,6 +113,7 @@ Examples:
 - Body size annotations control `spec.buffer.maxRequestSize`
 - Rate limit annotations control `spec.rateLimit.local.tokenBucket`
 - Timeout annotations control `spec.timeouts.request` or `streamIdle`
+- SSL redirect annotations add `RequestRedirect` filters to HTTPRoute rules
 
 ## BackendConfigPolicy Projection
 
