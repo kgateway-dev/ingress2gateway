@@ -776,6 +776,7 @@ func applyAccessLogPolicy(
 //
 // Semantics:
 //   - If BasicAuth is configured, set spec.basicAuth.secretRef.name in TrafficPolicy.
+//   - If AuthType is "auth-file" (default), also set spec.basicAuth.secretRef.key to "auth".
 func applyBasicAuthPolicy(
 	pol intermediate.Policy,
 	ingressName, namespace string,
@@ -786,10 +787,15 @@ func applyBasicAuthPolicy(
 	}
 
 	t := ensureTrafficPolicy(tp, ingressName, namespace)
+	secretRef := &kgateway.SecretReference{
+		Name: gwv1.ObjectName(pol.BasicAuth.SecretName),
+	}
+	// Set Key field to "auth" when AuthType is "auth-file" (default format)
+	if pol.BasicAuth.AuthType == "auth-file" {
+		secretRef.Key = ptr.To("auth")
+	}
 	t.Spec.BasicAuth = &kgateway.BasicAuthPolicy{
-		SecretRef: &kgateway.SecretReference{
-			Name: gwv1.ObjectName(pol.BasicAuth.SecretName),
-		},
+		SecretRef: secretRef,
 	}
 	return true
 }
