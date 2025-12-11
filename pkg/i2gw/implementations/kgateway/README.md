@@ -61,6 +61,7 @@ The command should generate Gateway API and Kgateway resources.
 - `nginx.ingress.kubernetes.io/proxy-read-timeout`
 - `nginx.ingress.kubernetes.io/ssl-redirect`: When set to `"true"`, adds a `RequestRedirect` filter to HTTPRoute rules that redirects HTTP to HTTPS with a 301 status code.
 - `nginx.ingress.kubernetes.io/force-ssl-redirect`: When set to `"true"`, adds a `RequestRedirect` filter to HTTPRoute rules that redirects HTTP to HTTPS with a 301 status code. Treated identically to `ssl-redirect`.
+- `nginx.ingress.kubernetes.io/ssl-passthrough`: When set to `"true"`, enables TLS passthrough mode. Converts the Ingress to a `TLSRoute` with a Gateway listener using `protocol: TLS` and `tls.mode: Passthrough`. The HTTPRoute that would normally be created is removed.
 
 ### Backend Behavior
 
@@ -114,6 +115,7 @@ Examples:
 - Rate limit annotations control `spec.rateLimit.local.tokenBucket`
 - Timeout annotations control `spec.timeouts.request` or `streamIdle`
 - SSL redirect annotations add `RequestRedirect` filters to HTTPRoute rules
+- SSL passthrough annotation converts HTTPRoute to TLSRoute with TLS passthrough Gateway listener
 
 ## BackendConfigPolicy Projection
 
@@ -127,6 +129,19 @@ Currently supported:
 
 If multiple Ingresses target the same Service with conflicting `proxy-connect-timeout` values,
 the lowest timeout wins and a warning is emitted.
+
+## TLSRoute Projection
+
+Annotations that require TLS passthrough mode are converted into `TLSRoute` resources instead of `HTTPRoute` resources.
+
+Currently supported:
+
+- `nginx.ingress.kubernetes.io/ssl-passthrough`:
+  - When enabled, the Ingress is converted to a `TLSRoute` resource
+  - A Gateway listener is created with `protocol: TLS` and `tls.mode: Passthrough`
+  - The listener uses port 443 (when hostname is specified) or 8443 (default)
+  - The HTTPRoute that would normally be created is removed
+  - Backend services must handle TLS termination themselves
 
 ## Backend Projection
 
@@ -148,6 +163,7 @@ Currently supported:
 | Request/response behavior          | `TrafficPolicy`       |
 | Upstream connection behavior       | `BackendConfigPolicy` |
 | Upstream representation (static IP)| `Backend`             |
+| TLS passthrough                    | `TLSRoute`            |
 
 ## Limitations
 

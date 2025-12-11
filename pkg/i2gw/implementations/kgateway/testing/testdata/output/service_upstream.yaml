@@ -1,3 +1,33 @@
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: Backend
+metadata:
+  labels:
+    ingress2gateway.kubernetes.io/source-ingress: ingress-myservicea1
+  name: myservicea-service-upstream
+  namespace: default
+spec:
+  static:
+    hosts:
+      - host: myservicea.default.svc.cluster.local
+        port: 80
+  type: Static
+status: {}
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: Backend
+metadata:
+  labels:
+    ingress2gateway.kubernetes.io/source-ingress: ingress-myserviceb
+  name: myserviceb-service-upstream
+  namespace: default
+spec:
+  static:
+    hosts:
+      - host: myserviceb.default.svc.cluster.local
+        port: 80
+  type: Static
+status: {}
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -8,14 +38,14 @@ metadata:
 spec:
   gatewayClassName: kgateway
   listeners:
-  - hostname: myservicea.foo.org
-    name: myservicea-foo-org-http
-    port: 80
-    protocol: HTTP
-  - hostname: myserviceb.foo.org
-    name: myserviceb-foo-org-http
-    port: 80
-    protocol: HTTP
+    - hostname: myservicea.foo.org
+      name: myservicea-foo-org-http
+      port: 80
+      protocol: HTTP
+    - hostname: myserviceb.foo.org
+      name: myserviceb-foo-org-http
+      port: 80
+      protocol: HTTP
 status: {}
 ---
 apiVersion: gateway.networking.k8s.io/v1
@@ -27,27 +57,25 @@ metadata:
   namespace: default
 spec:
   hostnames:
-  - myservicea.foo.org
+    - myservicea.foo.org
   parentRefs:
-  - name: nginx
+    - name: nginx
   rules:
-  # From ingress-myservicea1 (service-upstream=true) so rewritten to Backend
-  - backendRefs:
-    - group: gateway.kgateway.dev
-      kind: Backend
-      name: myservicea-service-upstream
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
-  # From ingress-myservicea2 (no service-upstream) so still core Service
-  - backendRefs:
-    - name: myservicea
-      port: 80
-    matches:
-    - path:
-        type: PathPrefix
-        value: /2
+    - backendRefs:
+        - group: gateway.kgateway.dev
+          kind: Backend
+          name: myservicea-service-upstream
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
+    - backendRefs:
+        - name: myservicea
+          port: 80
+      matches:
+        - path:
+            type: PathPrefix
+            value: /2
 status:
   parents: []
 ---
@@ -60,48 +88,17 @@ metadata:
   namespace: default
 spec:
   hostnames:
-  - myserviceb.foo.org
+    - myserviceb.foo.org
   parentRefs:
-  - name: nginx
+    - name: nginx
   rules:
-  # From ingress-myserviceb (service-upstream=true) so rewritten to Backend
-  - backendRefs:
-    - group: gateway.kgateway.dev
-      kind: Backend
-      name: myserviceb-service-upstream
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
+    - backendRefs:
+        - group: gateway.kgateway.dev
+          kind: Backend
+          name: myserviceb-service-upstream
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
 status:
   parents: []
----
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: Backend
-metadata:
-  labels:
-    ingress2gateway.kubernetes.io/source-ingress: ingress-myservicea1
-  name: myservicea-service-upstream
-  namespace: default
-spec:
-  type: Static
-  static:
-    hosts:
-    - host: myservicea.default.svc.cluster.local
-      port: 80
-status: {}
----
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: Backend
-metadata:
-  labels:
-    ingress2gateway.kubernetes.io/source-ingress: ingress-myserviceb
-  name: myserviceb-service-upstream
-  namespace: default
-spec:
-  type: Static
-  static:
-    hosts:
-    - host: myserviceb.default.svc.cluster.local
-      port: 80
-status: {}
