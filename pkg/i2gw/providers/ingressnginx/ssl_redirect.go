@@ -77,7 +77,7 @@ func sslRedirectFeature(
 		return errs
 	}
 
-	// Map policies to HTTPRoutes (same pattern as other features)
+	// Map policies to HTTPRoutes
 	ruleGroups := common.GetRuleGroups(ingresses)
 
 	for _, rg := range ruleGroups {
