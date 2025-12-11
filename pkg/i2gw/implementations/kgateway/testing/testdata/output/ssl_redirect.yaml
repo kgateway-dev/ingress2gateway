@@ -1,0 +1,99 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: nginx
+  namespace: default
+spec:
+  gatewayClassName: kgateway
+  listeners:
+  - hostname: force-redirect.example
+    name: force-redirect-example-http
+    port: 80
+    protocol: HTTP
+  - hostname: redirect.example
+    name: redirect-example-http
+    port: 80
+    protocol: HTTP
+status: {}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: ingress-force-ssl-redirect-force-redirect-example
+  namespace: default
+spec:
+  hostnames:
+  - force-redirect.example
+  parentRefs:
+  - name: nginx
+  rules:
+  - backendRefs:
+    - name: myservice2
+      port: 80
+    filters:
+    - requestRedirect:
+        scheme: https
+        statusCode: 301
+      type: RequestRedirect
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+status:
+  parents: []
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: ingress-ssl-redirect-redirect-example
+  namespace: default
+spec:
+  hostnames:
+  - redirect.example
+  parentRefs:
+  - name: nginx
+  rules:
+  - backendRefs:
+    - name: myservice
+      port: 80
+    filters:
+    - requestRedirect:
+        scheme: https
+        statusCode: 301
+      type: RequestRedirect
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+  - backendRefs:
+    - name: myservice
+      port: 80
+    filters:
+    - requestRedirect:
+        scheme: https
+        statusCode: 301
+      type: RequestRedirect
+    matches:
+    - path:
+        type: PathPrefix
+        value: /api
+  - backendRefs:
+    - name: myservice
+      port: 80
+    filters:
+    - requestRedirect:
+        scheme: https
+        statusCode: 301
+      type: RequestRedirect
+    matches:
+    - path:
+        type: PathPrefix
+        value: /web
+status:
+  parents: []
