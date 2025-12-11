@@ -31,6 +31,48 @@ kind: HTTPRoute
 metadata:
   annotations:
     gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: ingress-myservicea1-myservicea-foo-org
+  namespace: default
+spec:
+  hostnames:
+  - myservicea.foo.org
+  parentRefs:
+  - name: nginx
+  rules:
+  - backendRefs:
+    - filters:
+      - extensionRef:
+          group: gateway.kgateway.dev
+          kind: TrafficPolicy
+          name: ingress-myservicea1
+        type: ExtensionRef
+      name: myservicea
+      port: 80
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+  - backendRefs:
+    - filters:
+      - extensionRef:
+          group: gateway.kgateway.dev
+          kind: TrafficPolicy
+          name: ingress-myservicea2
+        type: ExtensionRef
+      name: myservicea
+      port: 80
+    matches:
+    - path:
+        type: PathPrefix
+        value: /2
+status:
+  parents: []
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
   name: ingress-myserviceb-myserviceb-foo-org
   namespace: default
 spec:
@@ -92,48 +134,6 @@ spec:
     - path:
         type: PathPrefix
         value: /
-status:
-  parents: []
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
-  name: ingress-myservicea1-myservicea-foo-org
-  namespace: default
-spec:
-  hostnames:
-  - myservicea.foo.org
-  parentRefs:
-  - name: nginx
-  rules:
-  - backendRefs:
-    - filters:
-      - extensionRef:
-          group: gateway.kgateway.dev
-          kind: TrafficPolicy
-          name: ingress-myservicea1
-        type: ExtensionRef
-      name: myservicea
-      port: 80
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
-  - backendRefs:
-    - filters:
-      - extensionRef:
-          group: gateway.kgateway.dev
-          kind: TrafficPolicy
-          name: ingress-myservicea2
-        type: ExtensionRef
-      name: myservicea
-      port: 80
-    matches:
-    - path:
-        type: PathPrefix
-        value: /2
 status:
   parents: []
 ---
@@ -270,9 +270,6 @@ metadata:
   name: ingress-myserviceb
   namespace: default
 spec:
-  basicAuth:
-    secretRef:
-      name: basic-auth-secret
   buffer:
     maxRequestSize: 100m
   rateLimit:
