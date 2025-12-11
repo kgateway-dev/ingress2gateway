@@ -84,6 +84,10 @@ type ExtAuthPolicy struct {
 type BasicAuthPolicy struct {
 	// SecretName defines the name of the secret containing basic auth credentials.
 	SecretName string
+	// AuthType defines the format of the secret: "auth-file" (default) or "auth-map".
+	// For "auth-file", the secret contains an htpasswd file in a specific key.
+	// For "auth-map", the keys of the secret are usernames and values are hashed passwords.
+	AuthType string
 }
 
 // SessionAffinityPolicy defines a session affinity policy that has been extracted from ingress-nginx annotations.

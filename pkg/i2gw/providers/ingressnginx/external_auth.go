@@ -32,6 +32,7 @@ const (
 	authResponseHeadersAnnotation = "nginx.ingress.kubernetes.io/auth-response-headers"
 	authTypeAnnotation            = "nginx.ingress.kubernetes.io/auth-type"
 	authSecretAnnotation          = "nginx.ingress.kubernetes.io/auth-secret"
+	authSecretTypeAnnotation      = "nginx.ingress.kubernetes.io/auth-secret-type"
 )
 
 // extAuthFeature extracts the "auth-url" and "auth-response-headers" annotations and
@@ -167,6 +168,7 @@ func basicAuthFeature(
 		ing := &ingresses[i]
 		authTypeRaw := strings.TrimSpace(ing.Annotations[authTypeAnnotation])
 		authSecretRaw := strings.TrimSpace(ing.Annotations[authSecretAnnotation])
+		authSecretTypeRaw := strings.TrimSpace(ing.Annotations[authSecretTypeAnnotation])
 
 		// Only process if auth-type is "basic" and auth-secret is present
 		if authTypeRaw != "basic" || authSecretRaw == "" {
@@ -191,8 +193,17 @@ func basicAuthFeature(
 			}
 		}
 
+		// Determine auth type based on auth-secret-type annotation
+		// auth-file (default): htpasswd file in key "auth"
+		// auth-map: keys are usernames, values are hashed passwords
+		authType := authSecretTypeRaw
+		if authType == "" {
+			authType = "auth-file" // default
+		}
+
 		pol.BasicAuth = &intermediate.BasicAuthPolicy{
 			SecretName: secretName,
+			AuthType:   authType,
 		}
 	}
 

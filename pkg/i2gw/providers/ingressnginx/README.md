@@ -78,6 +78,7 @@ The ingress-nginx provider currently supports translating the following annotati
 
 - `nginx.ingress.kubernetes.io/auth-type`: Must be set to `"basic"` to enable basic authentication. For the Kgateway implementation, this maps to `TrafficPolicy.spec.basicAuth`.
 - `nginx.ingress.kubernetes.io/auth-secret`: Specifies the secret containing basic auth credentials in `namespace/name` format (or just `name` if in the same namespace). For the Kgateway implementation, this maps to `TrafficPolicy.spec.basicAuth.secretRef.name`.
+- `nginx.ingress.kubernetes.io/auth-secret-type`: Specifies the format of the secret. Values: `"auth-file"` (default) or `"auth-map"`. For `"auth-file"`, the secret contains an htpasswd file in the key `"auth"`. For `"auth-map"`, the keys of the secret are usernames and values are hashed passwords. For the Kgateway implementation, when set to `"auth-file"` (or default), this maps to `TrafficPolicy.spec.basicAuth.secretRef.key` set to `"auth"`.
 
 ---
 

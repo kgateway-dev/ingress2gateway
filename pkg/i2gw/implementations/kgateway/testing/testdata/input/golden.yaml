@@ -63,8 +63,6 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "90s"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "90s"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "120"
-    nginx.ingress.kubernetes.io/auth-type: "basic"
-    nginx.ingress.kubernetes.io/auth-secret: "default/basic-auth-secret"
   name: ingress-myserviceb
   namespace: default
 spec:
