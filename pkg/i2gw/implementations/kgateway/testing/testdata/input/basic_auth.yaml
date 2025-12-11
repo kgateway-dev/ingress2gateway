@@ -45,3 +45,27 @@ spec:
         path: /
         pathType: Prefix
 ---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    ingress2gateway.kubernetes.io/implementation: kgateway
+    nginx.ingress.kubernetes.io/auth-type: "basic"
+    nginx.ingress.kubernetes.io/auth-secret: "auth-map-secret"
+    nginx.ingress.kubernetes.io/auth-secret-type: "auth-map"
+  name: ingress-basic-auth-map
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: app3.example.org
+    http:
+      paths:
+      - backend:
+          service:
+            name: app3
+            port:
+              number: 80
+        path: /
+        pathType: Prefix
+
