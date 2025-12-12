@@ -29,6 +29,24 @@ type IngressNginxGatewayIR struct{}
 type IngressNginxHTTPRouteIR struct {
 	// Policies keyed by source Ingress name.
 	Policies map[string]Policy
+
+	// RegexLocationForHost is true when ingress-nginx would enforce the "~*" (case-insensitive)
+	// regex location modifier for ALL paths under a host.
+	//
+	// Per nginx semantics, this becomes true if ANY ingress for the host has either of the
+	// following: annotations:
+	//
+	//   - nginx.ingress.kubernetes.io/use-regex: "true"
+	//   - nginx.ingress.kubernetes.io/rewrite-target set to any value
+	RegexLocationForHost *bool
+
+	// RegexForcedByUseRegex is true when RegexLocationForHost is true specifically
+	// because of the nginx.ingress.kubernetes.io/use-regex annotation.
+	RegexForcedByUseRegex bool
+
+	// RegexForcedByRewrite is true when RegexLocationForHost is true specifically
+	// because of the nginx.ingress.kubernetes.io/rewrite-target annotation.
+	RegexForcedByRewrite bool
 }
 
 // IngressNginxServiceIR contains ingress-nginx-specific fields for Service.
@@ -168,6 +186,15 @@ type Policy struct {
 	// nginx.ingress.kubernetes.io/ssl-redirect. When true, requests should be
 	// redirected to HTTPS.
 	SSLRedirect *bool
+
+	// RewriteTarget corresponds to nginx.ingress.kubernetes.io/rewrite-target annotation and rewrites the
+	// path in the request to the path expected by the service.
+	RewriteTarget *string
+
+	// UseRegexPaths corresponds to nginx.ingress.kubernetes.io/use-regex.
+	// When true (and host-wide regex mode is enabled), paths contributed by this ingress
+	// must be treated as regex patterns (i.e. NOT escaped as literals).
+	UseRegexPaths *bool
 
 	// RuleBackendSources lists the (rule, backend) pairs within a merged HTTPRoute
 	// that this policy applies to.

@@ -62,6 +62,12 @@ The command should generate Gateway API and Kgateway resources.
 - `nginx.ingress.kubernetes.io/ssl-redirect`: When set to `"true"`, adds a `RequestRedirect` filter to HTTPRoute rules that redirects HTTP to HTTPS with a 301 status code.
 - `nginx.ingress.kubernetes.io/force-ssl-redirect`: When set to `"true"`, adds a `RequestRedirect` filter to HTTPRoute rules that redirects HTTP to HTTPS with a 301 status code. Treated identically to `ssl-redirect`.
 - `nginx.ingress.kubernetes.io/ssl-passthrough`: When set to `"true"`, enables TLS passthrough mode. Converts the Ingress to a `TLSRoute` with a Gateway listener using `protocol: TLS` and `tls.mode: Passthrough`. The HTTPRoute that would normally be created is removed.
+- `nginx.ingress.kubernetes.io/use-regex`: When set to `"true"`, indicates that the paths defined on an Ingress should be treated as regular expressions.
+  Uses host-group semantics: if any Ingress contributing rules for a given host has `use-regex: "true"`, regex-style path matching is enforced on **all**
+  paths for that host (across all contributing Ingresses).
+- `nginx.ingress.kubernetes.io/rewrite-target`: Rewrites the request path using regex rewrite semantics.
+  Uses host-group semantics: if any Ingress contributing rules for a given host sets `rewrite-target`, regex-style path matching is enforced on **all**
+  paths for that host (across all contributing Ingresses), consistent with ingress-nginx behavior.
 
 ### Backend Behavior
 
@@ -71,6 +77,8 @@ The command should generate Gateway API and Kgateway resources.
 - `nginx.ingress.kubernetes.io/affinity`: Enables session affinity (only "cookie" type is supported). Maps to `BackendConfigPolicy.spec.loadBalancer.ringHash.hashPolicies`.
 - `nginx.ingress.kubernetes.io/session-cookie-name`: Specifies the name of the cookie used for session affinity. Maps to `BackendConfigPolicy.spec.loadBalancer.ringHash.hashPolicies[].cookie.name`.
 - `nginx.ingress.kubernetes.io/session-cookie-path`: Defines the path that will be set on the cookie. Maps to `BackendConfigPolicy.spec.loadBalancer.ringHash.hashPolicies[].cookie.path`.
+- **Note (regex-mode constraint):** Ingress NGINX session cookie paths do not support regex. If regex-mode is enabled for a host (via `use-regex: "true"` or
+  `rewrite-target`) and cookie affinity is used, `session-cookie-path` must be set; the provider validates this and emits an error if it is missing.
 - `nginx.ingress.kubernetes.io/session-cookie-domain`: Sets the Domain attribute of the sticky cookie. **Note:** This annotation is parsed but not currently mapped to kgateway as the Cookie type doesn't support domain.
 - `nginx.ingress.kubernetes.io/session-cookie-samesite`: Applies a SameSite attribute to the sticky cookie. Browser accepted values are None, Lax, and Strict. Maps to `BackendConfigPolicy.spec.loadBalancer.ringHash.hashPolicies[].cookie.sameSite`.
 - `nginx.ingress.kubernetes.io/session-cookie-expires`: Sets the TTL/expiration time for the cookie. Maps to `BackendConfigPolicy.spec.loadBalancer.ringHash.hashPolicies[].cookie.ttl`.
@@ -98,6 +106,29 @@ The command should generate Gateway API and Kgateway resources.
 ### Access Logging
 
 - `nginx.ingress.kubernetes.io/enable-access-log`: If enabled, will create an HTTPListenerPolicy that will configure a basic policy for envoy access logging. Maps to `HTTPListenerPolicy.spec.accessLog[].fileSink`. This can be further customized as needed, see [docs](https://kgateway.dev/docs/envoy/2.0.x/security/access-logging/).
+
+### Regex Path Matching and Rewrites
+
+- `use-regex` and `rewrite-target` may **mutate HTTPRoute path matching** for a host:
+  - When regex-mode is enabled for a host, the emitter converts **all** `PathPrefix`/`Exact` matches under that host to `RegularExpression` matches.
+  - For Ingresses that set `use-regex: "true"`, their contributed path strings are treated as **regex** (not escaped as literals).
+  - For other Ingresses under the same host (that did not set `use-regex: "true"`), their contributed path strings are treated as **literals** within a regex
+    match (escaped), to preserve the original non-regex intent.
+
+- `rewrite-target` generates `TrafficPolicy` URL rewrite:
+  - For each rule covered by an Ingress that sets `rewrite-target`, the emitter creates a **per-rule TrafficPolicy** named:
+    - `<ingress-name>-rewrite-<rule-index>`
+  - That policy sets:
+
+    ```yaml
+    spec:
+      urlRewrite:
+        pathRegex:
+          pattern: <regex pattern derived from the HTTPRoute rule match>
+          substitution: <rewrite-target value>
+    ```
+
+  - The policy is attached via `ExtensionRef` filters to only the covered backendRefs (partial coverage), rather than using `targetRefs`.
 
 ## TrafficPolicy Projection
 
@@ -169,6 +200,8 @@ Currently supported:
 
 - Only the **ingress-nginx provider** is currently supported by the Kgateway emitter.
 - Some NGINX behaviors cannot be reproduced exactly due to Envoy/Kgateway differences.
+- Regex-mode is implemented by converting HTTPRoute path matches to `RegularExpression`. Some ingress-nginx details (such as case-insensitive `~*` behavior)
+  may not be reproduced exactly depending on the underlying Gateway API/Envoy behavior and the patterns provided.
 
 ## Supported but not tranlated Annotations
 

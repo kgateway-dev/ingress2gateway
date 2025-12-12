@@ -93,6 +93,22 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 		// One TrafficPolicy per source Ingress name.
 		tp := map[string]*kgateway.TrafficPolicy{}
 
+		// Apply host-wide regex enforcement first (so rule path regex is finalized)
+		applyRegexPathMatchingForHost(ingx, &httpRouteContext)
+
+		// deterministic policy iteration
+		policyNames := make([]string, 0, len(ingx.Policies))
+		for name := range ingx.Policies {
+			policyNames = append(policyNames, name)
+		}
+		sort.Strings(policyNames)
+
+		// Rewrite-target pass: creates per-rule TPs and attaches filters itself.
+		for _, name := range policyNames {
+			pol := ingx.Policies[name]
+			applyRewriteTargetPolicies(pol, name, httpRouteKey.Namespace, &httpRouteContext, tp)
+		}
+
 		for polSourceIngressName, pol := range ingx.Policies {
 			// Normalize (rule, backend) coverage to unique pairs to avoid
 			// generating duplicate filters on the same backendRef.

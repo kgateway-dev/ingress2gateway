@@ -53,6 +53,8 @@ func newResourcesToIRConverter() *resourcesToIRConverter {
 			serviceUpstreamFeature,
 			sslRedirectFeature,
 			sslPassthroughFeature,
+			rewriteTargetFeature,
+			useRegexFeature,
 		},
 	}
 }
@@ -79,6 +81,9 @@ func (c *resourcesToIRConverter) convert(storage *storage) (intermediate.IR, fie
 		parseErrs := parseFeatureFunc(ingressList, storage.ServicePorts, &ir)
 		errs = append(errs, parseErrs...)
 	}
+
+	// Cross-feature validation that depends on derived host-wide regex mode.
+	errs = append(errs, validateRegexCookiePath(&ir)...)
 
 	return ir, errs
 }
