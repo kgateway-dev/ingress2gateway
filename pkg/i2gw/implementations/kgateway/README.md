@@ -85,6 +85,14 @@ The command should generate Gateway API and Kgateway resources.
 - `nginx.ingress.kubernetes.io/session-cookie-max-age`: Sets the TTL/expiration time for the cookie (takes precedence over `session-cookie-expires`). Maps to `BackendConfigPolicy.spec.loadBalancer.ringHash.hashPolicies[].cookie.ttl`.
 - `nginx.ingress.kubernetes.io/session-cookie-secure`: Sets the Secure flag on the cookie. Maps to `BackendConfigPolicy.spec.loadBalancer.ringHash.hashPolicies[].cookie.secure`.
 - `nginx.ingress.kubernetes.io/service-upstream`: When set to `"true"`, configures Kgateway to route to the Service’s cluster IP (or equivalent static host) instead of individual Pod IPs. For each covered Service, the emitter creates a `Backend` resource with `spec.type: Static` and rewrites the corresponding `HTTPRoute.spec.rules[].backendRefs[]` to reference that `Backend` (group `gateway.kgateway.dev`, kind `Backend`).
+- `nginx.ingress.kubernetes.io/backend-protocol`: Indicates the L7 protocol that is used to communicate with the proxied backend.
+  - **Supported values (mapped):** `GRPC`, `GRPCS`
+    - The emitter creates (or reuses) a `Backend` with `spec.type: Static` and sets `spec.static.appProtocol: grpc`.
+    - Matching `HTTPRoute.spec.rules[].backendRefs[]` are rewritten to reference this `Backend` (group `gateway.kgateway.dev`, kind `Backend`).
+  - **Values treated as default HTTP/1.x (no-op):** `HTTP`, `HTTPS`, `AUTO_HTTP`
+  - **Unsupported values (rejected by provider):** `FCGI` (and others)
+  - **Independent from features that create a `Backend`:** For example, `backend-protocol` does **not** require `service-upstream: "true"`. If `backend-protocol` is set to `GRPC/GRPCS`,
+    the provider will still produce the needed static backend metadata so the emitter can create `Backend` resources and rewrite `backendRefs`.
 
 ### External Auth
 
@@ -186,6 +194,13 @@ Currently supported:
     - `spec.type: Static`
     - `spec.static.hosts` containing a single `{host, port}` entry derived from the Service (e.g. `myservice.default.svc.cluster.local:80`).
   - Matching `HTTPRoute.spec.rules[].backendRefs[]` are rewritten to reference this `Backend` instead of the core Service.
+- `nginx.ingress.kubernetes.io/backend-protocol` (partial support):
+  - When set to `GRPC` or `GRPCS`, the provider emits backend protocol metadata and the emitter ensures there is a `Backend` with:
+    - `spec.type: Static`
+    - `spec.static.hosts` containing a single `{host, port}` entry derived from the Service
+    - `spec.static.appProtocol: grpc`
+  - Matching `HTTPRoute.spec.rules[].backendRefs[]` are rewritten to reference this `Backend` instead of the core Service.
+  - **Note:** `HTTP`, `HTTPS`, and `AUTO_HTTP` are treated as default HTTP/1.x behavior and do not emit additional config.
 
 ### Summary of Policy Types
 
@@ -193,7 +208,7 @@ Currently supported:
 |------------------------------------|-----------------------|
 | Request/response behavior          | `TrafficPolicy`       |
 | Upstream connection behavior       | `BackendConfigPolicy` |
-| Upstream representation (static IP)| `Backend`             |
+| Upstream representation/protocol   | `Backend`             |
 | TLS passthrough                    | `TLSRoute`            |
 
 ## Limitations

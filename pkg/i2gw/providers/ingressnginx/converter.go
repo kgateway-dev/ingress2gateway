@@ -51,6 +51,7 @@ func newResourcesToIRConverter() *resourcesToIRConverter {
 			loadBalancingFeature,
 			backendTLSFeature,
 			serviceUpstreamFeature,
+			backendProtocolFeature,
 			sslRedirectFeature,
 			sslPassthroughFeature,
 			rewriteTargetFeature,
