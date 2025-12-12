@@ -147,6 +147,10 @@ func runGoldenTest(t *testing.T, inputRel, goldenRel string) {
 
 	actual := stdout.Bytes()
 
+	// Normalize trivial formatting differences
+	actualTrimmed := bytes.TrimSpace(actual)
+	actualCanonicalized := canonicalizeMultiDocYAML(t, actualTrimmed)
+
 	// Golden file handling
 	writeGolden := false
 	goldenBytes, err := os.ReadFile(goldenPath)
@@ -161,19 +165,16 @@ func runGoldenTest(t *testing.T, inputRel, goldenRel string) {
 	}
 
 	if writeGolden {
-		if err := os.WriteFile(goldenPath, actual, 0o600); err != nil {
+		if err := os.WriteFile(goldenPath, actualCanonicalized, 0o600); err != nil {
 			t.Fatalf("failed to write golden file %q: %v", goldenPath, err)
 		}
 		t.Logf("wrote golden file: %s", goldenPath)
 		return
 	}
 
-	// Normalize trivial formatting differences
-	actualTrimmed := bytes.TrimSpace(actual)
 	expectedTrimmed := bytes.TrimSpace(goldenBytes)
-
-	got := canonicalizeMultiDocYAML(t, actualTrimmed)
 	want := canonicalizeMultiDocYAML(t, expectedTrimmed)
+	got := actualCanonicalized
 
 	if diff := cmp.Diff(string(want), string(got)); diff != "" {
 		t.Fatalf("golden output mismatch (-want +got):\n%s", diff)
@@ -258,6 +259,15 @@ func TestKgatewayIngressNginxIntegration_Golden(t *testing.T) {
 			),
 			goldenRel: filepath.Join(
 				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "basic_auth.yaml",
+			),
+		},
+		{
+			name: "ssl_passthrough",
+			inputRel: filepath.Join(
+				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "ssl_passthrough.yaml",
+			),
+			goldenRel: filepath.Join(
+				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "ssl_passthrough.yaml",
 			),
 		},
 	}

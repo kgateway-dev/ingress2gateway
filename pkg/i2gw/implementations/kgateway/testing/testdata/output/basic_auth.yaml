@@ -8,18 +8,18 @@ metadata:
 spec:
   gatewayClassName: kgateway
   listeners:
-  - hostname: app1.example.org
-    name: app1-example-org-http
-    port: 80
-    protocol: HTTP
-  - hostname: app2.example.org
-    name: app2-example-org-http
-    port: 80
-    protocol: HTTP
-  - hostname: app3.example.org
-    name: app3-example-org-http
-    port: 80
-    protocol: HTTP
+    - hostname: app1.example.org
+      name: app1-example-org-http
+      port: 80
+      protocol: HTTP
+    - hostname: app2.example.org
+      name: app2-example-org-http
+      port: 80
+      protocol: HTTP
+    - hostname: app3.example.org
+      name: app3-example-org-http
+      port: 80
+      protocol: HTTP
 status: {}
 ---
 apiVersion: gateway.networking.k8s.io/v1
@@ -31,17 +31,17 @@ metadata:
   namespace: default
 spec:
   hostnames:
-  - app1.example.org
+    - app1.example.org
   parentRefs:
-  - name: nginx
+    - name: nginx
   rules:
-  - backendRefs:
-    - name: app1
-      port: 80
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
+    - backendRefs:
+        - name: app1
+          port: 80
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
 status:
   parents: []
 ---
@@ -54,17 +54,17 @@ metadata:
   namespace: default
 spec:
   hostnames:
-  - app2.example.org
+    - app2.example.org
   parentRefs:
-  - name: nginx
+    - name: nginx
   rules:
-  - backendRefs:
-    - name: app2
-      port: 80
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
+    - backendRefs:
+        - name: app2
+          port: 80
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
 status:
   parents: []
 ---
@@ -77,17 +77,17 @@ metadata:
   namespace: default
 spec:
   hostnames:
-  - app3.example.org
+    - app3.example.org
   parentRefs:
-  - name: nginx
+    - name: nginx
   rules:
-  - backendRefs:
-    - name: app3
-      port: 80
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
+    - backendRefs:
+        - name: app3
+          port: 80
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
 status:
   parents: []
 ---
@@ -102,9 +102,9 @@ spec:
       key: auth
       name: basic-auth-secret
   targetRefs:
-  - group: gateway.networking.k8s.io
-    kind: HTTPRoute
-    name: ingress-basic-auth-file-default-app1-example-org
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: ingress-basic-auth-file-default-app1-example-org
 status:
   ancestors: null
 ---
@@ -119,9 +119,9 @@ spec:
       key: auth
       name: basic-auth-secret
   targetRefs:
-  - group: gateway.networking.k8s.io
-    kind: HTTPRoute
-    name: ingress-basic-auth-file-explicit-app2-example-org
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: ingress-basic-auth-file-explicit-app2-example-org
 status:
   ancestors: null
 ---
@@ -135,8 +135,8 @@ spec:
     secretRef:
       name: auth-map-secret
   targetRefs:
-  - group: gateway.networking.k8s.io
-    kind: HTTPRoute
-    name: ingress-basic-auth-map-app3-example-org
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: ingress-basic-auth-map-app3-example-org
 status:
   ancestors: null

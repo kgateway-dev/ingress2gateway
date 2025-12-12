@@ -8,14 +8,14 @@ metadata:
 spec:
   gatewayClassName: kgateway
   listeners:
-  - hostname: force-redirect.example
-    name: force-redirect-example-http
-    port: 80
-    protocol: HTTP
-  - hostname: redirect.example
-    name: redirect-example-http
-    port: 80
-    protocol: HTTP
+    - hostname: force-redirect.example
+      name: force-redirect-example-http
+      port: 80
+      protocol: HTTP
+    - hostname: redirect.example
+      name: redirect-example-http
+      port: 80
+      protocol: HTTP
 status: {}
 ---
 apiVersion: gateway.networking.k8s.io/v1
@@ -27,22 +27,22 @@ metadata:
   namespace: default
 spec:
   hostnames:
-  - force-redirect.example
+    - force-redirect.example
   parentRefs:
-  - name: nginx
+    - name: nginx
   rules:
-  - backendRefs:
-    - name: myservice2
-      port: 80
-    filters:
-    - requestRedirect:
-        scheme: https
-        statusCode: 301
-      type: RequestRedirect
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
+    - backendRefs:
+        - name: myservice2
+          port: 80
+      filters:
+        - requestRedirect:
+            scheme: https
+            statusCode: 301
+          type: RequestRedirect
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
 status:
   parents: []
 ---
@@ -55,45 +55,45 @@ metadata:
   namespace: default
 spec:
   hostnames:
-  - redirect.example
+    - redirect.example
   parentRefs:
-  - name: nginx
+    - name: nginx
   rules:
-  - backendRefs:
-    - name: myservice
-      port: 80
-    filters:
-    - requestRedirect:
-        scheme: https
-        statusCode: 301
-      type: RequestRedirect
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
-  - backendRefs:
-    - name: myservice
-      port: 80
-    filters:
-    - requestRedirect:
-        scheme: https
-        statusCode: 301
-      type: RequestRedirect
-    matches:
-    - path:
-        type: PathPrefix
-        value: /api
-  - backendRefs:
-    - name: myservice
-      port: 80
-    filters:
-    - requestRedirect:
-        scheme: https
-        statusCode: 301
-      type: RequestRedirect
-    matches:
-    - path:
-        type: PathPrefix
-        value: /web
+    - backendRefs:
+        - name: myservice
+          port: 80
+      filters:
+        - requestRedirect:
+            scheme: https
+            statusCode: 301
+          type: RequestRedirect
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
+    - backendRefs:
+        - name: myservice
+          port: 80
+      filters:
+        - requestRedirect:
+            scheme: https
+            statusCode: 301
+          type: RequestRedirect
+      matches:
+        - path:
+            type: PathPrefix
+            value: /api
+    - backendRefs:
+        - name: myservice
+          port: 80
+      filters:
+        - requestRedirect:
+            scheme: https
+            statusCode: 301
+          type: RequestRedirect
+      matches:
+        - path:
+            type: PathPrefix
+            value: /web
 status:
   parents: []
