@@ -1,6 +1,7 @@
 # Ingress Nginx Provider
 
-The project supports translating ingress-nginx specific annotations.
+The project supports translating ingress-nginx specific annotations. Some annotations may be translated into
+implementation-specific resources or user-facing notifications depending on the selected implementation.
 
 ## Ingress Class Name
 
@@ -82,6 +83,22 @@ The ingress-nginx provider currently supports translating the following annotati
 - `nginx.ingress.kubernetes.io/auth-type`: Must be set to `"basic"` to enable basic authentication. For the Kgateway implementation, this maps to `TrafficPolicy.spec.basicAuth`.
 - `nginx.ingress.kubernetes.io/auth-secret`: Specifies the secret containing basic auth credentials in `namespace/name` format (or just `name` if in the same namespace). For the Kgateway implementation, this maps to `TrafficPolicy.spec.basicAuth.secretRef.name`.
 - `nginx.ingress.kubernetes.io/auth-secret-type`: Specifies the format of the secret. Values: `"auth-file"` (default) or `"auth-map"`. For `"auth-file"`, the secret contains an htpasswd file in the key `"auth"`. For `"auth-map"`, the keys of the secret are usernames and values are hashed passwords. For the Kgateway implementation, when set to `"auth-file"` (or default), this maps to `TrafficPolicy.spec.basicAuth.secretRef.key` set to `"auth"`.
+
+---
+
+### Backend Protocol
+
+- `nginx.ingress.kubernetes.io/backend-protocol`: Indicates the L7 protocol that is used to communicate with the proxied backend.
+  - **Supported values (recorded):** `GRPC`, `GRPCS`
+    - The provider records protocol intent as policy metadata (used by implementation emitters).
+    - For the Kgateway implementation:
+      - If `service-upstream: "true"` is also enabled for the same Service backend, the Kgateway emitter stamps `spec.static.appProtocol: grpc`
+        on the generated `Backend`.
+      - Otherwise, the Kgateway emitter does **not** generate Kubernetes `Service` resources. Instead, it emits an **INFO** notification with a `kubectl patch`
+        command to set `spec.ports[].appProtocol` on the existing Service.
+  - **Values treated as default HTTP/1.x (no-op):** `HTTP`, `HTTPS`, `AUTO_HTTP`
+  - **Unsupported values (rejected):** `FCGI` (and others)
+  - **Safety note:** The provider does not attempt to create or mutate Kubernetes Services; implementation emitters decide how to safely project this intent.
 
 ---
 

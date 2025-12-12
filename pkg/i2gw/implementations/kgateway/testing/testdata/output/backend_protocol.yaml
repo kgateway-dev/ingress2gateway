@@ -1,0 +1,89 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: nginx
+  namespace: default
+spec:
+  gatewayClassName: kgateway
+  listeners:
+  - hostname: myservicea.foo.org
+    name: myservicea-foo-org-http
+    port: 80
+    protocol: HTTP
+  - hostname: myserviceb.foo.org
+    name: myserviceb-foo-org-http
+    port: 80
+    protocol: HTTP
+status: {}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: ingress-myservicea1-myservicea-foo-org
+  namespace: default
+spec:
+  hostnames:
+  - myservicea.foo.org
+  parentRefs:
+  - name: nginx
+  rules:
+  - backendRefs:
+    - name: myservicea
+      port: 80
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+  - backendRefs:
+    - name: myservicea
+      port: 80
+    matches:
+    - path:
+        type: PathPrefix
+        value: /2
+status:
+  parents: []
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: ingress-myserviceb-myserviceb-foo-org
+  namespace: default
+spec:
+  hostnames:
+  - myserviceb.foo.org
+  parentRefs:
+  - name: nginx
+  rules:
+  - backendRefs:
+    - group: gateway.kgateway.dev
+      kind: Backend
+      name: myserviceb-service-upstream
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+status:
+  parents: []
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: Backend
+metadata:
+  labels:
+    ingress2gateway.kubernetes.io/source-ingress: ingress-myserviceb
+  name: myserviceb-service-upstream
+  namespace: default
+spec:
+  type: Static
+  static:
+    hosts:
+    - host: myserviceb.default.svc.cluster.local
+      port: 80
+    appProtocol: grpc
+status: {}
