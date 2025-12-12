@@ -31,18 +31,13 @@ spec:
   parentRefs:
   - name: nginx
   rules:
-  # From ingress-myservicea1 (service-upstream=true, backend-protocol=GRPC)
-  # so rewritten to Backend, which has appProtocol=grpc.
   - backendRefs:
-    - group: gateway.kgateway.dev
-      kind: Backend
-      name: myservicea-service-upstream
+    - name: myservicea
+      port: 80
     matches:
     - path:
         type: PathPrefix
         value: /
-  # From ingress-myservicea2 (no service-upstream/backend-protocol)
-  # so still core Service.
   - backendRefs:
     - name: myservicea
       port: 80
@@ -66,8 +61,6 @@ spec:
   parentRefs:
   - name: nginx
   rules:
-  # From ingress-myserviceb (service-upstream=true, backend-protocol=GRPC)
-  # so rewritten to Backend, which has appProtocol=grpc.
   - backendRefs:
     - group: gateway.kgateway.dev
       kind: Backend
@@ -78,22 +71,6 @@ spec:
         value: /
 status:
   parents: []
----
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: Backend
-metadata:
-  labels:
-    ingress2gateway.kubernetes.io/source-ingress: ingress-myservicea1
-  name: myservicea-service-upstream
-  namespace: default
-spec:
-  type: Static
-  static:
-    hosts:
-    - host: myservicea.default.svc.cluster.local
-      port: 80
-    appProtocol: grpc
-status: {}
 ---
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: Backend

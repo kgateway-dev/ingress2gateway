@@ -84,6 +84,9 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 	// Track Backends per (namespace, svcName) for backend-dependent features, i.e. service-upstream.
 	backends := map[types.NamespacedName]*kgateway.Backend{}
 
+	// De-dupe backend-protocol patch notifications by (ns, svc, port, appProtocol).
+	backendProtoPatchSeen := map[backendProtoPatchKey]struct{}{}
+
 	for httpRouteKey, httpRouteContext := range ir.HTTPRoutes {
 		ingx := httpRouteContext.ProviderSpecificIR.IngressNginx
 		if ingx == nil {
@@ -167,6 +170,17 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 				httpRouteKey,
 				httpRouteContext,
 				backendCfg,
+			)
+
+			// backend-protocol: do NOT emit/patch Services.
+			// Instead, emit an INFO notification with a safe kubectl patch command for the user
+			// (and skip when service-upstream rewrote the backendRef to a kgateway Backend).
+			emitBackendProtocolPatchNotifications(
+				pol,
+				polSourceIngressName,
+				httpRouteKey,
+				httpRouteContext,
+				backendProtoPatchSeen,
 			)
 
 			// Apply service-upstream via Backend and HTTPRoute backendRef rewrites.

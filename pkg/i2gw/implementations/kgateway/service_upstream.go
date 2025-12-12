@@ -85,6 +85,14 @@ func applyServiceUpstream(
 			continue
 		}
 
+		// service-upstream IR Backends don't currently carry protocol; backend-protocol
+		// is stored on the Policy. Prefer the per-backend protocol if present, otherwise
+		// fall back to the Policy-level protocol.
+		proto := be.Protocol
+		if proto == nil {
+			proto = pol.BackendProtocol
+		}
+
 		// Ensure a Kgateway Backend exists with the correct host/port.
 		kb := ensureStaticBackendForService(
 			ingressName,
@@ -92,7 +100,7 @@ func applyServiceUpstream(
 			svcName,
 			be.Host,
 			be.Port,
-			be.Protocol,
+			proto,
 			backends,
 		)
 
