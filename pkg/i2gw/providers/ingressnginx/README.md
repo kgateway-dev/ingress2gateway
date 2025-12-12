@@ -30,6 +30,9 @@ The ingress-nginx provider currently supports translating the following annotati
 
 - `nginx.ingress.kubernetes.io/client-body-buffer-size`: Sets the maximum request body size when `proxy-body-size` is not present. For the Kgateway implementation, this maps to `TrafficPolicy.spec.buffer.maxRequestSize`.
 
+- **Note (regex-mode constraint):** Ingress NGINX session cookie paths do not support regex. If regex-mode is enabled for a host (via `use-regex: "true"` or
+  `rewrite-target`) and cookie affinity is used, `session-cookie-path` must be set; the provider validates this and emits an error if it is missing.
+
 - `nginx.ingress.kubernetes.io/proxy-body-size`: Sets the maximum allowed request body size. Takes precedence over `client-body-buffer-size`. For the Kgateway implementation, this maps to `TrafficPolicy.spec.buffer.maxRequestSize`.
 
 ---
@@ -137,9 +140,32 @@ The ingress-nginx provider currently supports translating the following annotati
 
 ---
 
+### Regex Path Matching and Rewrites
+
+- `nginx.ingress.kubernetes.io/use-regex`: When set to `"true"`, indicates that the paths defined on that Ingress should be treated as regular expressions.
+  Uses host-group semantics: if any Ingress contributing rules for a given host has `use-regex: "true"`, regex-style path matching is enforced on **all**
+  paths for that host (across all contributing Ingresses).
+
+- `nginx.ingress.kubernetes.io/rewrite-target`: Rewrites the request path using regex rewrite semantics.
+  Uses host-group semantics: if any Ingress contributing rules for a given host sets `rewrite-target`, regex-style path matching is enforced on **all**
+  paths for that host (across all contributing Ingresses), consistent with ingress-nginx behavior.
+
+For the Kgateway implementation:
+
+- When regex-mode is enabled for a host (via `use-regex: "true"` or `rewrite-target`), the emitter converts `PathPrefix` / `Exact` matches under that host
+  to `RegularExpression` matches.
+- For Ingresses that set `use-regex: "true"`, their contributed path strings are treated as **regex** (not escaped as literals).
+- For other Ingresses under the same host (that did not set `use-regex: "true"`), their contributed path strings are treated as **literals** within a regex
+  match (escaped), to preserve the original non-regex intent.
+- `rewrite-target` generates `TrafficPolicy` URL rewrites using `spec.urlRewrite.pathRegex` and is attached via `ExtensionRef` filters (partial coverage).
+
+---
+
 ## Provider Limitations
 
 - Currently, kgateway is the only supported implementation-specific emitter.
 - Some NGINX behaviors cannot be reproduced exactly due to differences between NGINX and semantics of other proxy implementations.
+- Regex-mode is implemented by converting HTTPRoute path matches to `RegularExpression`. Some ingress-nginx details (such as case-insensitive `~*` behavior)
+  may not be reproduced exactly depending on the underlying Gateway API / Envoy behavior and the patterns provided.
 
 If you rely on annotations not listed above, please open an issue or be prepared to apply post-migration manual adjustments.
