@@ -31,10 +31,7 @@ spec:
   parentRefs:
     - name: nginx
   rules:
-    - backendRefs:
-        - name: myservice2
-          port: 80
-      filters:
+    - filters:
         - requestRedirect:
             scheme: https
             statusCode: 301
@@ -59,10 +56,7 @@ spec:
   parentRefs:
     - name: nginx
   rules:
-    - backendRefs:
-        - name: myservice
-          port: 80
-      filters:
+    - filters:
         - requestRedirect:
             scheme: https
             statusCode: 301
@@ -71,10 +65,7 @@ spec:
         - path:
             type: PathPrefix
             value: /
-    - backendRefs:
-        - name: myservice
-          port: 80
-      filters:
+    - filters:
         - requestRedirect:
             scheme: https
             statusCode: 301
@@ -83,10 +74,7 @@ spec:
         - path:
             type: PathPrefix
             value: /api
-    - backendRefs:
-        - name: myservice
-          port: 80
-      filters:
+    - filters:
         - requestRedirect:
             scheme: https
             statusCode: 301
