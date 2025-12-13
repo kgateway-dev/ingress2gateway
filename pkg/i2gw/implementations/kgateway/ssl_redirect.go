@@ -73,6 +73,9 @@ func applySSLRedirectPolicy(
 					},
 				},
 			)
+			// RequestRedirect filters cannot be used with backendRefs per Gateway API spec
+			// Remove backendRefs when redirecting
+			httpRouteContext.Spec.Rules[ruleIdx].BackendRefs = nil
 		}
 	}
 }
