@@ -24,20 +24,21 @@ import (
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// applyServiceUpstream projects provider-specific static backend mappings into typed
-// Kgateway Backend CRs and rewrites HTTPRoute backendRefs to reference those Backends.
+// applyBackendProtocol projects backend protocol metadata on IR Backends into
+// typed Kgateway Backend CRs and rewrites HTTPRoute backendRefs to reference
+// those Backends.
 //
 // Semantics:
-//   - One Backend CR per (namespace, svcName-service-upstream).
-//   - Backend.Spec.Static.Hosts contains a single host+port from the IR Backend.
-//   - HTTPRoute backendRefs for those services are rewritten to:
+//   - For each Policy.Backends entry produced by the ingress-nginx provider,
+//     we ensure there is a Static Backend CR with the correct host / port and
+//     (if set) appProtocol (currently only gRPC).
+//   - HTTPRoute backendRefs that were originally core Services and are covered
+//     by this Policy are rewritten to:
 //     group: gateway.kgateway.dev
 //     kind:  Backend
 //     name:  <svc>-service-upstream
-//
-// This function is driven by the IR Policy.Backends and RuleBackendSources
-// populated by the ingress-nginx provider (service-upstream feature).
-func applyServiceUpstream(
+//   - This works regardless of whether service-upstream was also used.
+func applyBackendProtocol(
 	pol intermediate.Policy,
 	ingressName string,
 	httpRouteKey types.NamespacedName,
@@ -49,7 +50,6 @@ func applyServiceUpstream(
 	}
 
 	for _, idx := range pol.RuleBackendSources {
-		// Validate indices.
 		if idx.Rule >= len(httpRouteCtx.Spec.Rules) {
 			continue
 		}
@@ -60,7 +60,7 @@ func applyServiceUpstream(
 
 		br := &rule.BackendRefs[idx.Backend]
 
-		// Only core Services.
+		// Only core Service backends.
 		if br.BackendRef.Group != nil && *br.BackendRef.Group != "" {
 			continue
 		}
@@ -72,35 +72,26 @@ func applyServiceUpstream(
 		}
 
 		svcName := string(br.BackendRef.Name)
-
-		backendName := svcName + "-service-upstream"
-		backendKey := types.NamespacedName{
-			Namespace: httpRouteKey.Namespace,
-			Name:      backendName,
-		}
-
-		// Find provider-produced backend metadata (host/port).
-		be, ok := pol.Backends[backendKey]
-		if !ok {
+		if svcName == "" {
 			continue
 		}
 
-		// service-upstream IR Backends don't currently carry protocol; backend-protocol
-		// is stored on the Policy. Prefer the per-backend protocol if present, otherwise
-		// fall back to the Policy-level protocol.
-		proto := be.Protocol
-		if proto == nil {
-			proto = pol.BackendProtocol
+		backendKey := backendKeyForService(httpRouteKey.Namespace, svcName)
+
+		be, ok := pol.Backends[backendKey]
+		if !ok {
+			// Provider did not produce metadata for this Service backend.
+			continue
 		}
 
-		// Ensure a Kgateway Backend exists with the correct host/port.
+		// Ensure / create the typed Backend CR (host, port, protocol).
 		kb := ensureStaticBackendForService(
 			ingressName,
 			httpRouteKey,
 			svcName,
 			be.Host,
 			be.Port,
-			proto,
+			be.Protocol,
 			backends,
 		)
 
@@ -111,7 +102,7 @@ func applyServiceUpstream(
 		br.BackendRef.Group = &group
 		br.BackendRef.Kind = &kind
 		br.BackendRef.Name = gwv1.ObjectName(kb.Name)
-		// When using a static Backend, the Backend controls the port.
+		// Backend controls the port.
 		br.BackendRef.Port = nil
 	}
 }

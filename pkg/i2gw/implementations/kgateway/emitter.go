@@ -81,8 +81,11 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 	// Track GatewayExtensions per ingress name (for external auth).
 	gatewayExtensions := map[string]*kgateway.GatewayExtension{}
 
-	// Track Backends per (namespace, svcName) for service-upstream.
-	staticBackends := map[types.NamespacedName]*kgateway.Backend{}
+	// Track Backends per (namespace, svcName) for backend-dependent features, i.e. service-upstream.
+	backends := map[types.NamespacedName]*kgateway.Backend{}
+
+	// De-dupe backend-protocol patch notifications by (ns, svc, port, appProtocol).
+	backendProtoPatchSeen := map[backendProtoPatchKey]struct{}{}
 
 	for httpRouteKey, httpRouteContext := range ir.HTTPRoutes {
 		ingx := httpRouteContext.ProviderSpecificIR.IngressNginx
@@ -169,13 +172,33 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 				backendCfg,
 			)
 
+			// backend-protocol: do NOT emit/patch Services.
+			// Instead, emit an INFO notification with a safe kubectl patch command for the user
+			// (and skip when service-upstream rewrote the backendRef to a kgateway Backend).
+			emitBackendProtocolPatchNotifications(
+				pol,
+				polSourceIngressName,
+				httpRouteKey,
+				httpRouteContext,
+				backendProtoPatchSeen,
+			)
+
 			// Apply service-upstream via Backend and HTTPRoute backendRef rewrites.
-			applyServiceUpstreamBackend(
+			applyServiceUpstream(
 				pol,
 				polSourceIngressName,
 				httpRouteKey,
 				&httpRouteContext,
-				staticBackends,
+				backends,
+			)
+
+			// Apply backend-protocol via Backend and HTTPRoute backendRef rewrites.
+			applyBackendProtocol(
+				pol,
+				polSourceIngressName,
+				httpRouteKey,
+				&httpRouteContext,
+				backends,
 			)
 
 			// Apply enable-access-log via HTTPListenerPolicy.
@@ -251,7 +274,7 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 	}
 
 	// Collect all static Backends computed across HTTPRoutes.
-	for _, b := range staticBackends {
+	for _, b := range backends {
 		out = append(out, b)
 	}
 

@@ -182,6 +182,10 @@ type Policy struct {
 	// BackendTLS defines the backend TLS policy.
 	BackendTLS *BackendTLSPolicy
 
+	// BackendProtocol defines the upstream application protocol to use when communicating with
+	// backend Services covered by this policy.
+	BackendProtocol *BackendProtocol
+
 	// SSLRedirect indicates whether SSL redirect is enabled, corresponding to
 	// nginx.ingress.kubernetes.io/ssl-redirect. When true, requests should be
 	// redirected to HTTPS.
@@ -212,6 +216,12 @@ type Policy struct {
 	ruleBackendIndexSet map[PolicyIndex]struct{}
 }
 
+// BackendProtocol defines the L7 protocol used to talk to a Backend.
+type BackendProtocol string
+
+// BackendProtocolGRPC is the gRPC protocol.
+const BackendProtocolGRPC BackendProtocol = "grpc"
+
 // Backend defines a proxied backend that cannot be rendered as a standard k8s Service.
 type Backend struct {
 	// Namespace defines the namespace of the backend.
@@ -225,6 +235,10 @@ type Backend struct {
 
 	// Host defines the host (IP or DNS name) of the backend.
 	Host string
+
+	// Protocol defines the application protocol used to communicate with the backend.
+	// When nil, the default HTTP/1.x semantics should be assumed by consumers.
+	Protocol *BackendProtocol
 }
 
 // RateLimitUnit defines the unit of rate limiting.
