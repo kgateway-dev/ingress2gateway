@@ -17,54 +17,103 @@ limitations under the License.
 package kgateway
 
 import (
+	"fmt"
+
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// applySSLRedirectPolicy applies SSL redirect by adding a RequestRedirect filter
-// to HTTPRoute rules when SSLRedirect is enabled in the policy.
+// applySSLRedirectPolicy marks rules that need SSL redirect handling.
+// The actual route splitting happens later in the emitter.
 //
 // Semantics:
-//   - If SSLRedirect is enabled, add a RequestRedirect filter to rule-level Filters
-//   - The filter redirects HTTP to HTTPS with a 301 status code
-//   - The filter is applied to all rules covered by the policy
+//   - If SSLRedirect is enabled, mark the HTTPRoute for later splitting
+//   - Returns true if SSL redirect is enabled for this policy
 func applySSLRedirectPolicy(
 	pol intermediate.Policy,
 	httpRouteKey types.NamespacedName,
 	httpRouteContext *intermediate.HTTPRouteContext,
 	coverage []intermediate.PolicyIndex,
-) {
+) bool {
 	if pol.SSLRedirect == nil || !*pol.SSLRedirect {
-		return
+		return false
+	}
+	// SSL redirect will be handled by splitting the route later
+	// Don't modify the route here - preserve backendRefs for the HTTPS route
+	return true
+}
+
+// splitHTTPRouteForSSLRedirect splits an HTTPRoute into two routes when SSL redirect is enabled:
+// 1. HTTP redirect route: bound to HTTP listener, has RequestRedirect filter, no backendRefs
+// 2. HTTPS backend route: bound to HTTPS listener, has backendRefs, no redirect filter
+//
+// Returns the HTTP redirect route, HTTPS backend route, and whether splitting was successful.
+func splitHTTPRouteForSSLRedirect(
+	httpRouteContext intermediate.HTTPRouteContext,
+	httpRouteKey types.NamespacedName,
+	gatewayCtx *intermediate.GatewayContext,
+) (*intermediate.HTTPRouteContext, *intermediate.HTTPRouteContext, bool) {
+	// Find HTTP and HTTPS listeners by hostname
+	var httpListenerName, httpsListenerName *gwv1.SectionName
+	hostname := ""
+	if len(httpRouteContext.Spec.Hostnames) > 0 {
+		hostname = string(httpRouteContext.Spec.Hostnames[0])
 	}
 
-	// Get unique rule indices from coverage
-	ruleSet := make(map[int]struct{})
-	for _, idx := range coverage {
-		ruleSet[idx.Rule] = struct{}{}
-	}
-
-	// Add RequestRedirect filter to each covered rule
-	for ruleIdx := range ruleSet {
-		if ruleIdx >= len(httpRouteContext.Spec.Rules) {
-			continue
+	for _, listener := range gatewayCtx.Spec.Listeners {
+		if listener.Protocol == gwv1.HTTPProtocolType {
+			// Check if hostname matches
+			if hostname == "" || (listener.Hostname != nil && string(*listener.Hostname) == hostname) {
+				name := listener.Name
+				httpListenerName = &name
+			}
+		} else if listener.Protocol == gwv1.HTTPSProtocolType {
+			// Check if hostname matches
+			if hostname == "" || (listener.Hostname != nil && string(*listener.Hostname) == hostname) {
+				name := listener.Name
+				httpsListenerName = &name
+			}
 		}
+	}
 
-		// Check if RequestRedirect filter already exists
+	// If HTTPS listener doesn't exist, we can't create the HTTPS route
+	// Still create HTTP redirect route though
+	if httpsListenerName == nil {
+		// Only create HTTP redirect route if HTTP listener exists
+		if httpListenerName == nil {
+			return nil, nil, false
+		}
+	}
+
+	// Create HTTP redirect route
+	httpRedirectRoute := intermediate.HTTPRouteContext{
+		HTTPRoute:          *httpRouteContext.HTTPRoute.DeepCopy(),
+		ProviderSpecificIR: httpRouteContext.ProviderSpecificIR,
+		RuleBackendSources: httpRouteContext.RuleBackendSources,
+	}
+	httpRedirectRoute.ObjectMeta.Name = fmt.Sprintf("%s-http-redirect", httpRouteKey.Name)
+	httpRedirectRoute.ObjectMeta.Namespace = httpRouteKey.Namespace
+
+	// Update parentRefs to bind to HTTP listener
+	if len(httpRedirectRoute.Spec.ParentRefs) > 0 && httpListenerName != nil {
+		httpRedirectRoute.Spec.ParentRefs[0].SectionName = httpListenerName
+	}
+
+	// Add RequestRedirect filter and remove backendRefs from all rules
+	for i := range httpRedirectRoute.Spec.Rules {
+		// Add RequestRedirect filter
 		hasRedirect := false
-		for _, filter := range httpRouteContext.Spec.Rules[ruleIdx].Filters {
+		for _, filter := range httpRedirectRoute.Spec.Rules[i].Filters {
 			if filter.Type == gwv1.HTTPRouteFilterRequestRedirect {
 				hasRedirect = true
 				break
 			}
 		}
-
 		if !hasRedirect {
-			// Add RequestRedirect filter to redirect HTTP to HTTPS
-			httpRouteContext.Spec.Rules[ruleIdx].Filters = append(
-				httpRouteContext.Spec.Rules[ruleIdx].Filters,
+			httpRedirectRoute.Spec.Rules[i].Filters = append(
+				httpRedirectRoute.Spec.Rules[i].Filters,
 				gwv1.HTTPRouteFilter{
 					Type: gwv1.HTTPRouteFilterRequestRedirect,
 					RequestRedirect: &gwv1.HTTPRequestRedirectFilter{
@@ -73,9 +122,40 @@ func applySSLRedirectPolicy(
 					},
 				},
 			)
-			// RequestRedirect filters cannot be used with backendRefs per Gateway API spec
-			// Remove backendRefs when redirecting
-			httpRouteContext.Spec.Rules[ruleIdx].BackendRefs = nil
 		}
+		// Remove backendRefs (RequestRedirect filters cannot coexist with backendRefs)
+		httpRedirectRoute.Spec.Rules[i].BackendRefs = nil
 	}
+
+	// Create HTTPS backend route (only if HTTPS listener exists)
+	var httpsBackendRoute *intermediate.HTTPRouteContext
+	if httpsListenerName != nil {
+		route := intermediate.HTTPRouteContext{
+			HTTPRoute:          *httpRouteContext.HTTPRoute.DeepCopy(),
+			ProviderSpecificIR: httpRouteContext.ProviderSpecificIR,
+			RuleBackendSources: httpRouteContext.RuleBackendSources,
+		}
+		route.ObjectMeta.Name = fmt.Sprintf("%s-https", httpRouteKey.Name)
+		route.ObjectMeta.Namespace = httpRouteKey.Namespace
+		httpsBackendRoute = &route
+
+		// Update parentRefs to bind to HTTPS listener
+		if len(httpsBackendRoute.Spec.ParentRefs) > 0 {
+			httpsBackendRoute.Spec.ParentRefs[0].SectionName = httpsListenerName
+		}
+
+		// Remove any RequestRedirect filters from HTTPS route
+		for i := range httpsBackendRoute.Spec.Rules {
+			var filtersWithoutRedirect []gwv1.HTTPRouteFilter
+			for _, filter := range httpsBackendRoute.Spec.Rules[i].Filters {
+				if filter.Type != gwv1.HTTPRouteFilterRequestRedirect {
+					filtersWithoutRedirect = append(filtersWithoutRedirect, filter)
+				}
+			}
+			httpsBackendRoute.Spec.Rules[i].Filters = filtersWithoutRedirect
+		}
+		// Keep backendRefs for HTTPS route
+	}
+
+	return &httpRedirectRoute, httpsBackendRoute, true
 }

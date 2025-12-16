@@ -84,6 +84,9 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 	// Track Backends per (namespace, svcName) for service-upstream.
 	staticBackends := map[types.NamespacedName]*kgateway.Backend{}
 
+	// Track HTTPRoutes that need SSL redirect splitting
+	routesToSplitForSSLRedirect := map[types.NamespacedName]bool{}
+
 	for httpRouteKey, httpRouteContext := range ir.HTTPRoutes {
 		ingx := httpRouteContext.ProviderSpecificIR.IngressNginx
 		if ingx == nil {
@@ -196,8 +199,11 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 				touched = true
 			}
 
-			// Apply SSL redirect via RequestRedirect filter on HTTPRoute rules.
-			applySSLRedirectPolicy(pol, httpRouteKey, &httpRouteContext, coverage)
+			// Check if SSL redirect is enabled (but don't apply it yet - will split route later)
+			if applySSLRedirectPolicy(pol, httpRouteKey, &httpRouteContext, coverage) {
+				// Mark this HTTPRoute for SSL redirect splitting
+				routesToSplitForSSLRedirect[httpRouteKey] = true
+			}
 
 			if !touched {
 				// No TrafficPolicy fields set for this policy; skip coverage wiring.
@@ -247,6 +253,66 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 		// Collect TrafficPolicies for this HTTPRoute.
 		for _, tp := range tp {
 			out = append(out, tp)
+		}
+	}
+
+	// Split HTTPRoutes that have SSL redirect enabled
+	for httpRouteKey := range routesToSplitForSSLRedirect {
+		httpRouteContext, exists := ir.HTTPRoutes[httpRouteKey]
+		if !exists {
+			continue
+		}
+
+		// Get the Gateway for this HTTPRoute
+		var gatewayCtx *intermediate.GatewayContext
+		if len(httpRouteContext.Spec.ParentRefs) > 0 {
+			parentRef := httpRouteContext.Spec.ParentRefs[0]
+			gatewayNamespace := httpRouteKey.Namespace
+			if parentRef.Namespace != nil {
+				gatewayNamespace = string(*parentRef.Namespace)
+			}
+			gatewayName := string(parentRef.Name)
+			if gatewayName != "" {
+				gatewayKey := types.NamespacedName{
+					Namespace: gatewayNamespace,
+					Name:      gatewayName,
+				}
+				if gw, ok := ir.Gateways[gatewayKey]; ok {
+					gatewayCtx = &gw
+				}
+			}
+		}
+
+		if gatewayCtx == nil {
+			continue
+		}
+
+		// Split the route
+		httpRedirectRoute, httpsBackendRoute, success := splitHTTPRouteForSSLRedirect(
+			httpRouteContext,
+			httpRouteKey,
+			gatewayCtx,
+		)
+
+		if success {
+			// Remove the original route
+			delete(ir.HTTPRoutes, httpRouteKey)
+
+			// Add the HTTP redirect route
+			httpRedirectKey := types.NamespacedName{
+				Namespace: httpRedirectRoute.Namespace,
+				Name:      httpRedirectRoute.Name,
+			}
+			ir.HTTPRoutes[httpRedirectKey] = *httpRedirectRoute
+
+			// Add the HTTPS backend route if it was created
+			if httpsBackendRoute != nil {
+				httpsBackendKey := types.NamespacedName{
+					Namespace: httpsBackendRoute.Namespace,
+					Name:      httpsBackendRoute.Name,
+				}
+				ir.HTTPRoutes[httpsBackendKey] = *httpsBackendRoute
+			}
 		}
 	}
 
