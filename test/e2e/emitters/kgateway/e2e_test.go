@@ -214,6 +214,6 @@ func TestSSLRedirect(t *testing.T) {
 	// Test HTTP redirect (301) to HTTPS
 	requireHTTPRedirectEventually(t, ctx, host, fmt.Sprintf("http://%s:80/", gwAddr), "301", 1*time.Minute)
 
-	// Test HTTPS connectivity (200) with insecure flag
-	requireHTTPS200Eventually(t, ctx, host, fmt.Sprintf("https://%s:443/", gwAddr), 1*time.Minute)
+	// Test HTTPS connectivity (HTTP 200 status code) with insecure flag
+	requireHTTP200OverHTTPSEventually(t, ctx, host, fmt.Sprintf("https://%s:443/", gwAddr), 1*time.Minute)
 }

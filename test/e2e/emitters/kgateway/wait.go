@@ -151,10 +151,15 @@ func curlHTTPCodeFromClient(ctx context.Context, host, url string) (code string,
 
 // curlHTTPRedirectFromClient executes curl and returns the HTTP status code and Location header.
 // It does NOT follow redirects (no -L flag) so we can see the redirect response.
-func curlHTTPRedirectFromClient(ctx context.Context, host, url string) (code string, location string, out string, err error) {
+// If insecure is true, adds -k flag to skip certificate verification (useful for HTTPS with self-signed certs).
+func curlHTTPRedirectFromClient(ctx context.Context, host, url string, insecure bool) (code string, location string, out string, err error) {
 	// Use -i to include headers, -s for silent, but keep stderr for errors
 	// Extract status code and Location header
-	script := `set -o pipefail; curl -sSi --connect-timeout 2 --max-time 5 -H "Host: $1" "$2" 2>&1 || echo "000"`
+	insecureFlag := ""
+	if insecure {
+		insecureFlag = "-k "
+	}
+	script := fmt.Sprintf(`set -o pipefail; curl %s-sSi --connect-timeout 2 --max-time 5 -H "Host: $1" "$2" 2>&1 || echo "000"`, insecureFlag)
 	out, err = kubectl(ctx, "-n", "default", "exec", "deploy/curl", "--",
 		"sh", "-c", script, "_", host, url,
 	)
@@ -188,19 +193,6 @@ func curlHTTPRedirectFromClient(ctx context.Context, host, url string) (code str
 	return code, location, out, nil
 }
 
-// curlHTTPS200FromClient executes curl with -k (insecure) flag for HTTPS requests.
-func curlHTTPS200FromClient(ctx context.Context, host, url string) (code string, out string, err error) {
-	// Use -k to skip certificate verification for self-signed certs
-	script := `set -o pipefail; curl -k -sS -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 5 -H "Host: $1" "$2" || echo 000`
-	out, err = kubectl(ctx, "-n", "default", "exec", "deploy/curl", "--",
-		"sh", "-c", script, "_", host, url,
-	)
-	if err != nil {
-		return "000", out, err
-	}
-	return strings.TrimSpace(out), out, nil
-}
-
 func debugCurlVerbose(t *testing.T, ctx context.Context, host, url string) error {
 	t.Helper()
 	script := `curl -v --connect-timeout 2 --max-time 5 -H "Host: $1" "$2" || true`
@@ -226,7 +218,7 @@ func requireHTTPRedirectEventually(t *testing.T, ctx context.Context, host, url 
 	var lastErr error
 
 	for attempt := 1; time.Now().Before(deadline); attempt++ {
-		code, location, out, err := curlHTTPRedirectFromClient(ctx, host, url)
+		code, location, out, err := curlHTTPRedirectFromClient(ctx, host, url, false)
 		lastCode, lastLocation, lastOut, lastErr = code, location, out, err
 
 		codeTrimmed := strings.TrimSpace(code)
@@ -250,8 +242,8 @@ func requireHTTPRedirectEventually(t *testing.T, ctx context.Context, host, url 
 		expectedCode, host, url, timeout, strings.TrimSpace(lastCode), lastLocation, lastErr, lastOut)
 }
 
-// requireHTTPS200Eventually waits for an HTTPS 200 response using insecure curl (-k flag).
-func requireHTTPS200Eventually(t *testing.T, ctx context.Context, host, url string, timeout time.Duration) {
+// requireHTTP200OverHTTPSEventually waits for HTTP 200 status code over an HTTPS connection using insecure curl (-k flag).
+func requireHTTP200OverHTTPSEventually(t *testing.T, ctx context.Context, host, url string, timeout time.Duration) {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
@@ -262,7 +254,7 @@ func requireHTTPS200Eventually(t *testing.T, ctx context.Context, host, url stri
 	var lastErr error
 
 	for attempt := 1; time.Now().Before(deadline); attempt++ {
-		code, out, err := curlHTTPS200FromClient(ctx, host, url)
+		code, _, out, err := curlHTTPRedirectFromClient(ctx, host, url, true)
 		lastCode, lastOut, lastErr = code, out, err
 
 		if err == nil && strings.TrimSpace(code) == "200" {
@@ -270,7 +262,7 @@ func requireHTTPS200Eventually(t *testing.T, ctx context.Context, host, url stri
 		}
 
 		if attempt == 1 || attempt%10 == 0 {
-			t.Logf("waiting for HTTPS 200 (attempt=%d host=%s url=%s): code=%q err=%v",
+			t.Logf("waiting for HTTP 200 over HTTPS (attempt=%d host=%s url=%s): code=%q err=%v",
 				attempt, host, url, strings.TrimSpace(code), err)
 		}
 		time.Sleep(interval)
@@ -297,7 +289,7 @@ func requireHTTPS200Eventually(t *testing.T, ctx context.Context, host, url stri
 	)
 	t.Logf("debug curl -kv output:\n%s", out)
 
-	t.Fatalf("timed out waiting for HTTPS 200 (host=%s url=%s timeout=%s). lastCode=%q lastErr=%v lastOut=%s",
+	t.Fatalf("timed out waiting for HTTP 200 over HTTPS (host=%s url=%s timeout=%s). lastCode=%q lastErr=%v lastOut=%s",
 		host, url, timeout, strings.TrimSpace(lastCode), lastErr, lastOut)
 }
 
