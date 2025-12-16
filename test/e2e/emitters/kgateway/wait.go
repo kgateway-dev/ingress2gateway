@@ -276,10 +276,24 @@ func requireHTTPS200Eventually(t *testing.T, ctx context.Context, host, url stri
 		time.Sleep(interval)
 	}
 
-	// Debug with verbose curl
-	script := `curl -kv --connect-timeout 2 --max-time 5 -H "Host: $1" "$2" || true`
+	// Debug with verbose curl using --resolve for SNI
+	urlParts := strings.Split(strings.TrimPrefix(url, "https://"), "/")
+	hostPort := urlParts[0]
+	port := "443"
+	if strings.Contains(hostPort, ":") {
+		parts := strings.Split(hostPort, ":")
+		if len(parts) == 2 {
+			port = parts[1]
+		}
+		hostPort = parts[0]
+	}
+	httpsURL := fmt.Sprintf("https://%s/", host)
+	if len(urlParts) > 1 && urlParts[1] != "" {
+		httpsURL = fmt.Sprintf("https://%s/%s", host, strings.Join(urlParts[1:], "/"))
+	}
+	script := `curl -kv --connect-timeout 2 --max-time 5 --resolve "$1:$2:$3" "$4" || true`
 	out, _ := kubectl(ctx, "-n", "default", "exec", "deploy/curl", "--",
-		"sh", "-c", script, "_", host, url,
+		"sh", "-c", script, "_", host, port, hostPort, httpsURL,
 	)
 	t.Logf("debug curl -kv output:\n%s", out)
 
