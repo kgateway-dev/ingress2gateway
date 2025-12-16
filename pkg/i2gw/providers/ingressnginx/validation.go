@@ -27,7 +27,8 @@ import (
 // (cookie paths do not support regex).
 //
 // **Note:** This validation should be in IR package but keeping separate to avoid
-//	         polluting core IR package with downstream logic.
+//
+//	polluting core IR package with downstream logic.
 func validateRegexCookiePath(ir *intermediate.IR) field.ErrorList {
 	var errs field.ErrorList
 
