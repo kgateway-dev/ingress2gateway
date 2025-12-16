@@ -216,3 +216,10 @@ func TestSSLRedirect(t *testing.T) {
 	// Test HTTPS connectivity (HTTP 200 status code) with insecure flag
 	requireHTTP200OverHTTPSEventually(t, ctx, host, gwAddr, "443", "/", 1*time.Minute)
 }
+
+func TestCORS(t *testing.T) {
+	ctx, gwAddr, host := e2eTestSetup(t, "cors.yaml", "cors.yaml")
+
+	// Standard HTTP test
+	requireHTTP200Eventually(t, ctx, host, "http", gwAddr, "80", "/", 1*time.Minute)
+}
