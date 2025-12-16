@@ -87,9 +87,9 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// e2ETestSetup handles common setup for e2e tests and returns the context, gateway address, and host.
+// e2eTestSetup handles common setup for e2e tests and returns the context, gateway address, and host.
 // The caller is responsible for cleanup and test-specific validation.
-func e2ETestSetup(t *testing.T, inputFile, outputFile string) (context.Context, string, string) {
+func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, string, string) {
 	if !e2eSetupComplete {
 		t.Fatalf("e2e setup did not complete")
 	}
@@ -202,14 +202,14 @@ func e2ETestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 }
 
 func TestBasic(t *testing.T) {
-	ctx, gwAddr, host := e2ETestSetup(t, "basic.yaml", "basic.yaml")
+	ctx, gwAddr, host := e2eTestSetup(t, "basic.yaml", "basic.yaml")
 
 	// Standard HTTP test
 	requireHTTP200Eventually(t, ctx, host, fmt.Sprintf("http://%s:80/", gwAddr), 1*time.Minute)
 }
 
 func TestSSLRedirect(t *testing.T) {
-	ctx, gwAddr, host := e2ETestSetup(t, "ssl_redirect.yaml", "ssl_redirect.yaml")
+	ctx, gwAddr, host := e2eTestSetup(t, "ssl_redirect.yaml", "ssl_redirect.yaml")
 
 	// Test HTTP redirect (301) to HTTPS
 	requireHTTPRedirectEventually(t, ctx, host, fmt.Sprintf("http://%s:80/", gwAddr), "301", 1*time.Minute)
