@@ -58,7 +58,7 @@ test: vet;$(info $(M)...Begin to run integration tests.)  @ ## Run integration t
 # Run e2e tests
 .PHONY: test-e2e
 test-e2e: vet;$(info $(M)...Begin to run e2e tests.) @ ## Run e2e tests.
-	go test -v ./test/e2e/...
+	go test -v -count=1 ./test/e2e/...
 
 # Run integration and e2e tests
 .PHONY: test-all
