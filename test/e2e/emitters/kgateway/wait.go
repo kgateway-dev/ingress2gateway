@@ -211,9 +211,10 @@ func debugCurlVerbose(t *testing.T, ctx context.Context, host, url string) error
 	return err
 }
 
-// requireHTTPRedirectEventually waits for an HTTP redirect response (308 status code)
+// requireHTTPRedirectEventually waits for an HTTP redirect response with the expected status code
 // and verifies the Location header contains https:// scheme.
-func requireHTTPRedirectEventually(t *testing.T, ctx context.Context, host, url string, timeout time.Duration) {
+// expectedCode should be "301" (Moved Permanently) or "308" (Permanent Redirect).
+func requireHTTPRedirectEventually(t *testing.T, ctx context.Context, host, url string, expectedCode string, timeout time.Duration) {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
@@ -228,7 +229,8 @@ func requireHTTPRedirectEventually(t *testing.T, ctx context.Context, host, url 
 		code, location, out, err := curlHTTPRedirectFromClient(ctx, host, url)
 		lastCode, lastLocation, lastOut, lastErr = code, location, out, err
 
-		if err == nil && strings.TrimSpace(code) == "308" {
+		codeTrimmed := strings.TrimSpace(code)
+		if err == nil && codeTrimmed == expectedCode {
 			// Verify Location header contains https://
 			if strings.HasPrefix(strings.ToLower(location), "https://") {
 				return
@@ -236,16 +238,16 @@ func requireHTTPRedirectEventually(t *testing.T, ctx context.Context, host, url 
 		}
 
 		if attempt == 1 || attempt%10 == 0 {
-			t.Logf("waiting for HTTP 308 redirect (attempt=%d host=%s url=%s): code=%q location=%q err=%v",
-				attempt, host, url, strings.TrimSpace(code), location, err)
+			t.Logf("waiting for HTTP %s redirect (attempt=%d host=%s url=%s): code=%q location=%q err=%v",
+				expectedCode, attempt, host, url, codeTrimmed, location, err)
 		}
 		time.Sleep(interval)
 	}
 
 	_ = debugCurlVerbose(t, ctx, host, url)
 
-	t.Fatalf("timed out waiting for HTTP 308 redirect (host=%s url=%s timeout=%s). lastCode=%q lastLocation=%q lastErr=%v lastOut=%s",
-		host, url, timeout, strings.TrimSpace(lastCode), lastLocation, lastErr, lastOut)
+	t.Fatalf("timed out waiting for HTTP %s redirect (host=%s url=%s timeout=%s). lastCode=%q lastLocation=%q lastErr=%v lastOut=%s",
+		expectedCode, host, url, timeout, strings.TrimSpace(lastCode), lastLocation, lastErr, lastOut)
 }
 
 // requireHTTPS200Eventually waits for an HTTPS 200 response using insecure curl (-k flag).

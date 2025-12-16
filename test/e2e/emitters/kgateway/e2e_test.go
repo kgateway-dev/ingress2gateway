@@ -156,9 +156,9 @@ func e2ETestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 
 	// Curl via Ingress (from the in-cluster curl client).
 	if inputFile == "ssl_redirect.yaml" {
-		requireHTTPRedirectEventually(t, ctx, hostHeader, fmt.Sprintf("http://%s/", ingressIP), 1*time.Minute)
+		requireHTTPRedirectEventually(t, ctx, hostHeader, fmt.Sprintf("http://%s/", ingressIP), "308", 1*time.Minute)
 	} else {
-		requireHTTPS200Eventually(t, ctx, hostHeader, fmt.Sprintf("https://%s/", ingressIP), 1*time.Minute)
+		requireHTTP200Eventually(t, ctx, hostHeader, fmt.Sprintf("http://%s/", ingressIP), 1*time.Minute)
 	}
 
 	// Apply the matching ingress2gateway output YAML.
@@ -211,8 +211,8 @@ func TestBasic(t *testing.T) {
 func TestSSLRedirect(t *testing.T) {
 	ctx, gwAddr, host := e2ETestSetup(t, "ssl_redirect.yaml", "ssl_redirect.yaml")
 
-	// Test HTTP redirect (308) to HTTPS
-	requireHTTPRedirectEventually(t, ctx, host, fmt.Sprintf("http://%s:80/", gwAddr), 1*time.Minute)
+	// Test HTTP redirect (301) to HTTPS
+	requireHTTPRedirectEventually(t, ctx, host, fmt.Sprintf("http://%s:80/", gwAddr), "301", 1*time.Minute)
 
 	// Test HTTPS connectivity (200) with insecure flag
 	requireHTTPS200Eventually(t, ctx, host, fmt.Sprintf("https://%s:443/", gwAddr), 1*time.Minute)
