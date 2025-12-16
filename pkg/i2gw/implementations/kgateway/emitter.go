@@ -794,11 +794,13 @@ func applyAccessLogPolicy(
 							Name:  gwv1.ObjectName(gatewayName),
 						},
 					},
-					AccessLog: []kgateway.AccessLog{
-						{
-							FileSink: &kgateway.FileSink{
-								Path:         "/dev/stdout",
-								StringFormat: ptr.To(`[%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"%n`),
+					HTTPSettings: kgateway.HTTPSettings{
+						AccessLog: []kgateway.AccessLog{
+							{
+								FileSink: &kgateway.FileSink{
+									Path:         "/dev/stdout",
+									StringFormat: ptr.To(`[%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"%n`),
+								},
 							},
 						},
 					},
