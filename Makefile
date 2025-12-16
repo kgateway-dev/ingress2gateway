@@ -38,22 +38,31 @@ help:
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-17s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: all
-all: vet fmt verify test build;$(info $(M)...Begin to test, verify and build this project.) @ ## Test, verify and build this project.
+all: vet fmt verify build test-all;$(info $(M)...Begin to test, verify and build this project.) @ ## Test, verify and build this project.
 
 # Run go fmt against code
 .PHONY: fmt
 fmt: ;$(info $(M)...Begin to run go fmt against code.)  @ ## Run go fmt against code.
-	gofmt -w ./pkg ./cmd
+	gofmt -w ./pkg ./cmd ./test
 
 # Run go vet against code
 .PHONY: vet
 vet: ;$(info $(M)...Begin to run go vet against code.)  @ ## Run go vet against code.
-	go vet ./pkg/... ./cmd/...
+	go vet ./pkg/... ./cmd/... ./test/...
 
-# Run go test against code
+# Run integration tests
 .PHONY: test
-test: vet;$(info $(M)...Begin to run tests.)  @ ## Run tests.
+test: vet;$(info $(M)...Begin to run integration tests.)  @ ## Run integration tests.
 	go test -race -cover ./pkg/... ./cmd/...
+
+# Run e2e tests
+.PHONY: test-e2e
+test-e2e: vet;$(info $(M)...Begin to run e2e tests.) @ ## Run e2e tests.
+	go test -v ./test/e2e/...
+
+# Run integration and e2e tests
+.PHONY: test-all
+test-all: test test-e2e;$(info $(M)...Completed test-all.) @ ## Run integration and e2e tests.
 
 # Build the binary
 .PHONY: build
