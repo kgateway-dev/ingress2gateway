@@ -118,7 +118,7 @@ func splitHTTPRouteForSSLRedirect(
 					Type: gwv1.HTTPRouteFilterRequestRedirect,
 					RequestRedirect: &gwv1.HTTPRequestRedirectFilter{
 						Scheme:     ptr.To("https"),
-						StatusCode: ptr.To(301),
+						StatusCode: ptr.To(308),
 					},
 				},
 			)

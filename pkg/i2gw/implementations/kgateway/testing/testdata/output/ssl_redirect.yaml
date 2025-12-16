@@ -56,7 +56,7 @@ spec:
     - filters:
         - requestRedirect:
             scheme: https
-            statusCode: 301
+            statusCode: 308
           type: RequestRedirect
       matches:
         - path:
@@ -106,7 +106,7 @@ spec:
     - filters:
         - requestRedirect:
             scheme: https
-            statusCode: 301
+            statusCode: 308
           type: RequestRedirect
       matches:
         - path:
@@ -115,7 +115,7 @@ spec:
     - filters:
         - requestRedirect:
             scheme: https
-            statusCode: 301
+            statusCode: 308
           type: RequestRedirect
       matches:
         - path:
@@ -124,7 +124,7 @@ spec:
     - filters:
         - requestRedirect:
             scheme: https
-            statusCode: 301
+            statusCode: 308
           type: RequestRedirect
       matches:
         - path:

@@ -132,9 +132,9 @@ The ingress-nginx provider currently supports translating the following annotati
 
 ### SSL Redirect
 
-- `nginx.ingress.kubernetes.io/ssl-redirect`: When set to `"true"`, enables SSL redirect for HTTP requests. For the Kgateway implementation, this maps to a `RequestRedirect` filter on HTTPRoute rules that redirects HTTP to HTTPS with a 301 status code.
+- `nginx.ingress.kubernetes.io/ssl-redirect`: When set to `"true"`, enables SSL redirect for HTTP requests. For the Kgateway implementation, this maps to a `RequestRedirect` filter on HTTPRoute rules that redirects HTTP to HTTPS with a 308 status code.
 
-- `nginx.ingress.kubernetes.io/force-ssl-redirect`: When set to `"true"`, enables SSL redirect for HTTP requests. This annotation is treated exactly the same as `ssl-redirect`. For the Kgateway implementation, this maps to a `RequestRedirect` filter on HTTPRoute rules that redirects HTTP to HTTPS with a 301 status code.
+- `nginx.ingress.kubernetes.io/force-ssl-redirect`: When set to `"true"`, enables SSL redirect for HTTP requests. This annotation is treated exactly the same as `ssl-redirect`. For the Kgateway implementation, this maps to a `RequestRedirect` filter on HTTPRoute rules that redirects HTTP to HTTPS with a 308 status code.
 
 **Note:** Both annotations are supported and treated identically. If either annotation is set to `"true"` (case-insensitive), SSL redirect will be enabled. The redirect filter is added at the rule level in the HTTPRoute, redirecting all HTTP traffic to HTTPS.
 
