@@ -149,6 +149,46 @@ func curlHTTPCodeFromClient(ctx context.Context, host, url string) (code string,
 	return strings.TrimSpace(out), out, nil
 }
 
+// curlHTTPCodeWithResolveFromClient executes curl with --resolve for SNI and returns the HTTP status code.
+// If insecure is true, adds -k flag to skip certificate verification.
+// Extracts port and IP from the URL and uses --resolve "$host:$port:$ip" for SNI.
+func curlHTTPCodeWithResolveFromClient(ctx context.Context, host, url string, insecure bool) (code string, out string, err error) {
+	// Extract port and IP from URL for --resolve
+	urlParts := strings.Split(strings.TrimPrefix(url, "https://"), "/")
+	hostPort := urlParts[0]
+	port := "443"
+	resolveIP := hostPort
+	if strings.Contains(hostPort, ":") {
+		parts := strings.Split(hostPort, ":")
+		if len(parts) == 2 {
+			port = parts[1]
+			resolveIP = parts[0]
+		}
+	}
+
+	// Build httpsURL using the hostname (not IP) for SNI
+	httpsURL := fmt.Sprintf("https://%s/", host)
+	if len(urlParts) > 1 && urlParts[1] != "" {
+		httpsURL = fmt.Sprintf("https://%s/%s", host, strings.Join(urlParts[1:], "/"))
+	}
+
+	insecureFlag := ""
+	if insecure {
+		insecureFlag = "-k "
+	}
+
+	// Use --resolve for SNI: --resolve "$host:$port:$ip"
+	script := fmt.Sprintf(`set -o pipefail; curl %s-sS -o /dev/null -w "%%{http_code}" --connect-timeout 2 --max-time 5 --resolve "$1:$2:$3" "$4" 2>/dev/null || echo 000`, insecureFlag)
+	kubectlArgs := append([]string{"-n", "default", "exec", "deploy/curl", "--"},
+		"sh", "-c", script, "_", host, port, resolveIP, httpsURL)
+	out, err = kubectl(ctx, kubectlArgs...)
+	if err != nil {
+		// kubectl exec itself failed (rare). Treat like transient failure.
+		return "000", out, err
+	}
+	return strings.TrimSpace(out), out, nil
+}
+
 // curlHTTPRedirectFromClient executes curl and returns the HTTP status code and Location header.
 // It does NOT follow redirects (no -L flag) so we can see the redirect response.
 // If insecure is true, adds -k flag to skip certificate verification (useful for HTTPS with self-signed certs).
@@ -254,7 +294,7 @@ func requireHTTP200OverHTTPSEventually(t *testing.T, ctx context.Context, host, 
 	var lastErr error
 
 	for attempt := 1; time.Now().Before(deadline); attempt++ {
-		code, _, out, err := curlHTTPRedirectFromClient(ctx, host, url, true)
+		code, out, err := curlHTTPCodeWithResolveFromClient(ctx, host, url, true)
 		lastCode, lastOut, lastErr = code, out, err
 
 		if err == nil && strings.TrimSpace(code) == "200" {
