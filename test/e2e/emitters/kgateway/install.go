@@ -18,8 +18,11 @@ package kgateway
 
 import (
 	"context"
+	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"os/exec"
 	"strings"
 	"time"
@@ -39,17 +42,78 @@ func kindClusterExists(ctx context.Context, name string) bool {
 	return false
 }
 
+func pickLBRange(cidr string, count uint32) (net.IP, net.IP, error) {
+	ip, ipnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return nil, nil, err
+	}
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return nil, nil, fmt.Errorf("only IPv4 supported, got %s", cidr)
+	}
+	ones, bits := ipnet.Mask.Size()
+	if bits != 32 {
+		return nil, nil, fmt.Errorf("unexpected mask bits: %d", bits)
+	}
+	total := uint32(1) << uint32(32-ones)
+	if total < count+10 {
+		return nil, nil, fmt.Errorf("subnet too small for lb range: %s", cidr)
+	}
+
+	base := binary.BigEndian.Uint32(ipnet.IP.To4())
+	last := base + total - 2
+	first := last - count
+
+	start := make(net.IP, 4)
+	end := make(net.IP, 4)
+	binary.BigEndian.PutUint32(start, first)
+	binary.BigEndian.PutUint32(end, last)
+
+	if !ipnet.Contains(start) || !ipnet.Contains(end) {
+		return nil, nil, fmt.Errorf("computed range not within subnet: %s-%s not in %s", start, end, cidr)
+	}
+	return start, end, nil
+}
+
 func mustDockerKindSubnet(ctx context.Context) string {
-	cmd := exec.CommandContext(ctx, "docker", "network", "inspect", "kind", "-f", "{{(index .IPAM.Config 0).Subnet}}")
+	// The "kind" docker network may be dual-stack, so IPAM.Config can contain
+	// both IPv6 and IPv4 subnets. We only support IPv4 for MetalLB ranges, so pick
+	// the first IPv4 subnet we find.
+	cmd := exec.CommandContext(ctx, "docker", "network", "inspect", "kind", "-f", "{{json .IPAM.Config}}")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		panic(fmt.Errorf("docker network inspect kind: %w: %s", err, string(out)))
 	}
-	cidr := strings.TrimSpace(string(out))
-	if cidr == "" {
-		panic("empty subnet from docker network inspect kind")
+
+	raw := strings.TrimSpace(string(out))
+	if raw == "" {
+		panic("empty IPAM config from docker network inspect kind")
 	}
-	return cidr
+
+	type ipamCfg struct {
+		Subnet string `json:"Subnet"`
+	}
+
+	var cfgs []ipamCfg
+	if err := json.Unmarshal([]byte(raw), &cfgs); err != nil {
+		panic(fmt.Errorf("parse docker network IPAM config: %w: %s", err, raw))
+	}
+
+	for _, c := range cfgs {
+		cidr := strings.TrimSpace(c.Subnet)
+		if cidr == "" {
+			continue
+		}
+		ip, _, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		if ip.To4() != nil {
+			return cidr
+		}
+	}
+
+	panic(fmt.Errorf("no IPv4 subnet found in docker network %q IPAM config: %s", "kind", raw))
 }
 
 func installMetalLB(ctx context.Context) {

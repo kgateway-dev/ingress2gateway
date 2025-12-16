@@ -18,9 +18,7 @@ package kgateway
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,39 +62,6 @@ func envOrDefault(k, def string) string {
 		return v
 	}
 	return def
-}
-
-func pickLBRange(cidr string, count uint32) (net.IP, net.IP, error) {
-	ip, ipnet, err := net.ParseCIDR(cidr)
-	if err != nil {
-		return nil, nil, err
-	}
-	ip4 := ip.To4()
-	if ip4 == nil {
-		return nil, nil, fmt.Errorf("only IPv4 supported, got %s", cidr)
-	}
-	ones, bits := ipnet.Mask.Size()
-	if bits != 32 {
-		return nil, nil, fmt.Errorf("unexpected mask bits: %d", bits)
-	}
-	total := uint32(1) << uint32(32-ones)
-	if total < count+10 {
-		return nil, nil, fmt.Errorf("subnet too small for lb range: %s", cidr)
-	}
-
-	base := binary.BigEndian.Uint32(ipnet.IP.To4())
-	last := base + total - 2
-	first := last - count
-
-	start := make(net.IP, 4)
-	end := make(net.IP, 4)
-	binary.BigEndian.PutUint32(start, first)
-	binary.BigEndian.PutUint32(end, last)
-
-	if !ipnet.Contains(start) || !ipnet.Contains(end) {
-		return nil, nil, fmt.Errorf("computed range not within subnet: %s-%s not in %s", start, end, cidr)
-	}
-	return start, end, nil
 }
 
 func moduleRoot(ctx context.Context) (string, error) {
