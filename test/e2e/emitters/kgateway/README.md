@@ -11,7 +11,7 @@ It is designed to be easy to extend by adding more test case YAMLs.
 
 Once per test run:
 
-1. Creates a fresh **kind** cluster.
+1. Uses an existing **kind** cluster if it already exists; otherwise creates one.
 2. Installs **MetalLB** so `Service type=LoadBalancer` gets an external IP in kind.
 3. Installs **Gateway API CRDs**.
 4. Installs **ingress-nginx**.
@@ -22,12 +22,11 @@ Once per test run:
 For each test case (each input YAML under `testdata/input/`):
 
 1. Applies the **input** Ingress YAML.
-   - Applies the **input** Ingress YAML.
    - Waits for the Ingress to get an external IP and verifies connectivity (curl → Ingress → backend).
    - Applies the **output** Gateway API YAML.
    - Waits for GatewayClass/Gateway/HTTPRoute readiness conditions.
    - Fetches the Gateway’s external IP and verifies connectivity (curl → Gateway → backend).
-   - Cleans up only the per-test input/output resources (keeps curl  echo).
+   - Cleans up only the per-test input/output resources (keeps curl + echo).
 
 ---
 
@@ -36,6 +35,7 @@ For each test case (each input YAML under `testdata/input/`):
 ```text
 test/e2e/emitters/kgateway
 ├── e2e_test.go
+...
 └── testdata
     ├── input
     │   ├── basic.yaml
@@ -64,8 +64,11 @@ You must have the following on your PATH:
 - `helm`
 - `go`
 
-The suite creates a kind cluster per run and **deletes it by default**.
+The suite uses a kind cluster per run and **deletes it by default**.
 Set `KEEP_KIND_CLUSTER=true` to keep the cluster after the test run.
+
+If the cluster named by `KIND_CLUSTER_NAME` already exists when the test suite starts, it will be reused.
+By default it will still be deleted at the end of the run unless `KEEP_KIND_CLUSTER=true`.
 
 ---
 
@@ -228,7 +231,7 @@ If connectivity never reaches HTTP 200, the suite runs a final `curl -v` from th
 
 - The kind cluster is **deleted automatically** unless `KEEP_KIND_CLUSTER=true`.
 - Per-test resources from `testdata/input/<case>.yaml` and `testdata/output/<case>.yaml` are deleted after each subtest.
-- Shared resources (curl  echo backend) remain for the whole suite run.
+- Shared resources (curl + echo backend) remain for the whole suite run.
 
 ---
 
