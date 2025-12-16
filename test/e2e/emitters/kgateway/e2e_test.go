@@ -203,8 +203,17 @@ func TestIngress2GatewayE2E(t *testing.T) {
 				host = hr
 			}
 
-			// Curl via Gateway.
-			requireHTTP200Eventually(t, ctx, host, fmt.Sprintf("http://%s:80/", gwAddr), 1*time.Minute)
+			// Special handling for SSL redirect test case
+			if name == "ssl_redirect" {
+				// Test HTTP redirect (308) to HTTPS
+				requireHTTPRedirectEventually(t, ctx, host, fmt.Sprintf("http://%s:80/", gwAddr), 1*time.Minute)
+
+				// Test HTTPS connectivity (200) with insecure flag
+				requireHTTPS200Eventually(t, ctx, host, fmt.Sprintf("https://%s:443/", gwAddr), 1*time.Minute)
+			} else {
+				// Standard HTTP test for other cases
+				requireHTTP200Eventually(t, ctx, host, fmt.Sprintf("http://%s:80/", gwAddr), 1*time.Minute)
+			}
 		})
 	}
 }

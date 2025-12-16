@@ -149,6 +149,58 @@ func curlHTTPCodeFromClient(ctx context.Context, host, url string) (code string,
 	return strings.TrimSpace(out), out, nil
 }
 
+// curlHTTPRedirectFromClient executes curl and returns the HTTP status code and Location header.
+// It does NOT follow redirects (no -L flag) so we can see the redirect response.
+func curlHTTPRedirectFromClient(ctx context.Context, host, url string) (code string, location string, out string, err error) {
+	// Use -i to include headers, -s for silent, but keep stderr for errors
+	// Extract status code and Location header
+	script := `set -o pipefail; curl -sSi --connect-timeout 2 --max-time 5 -H "Host: $1" "$2" 2>&1 || echo "000"`
+	out, err = kubectl(ctx, "-n", "default", "exec", "deploy/curl", "--",
+		"sh", "-c", script, "_", host, url,
+	)
+	if err != nil {
+		return "000", "", out, err
+	}
+
+	// Parse status code from HTTP/1.1 308 Permanent Redirect
+	lines := strings.Split(out, "\n")
+	code = "000"
+	location = ""
+	for _, line := range lines {
+		lineLower := strings.ToLower(line)
+		if strings.HasPrefix(line, "HTTP/") {
+			// Extract status code from "HTTP/1.1 308 Permanent Redirect"
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				code = parts[1]
+			}
+		}
+		if strings.HasPrefix(lineLower, "location:") {
+			// Extract Location header value (case-insensitive)
+			// Handle both "Location: https://..." and "location: https://..."
+			idx := strings.Index(lineLower, "location:")
+			if idx != -1 {
+				location = strings.TrimSpace(line[idx+9:])
+			}
+		}
+	}
+
+	return code, location, out, nil
+}
+
+// curlHTTPS200FromClient executes curl with -k (insecure) flag for HTTPS requests.
+func curlHTTPS200FromClient(ctx context.Context, host, url string) (code string, out string, err error) {
+	// Use -k to skip certificate verification for self-signed certs
+	script := `set -o pipefail; curl -k -sS -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 5 -H "Host: $1" "$2" || echo 000`
+	out, err = kubectl(ctx, "-n", "default", "exec", "deploy/curl", "--",
+		"sh", "-c", script, "_", host, url,
+	)
+	if err != nil {
+		return "000", out, err
+	}
+	return strings.TrimSpace(out), out, nil
+}
+
 func debugCurlVerbose(t *testing.T, ctx context.Context, host, url string) error {
 	t.Helper()
 	script := `curl -v --connect-timeout 2 --max-time 5 -H "Host: $1" "$2" || true`
@@ -157,6 +209,80 @@ func debugCurlVerbose(t *testing.T, ctx context.Context, host, url string) error
 	)
 	t.Logf("debug curl -v output:\n%s", out)
 	return err
+}
+
+// requireHTTPRedirectEventually waits for an HTTP redirect response (308 status code)
+// and verifies the Location header contains https:// scheme.
+func requireHTTPRedirectEventually(t *testing.T, ctx context.Context, host, url string, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	interval := 2 * time.Second
+
+	var lastCode string
+	var lastLocation string
+	var lastOut string
+	var lastErr error
+
+	for attempt := 1; time.Now().Before(deadline); attempt++ {
+		code, location, out, err := curlHTTPRedirectFromClient(ctx, host, url)
+		lastCode, lastLocation, lastOut, lastErr = code, location, out, err
+
+		if err == nil && strings.TrimSpace(code) == "308" {
+			// Verify Location header contains https://
+			if strings.HasPrefix(strings.ToLower(location), "https://") {
+				return
+			}
+		}
+
+		if attempt == 1 || attempt%10 == 0 {
+			t.Logf("waiting for HTTP 308 redirect (attempt=%d host=%s url=%s): code=%q location=%q err=%v",
+				attempt, host, url, strings.TrimSpace(code), location, err)
+		}
+		time.Sleep(interval)
+	}
+
+	_ = debugCurlVerbose(t, ctx, host, url)
+
+	t.Fatalf("timed out waiting for HTTP 308 redirect (host=%s url=%s timeout=%s). lastCode=%q lastLocation=%q lastErr=%v lastOut=%s",
+		host, url, timeout, strings.TrimSpace(lastCode), lastLocation, lastErr, lastOut)
+}
+
+// requireHTTPS200Eventually waits for an HTTPS 200 response using insecure curl (-k flag).
+func requireHTTPS200Eventually(t *testing.T, ctx context.Context, host, url string, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	interval := 2 * time.Second
+
+	var lastCode string
+	var lastOut string
+	var lastErr error
+
+	for attempt := 1; time.Now().Before(deadline); attempt++ {
+		code, out, err := curlHTTPS200FromClient(ctx, host, url)
+		lastCode, lastOut, lastErr = code, out, err
+
+		if err == nil && strings.TrimSpace(code) == "200" {
+			return
+		}
+
+		if attempt == 1 || attempt%10 == 0 {
+			t.Logf("waiting for HTTPS 200 (attempt=%d host=%s url=%s): code=%q err=%v",
+				attempt, host, url, strings.TrimSpace(code), err)
+		}
+		time.Sleep(interval)
+	}
+
+	// Debug with verbose curl
+	script := `curl -kv --connect-timeout 2 --max-time 5 -H "Host: $1" "$2" || true`
+	out, _ := kubectl(ctx, "-n", "default", "exec", "deploy/curl", "--",
+		"sh", "-c", script, "_", host, url,
+	)
+	t.Logf("debug curl -kv output:\n%s", out)
+
+	t.Fatalf("timed out waiting for HTTPS 200 (host=%s url=%s timeout=%s). lastCode=%q lastErr=%v lastOut=%s",
+		host, url, timeout, strings.TrimSpace(lastCode), lastErr, lastOut)
 }
 
 func waitForGatewayAddress(ctx context.Context, ns, gwName string, timeout time.Duration) (string, error) {
