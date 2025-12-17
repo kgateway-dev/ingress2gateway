@@ -21,7 +21,6 @@ const (
 	defaultIngressNginxVersion = "v1.14.1"
 	defaultGatewayAPIVersion   = "v1.4.0"
 	defaultMetalLBVersion      = "v0.15.3"
-	defaultCurlImage           = "curlimages/curl:8.6.0"
 
 	defaultEchoImage = "gcr.io/k8s-staging-gateway-api/echo-basic:v20231214-v1.0.0-140-gf544a46e"
 )
