@@ -23,6 +23,9 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"k8s.io/apimachinery/pkg/types"
+	gwtests "sigs.k8s.io/gateway-api/conformance/tests"
 )
 
 func TestMain(m *testing.M) {
@@ -37,6 +40,7 @@ func TestMain(m *testing.M) {
 	mustHaveBin("kubectl")
 	mustHaveBin("helm")
 	mustHaveBin("go")
+	mustHaveBin("openssl")
 
 	ctx := context.Background()
 
@@ -69,6 +73,9 @@ func TestMain(m *testing.M) {
 	// Shared backend echo server (kept across subtests).
 	// HTTP requests are made directly from test code using Gateway API conformance utilities.
 	applyEchoBackend(ctx)
+
+	// TLS-enabled backend for SSL passthrough tests.
+	applyTLSBackend(ctx)
 
 	e2eSetupComplete = true
 
@@ -154,8 +161,13 @@ func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 	}
 
 	// Test connectivity via Ingress (HTTP requests made directly from test code).
+	// Skip connectivity test for SSL passthrough since it uses TLS, not HTTP.
+	// SSL passthrough will be tested separately in the test function.
 	if inputFile == "ssl_redirect.yaml" {
 		requireHTTPRedirectEventually(t, ctx, hostHeader, "http", ingressIP, "", "/", "308", 1*time.Minute)
+	} else if inputFile == "ssl_passthrough.yaml" {
+		// SSL passthrough uses TLS, skip HTTP connectivity test here
+		// TLS connectivity will be tested in TestSSLPassthrough
 	} else {
 		requireHTTP200Eventually(t, ctx, hostHeader, "http", ingressIP, "", "/", 1*time.Minute)
 	}
@@ -191,10 +203,12 @@ func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 		t.Fatalf("gateway address: %v", err)
 	}
 
-	// Prefer HTTPRoute hostnames if present.
+	// Prefer HTTPRoute or TLSRoute hostnames if present.
 	host := hostHeader
 	if hr := firstHTTPRouteHost(outObjs); hr != "" {
 		host = hr
+	} else if tr := firstTLSRouteHost(outObjs); tr != "" {
+		host = tr
 	}
 
 	return ctx, gwAddr, host
@@ -222,4 +236,49 @@ func TestCORS(t *testing.T) {
 
 	// Standard HTTP test
 	requireHTTP200Eventually(t, ctx, host, "http", gwAddr, "80", "/", 1*time.Minute)
+}
+
+func TestSSLPassthrough(t *testing.T) {
+	ctx, gwAddr, host := e2eTestSetup(t, "ssl_passthrough.yaml", "ssl_passthrough.yaml")
+
+	// Get Ingress address for testing
+	root, err := moduleRoot(ctx)
+	if err != nil {
+		t.Fatalf("moduleRoot: %v", err)
+	}
+	inPath := filepath.Join(root, "test/e2e/emitters/kgateway/testdata/input/ssl_passthrough.yaml")
+	ingObjs, err := decodeObjects(inPath)
+	if err != nil {
+		t.Fatalf("decode input objects: %v", err)
+	}
+	ingresses := filterKind(ingObjs, "Ingress")
+	if len(ingresses) == 0 {
+		t.Fatalf("no Ingress objects found")
+	}
+	ing := ingresses[0]
+	ns := ing.GetNamespace()
+	if ns == "" {
+		ns = "default"
+	}
+	ingressIP, err := getIngressAddress(ctx, ns, ing.GetName())
+	if err != nil {
+		t.Fatalf("get ingress address: %v", err)
+	}
+
+	// Load TLS certificates from secret for verification
+	cl, err := getKubernetesClient()
+	if err != nil {
+		t.Fatalf("failed to create Kubernetes client: %v", err)
+	}
+	certPem, keyPem, err := gwtests.GetTLSSecret(cl, types.NamespacedName{Namespace: "default", Name: "tls-secret"})
+	if err != nil {
+		t.Fatalf("unexpected error finding TLS secret: %v", err)
+	}
+
+	// Test TLS passthrough connectivity via Ingress using TLS certificates
+	// For TLS passthrough, the backend certificate is presented to the client through the gateway
+	requireHTTP200OverTLSEventually(t, ctx, host, ingressIP, "443", "/", certPem, keyPem, 1*time.Minute)
+
+	// Test TLS passthrough connectivity via Gateway using TLS certificates
+	requireHTTP200OverTLSEventually(t, ctx, host, gwAddr, "443", "/", certPem, keyPem, 1*time.Minute)
 }

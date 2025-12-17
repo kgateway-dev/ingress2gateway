@@ -27,9 +27,12 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"sigs.k8s.io/gateway-api/conformance/utils/config"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
+	gwconfig "sigs.k8s.io/gateway-api/conformance/utils/config"
 	gwhttp "sigs.k8s.io/gateway-api/conformance/utils/http"
 	"sigs.k8s.io/gateway-api/conformance/utils/roundtripper"
+	gwtls "sigs.k8s.io/gateway-api/conformance/utils/tls"
 )
 
 func waitForOutputReadiness(t *testing.T, ctx context.Context, objs []unstructured.Unstructured, timeout time.Duration) {
@@ -95,6 +98,29 @@ func waitForOutputReadiness(t *testing.T, ctx context.Context, objs []unstructur
 			t.Fatalf("HTTPRoute/%s not ready: need parents[].conditions Accepted=True and ResolvedRefs=True", name)
 		}
 	}
+
+	for _, tr := range filterKind(objs, "TLSRoute") {
+		ns := tr.GetNamespace()
+		if ns == "" {
+			ns = "default"
+		}
+		name := tr.GetName()
+
+		for time.Now().Before(deadline) {
+			u, err := getUnstructured(ctx, "tlsroute", ns, name)
+			if err == nil && hasRouteParentCondition(u, "Accepted", "True") && hasRouteParentCondition(u, "ResolvedRefs", "True") {
+				break
+			}
+			time.Sleep(2 * time.Second)
+		}
+		u, err := getUnstructured(ctx, "tlsroute", ns, name)
+		if err != nil {
+			t.Fatalf("TLSRoute/%s get: %v", name, err)
+		}
+		if !hasRouteParentCondition(u, "Accepted", "True") || !hasRouteParentCondition(u, "ResolvedRefs", "True") {
+			t.Fatalf("TLSRoute/%s not ready: need parents[].conditions Accepted=True and ResolvedRefs=True", name)
+		}
+	}
 }
 
 func waitForIngressAddress(t *testing.T, ctx context.Context, ns, name string, timeout time.Duration) {
@@ -112,7 +138,7 @@ func waitForIngressAddress(t *testing.T, ctx context.Context, ns, name string, t
 
 // getRoundTripper creates a DefaultRoundTripper with appropriate timeout configuration.
 func getRoundTripper() roundtripper.RoundTripper {
-	timeoutConfig := config.DefaultTimeoutConfig()
+	timeoutConfig := gwconfig.DefaultTimeoutConfig()
 	timeoutConfig.RequestTimeout = 5 * time.Second
 	return &roundtripper.DefaultRoundTripper{
 		TimeoutConfig: timeoutConfig,
@@ -123,7 +149,7 @@ func getRoundTripper() roundtripper.RoundTripper {
 // The dialer connects to the provided IP address but uses the hostname for SNI.
 // If insecure is true, TLS verification is skipped.
 func getRoundTripperWithSNI(ip string, hostname string, insecure bool) roundtripper.RoundTripper {
-	timeoutConfig := config.DefaultTimeoutConfig()
+	timeoutConfig := gwconfig.DefaultTimeoutConfig()
 	timeoutConfig.RequestTimeout = 5 * time.Second
 
 	return &roundtripper.DefaultRoundTripper{
@@ -259,7 +285,7 @@ func httpCodeWithSNIFromClient(t *testing.T, hostHeader, address, port, path str
 	// so we'll need to handle this in the custom dialer or create a custom transport
 	if insecure {
 		// We'll handle this by creating a custom transport wrapper
-		timeoutConfig := config.DefaultTimeoutConfig()
+		timeoutConfig := gwconfig.DefaultTimeoutConfig()
 		timeoutConfig.RequestTimeout = 5 * time.Second
 		rt = &roundtripper.DefaultRoundTripper{
 			TimeoutConfig: timeoutConfig,
@@ -574,6 +600,78 @@ func requireHTTP200OverHTTPSEventually(t *testing.T, ctx context.Context, hostHe
 
 	t.Fatalf("timed out waiting for HTTP 200 over HTTPS (host=%s address=%s port=%s path=%s timeout=%s). lastCode=%q lastErr=%v lastOut=%s",
 		hostHeader, address, port, path, timeout, strings.TrimSpace(lastCode), lastErr, lastOut)
+}
+
+// getKubernetesClient creates a Kubernetes client using the kubeconfig context.
+func getKubernetesClient() (client.Client, error) {
+	cfg, err := ctrlconfig.GetConfigWithContext(kubeContext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get kubeconfig: %w", err)
+	}
+
+	cl, err := client.New(cfg, client.Options{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	return cl, nil
+}
+
+// getRoundTripperForIP creates a roundtripper that connects to a specific IP address
+// but uses the hostname for SNI. This is needed for TLS passthrough testing.
+func getRoundTripperForIP(ip string, hostname string) roundtripper.RoundTripper {
+	timeoutConfig := gwconfig.DefaultTimeoutConfig()
+	timeoutConfig.RequestTimeout = 5 * time.Second
+
+	return &roundtripper.DefaultRoundTripper{
+		TimeoutConfig: timeoutConfig,
+		CustomDialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			_, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			dialer := &net.Dialer{}
+			return dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
+		},
+	}
+}
+
+// requireHTTP200OverTLSEventually waits for HTTP 200 status code over an HTTPS connection with TLS certificates.
+// Uses Gateway API conformance TLS utilities for proper TLS passthrough testing.
+func requireHTTP200OverTLSEventually(t *testing.T, ctx context.Context, hostHeader, address, port, path string, certPem, keyPem []byte, timeout time.Duration) {
+	t.Helper()
+
+	// Set defaults
+	if port == "" {
+		port = "443"
+	}
+	if path == "" {
+		path = "/"
+	}
+
+	gwAddr := net.JoinHostPort(address, port)
+
+	expected := gwhttp.ExpectedResponse{
+		Request: gwhttp.Request{
+			Host:   hostHeader,
+			Method: "GET",
+			Path:   path,
+		},
+		Response: gwhttp.Response{
+			StatusCode: 200,
+		},
+	}
+
+	// Create roundtripper that connects to IP but uses hostname for SNI
+	rt := getRoundTripperForIP(address, hostHeader)
+
+	// Configure timeout config for the TLS request
+	timeoutConfig := gwconfig.DefaultTimeoutConfig()
+	timeoutConfig.MaxTimeToConsistency = timeout
+	timeoutConfig.RequiredConsecutiveSuccesses = 1
+
+	// Use Gateway API TLS utilities to make the request with certificates
+	gwtls.MakeTLSRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, certPem, keyPem, hostHeader, expected)
 }
 
 func waitForGatewayAddress(ctx context.Context, ns, gwName string, timeout time.Duration) (string, error) {
