@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -338,4 +339,95 @@ func waitForServiceAddress(ctx context.Context, ns, name string, timeout time.Du
 		time.Sleep(2 * time.Second)
 	}
 	return "", fmt.Errorf("service %s/%s has no external IP/hostname yet", ns, name)
+}
+
+// podAndCodeFromClient makes an HTTP request and returns the backend pod name and the status code.
+func podAndCodeFromClient(t *testing.T, hostHeader, scheme, address, port, path string) (pod, code, out string, err error) {
+	t.Helper()
+
+	if port == "" {
+		if scheme == "https" {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	if path == "" {
+		path = "/"
+	}
+
+	gwAddr := net.JoinHostPort(address, port)
+
+	expected := gwhttp.ExpectedResponse{
+		Request: gwhttp.Request{
+			Host:   hostHeader,
+			Method: "GET",
+			Path:   path,
+		},
+		Response: gwhttp.Response{StatusCode: 200},
+	}
+
+	req := gwhttp.MakeRequest(t, &expected, gwAddr, strings.ToUpper(scheme), scheme)
+
+	// Optional but helpful to avoid “same downstream connection == same upstream host” stickiness
+	// in some implementations:
+	if req.Headers == nil {
+		req.Headers = map[string][]string{}
+	}
+	req.Headers["Connection"] = []string{"close"}
+	req.Headers["X-E2E-Nonce"] = []string{fmt.Sprintf("%d", time.Now().UnixNano())}
+
+	rt := getRoundTripper()
+	cReq, cRes, err := rt.CaptureRoundTrip(req)
+	if err != nil {
+		return "", "000", fmt.Sprintf("request failed: %v", err), err
+	}
+
+	if cReq != nil {
+		pod = cReq.Pod
+	}
+	code = fmt.Sprintf("%d", cRes.StatusCode)
+	out = fmt.Sprintf("Status: %d, Protocol: %s, Pod: %s", cRes.StatusCode, cRes.Protocol, pod)
+	return pod, code, out, nil
+}
+
+func requireLoadBalancedAcrossPodsEventually(
+	t *testing.T,
+	hostHeader, scheme, address, port, path string,
+	wantDistinctPods int,
+	timeout time.Duration,
+) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	interval := 2 * time.Second
+
+	for attempt := 1; time.Now().Before(deadline); attempt++ {
+		seen := map[string]int{}
+		var lastOut string
+		var lastErr error
+		var lastCode string
+
+		// Enough samples that “3 replicas but I only saw 1–2 by chance” is very unlikely.
+		for i := 0; i < 60; i++ {
+			pod, code, out, err := podAndCodeFromClient(t, hostHeader, scheme, address, port, path)
+			lastOut, lastErr, lastCode = out, err, code
+			if err == nil && strings.TrimSpace(code) == "200" && pod != "" {
+				seen[pod]++
+			}
+		}
+
+		if len(seen) >= wantDistinctPods {
+			t.Logf("load balancing OK (distinctPods=%d): %v", len(seen), seen)
+			return
+		}
+
+		if attempt == 1 || attempt%5 == 0 {
+			t.Logf("waiting for load balancing across %d pods (attempt=%d): seen=%v lastCode=%s lastErr=%v lastOut=%s",
+				wantDistinctPods, attempt, seen, strings.TrimSpace(lastCode), lastErr, lastOut)
+		}
+		time.Sleep(interval)
+	}
+
+	t.Fatalf("timed out waiting to observe %d distinct backend pods", wantDistinctPods)
 }
