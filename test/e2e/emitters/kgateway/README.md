@@ -16,17 +16,18 @@ Once per test run:
 3. Installs **Gateway API CRDs**.
 4. Installs **ingress-nginx**.
 5. Installs **kgateway** (version inferred from `go.mod` unless overridden).
-6. Deploys a shared in-cluster **curl client**.
-7. Deploys a shared **echo backend** (`echo-basic`).
+6. Deploys a shared **echo backend** (`echo-basic`).
+
+**Note:** HTTP requests are made directly from test code using Gateway API conformance utilities (`sigs.k8s.io/gateway-api/conformance/utils/http` and `sigs.k8s.io/gateway-api/conformance/utils/tls`), not from an in-cluster pod.
 
 For each test case (each input YAML under `testdata/input/`):
 
 1. Applies the **input** Ingress YAML.
-   - Waits for the Ingress to get an external IP and verifies connectivity (curl → Ingress → backend).
+   - Waits for the Ingress to get an external IP and verifies connectivity (HTTP request → Ingress → backend).
    - Applies the **output** Gateway API YAML.
    - Waits for GatewayClass/Gateway/HTTPRoute readiness conditions.
-   - Fetches the Gateway’s external IP and verifies connectivity (curl → Gateway → backend).
-   - Cleans up only the per-test input/output resources (keeps curl + echo).
+   - Fetches the Gateway's external IP and verifies connectivity (HTTP request → Gateway → backend).
+   - Cleans up only the per-test input/output resources (keeps echo backend).
 
 ---
 
@@ -121,8 +122,9 @@ KEEP_KIND_CLUSTER=false go test ./test/e2e/emitters/kgateway -v -run TestIngress
 
 | Variable | Default | Description |
 |---|---:|---|
-| `CURL_IMAGE` | `curlimages/curl:8.6.0` | in-cluster curl pod image |
 | `ECHO_IMAGE` | `gcr.io/k8s-staging-gateway-api/echo-basic:...` | backend echo server image |
+
+**Note:** HTTP requests are made directly from test code, so no curl client pod image is needed.
 
 Example override:
 
@@ -177,7 +179,7 @@ Your **input** file should include an `Ingress` that routes to the shared backen
 The test suite will:
 
 - wait for `.status.loadBalancer.ingress[]` on the Ingress
-- curl the Ingress IP using the first `spec.rules[].host` it finds (fallback: `demo.localdev.me`)
+- make an HTTP request to the Ingress IP using the first `spec.rules[].host` it finds (fallback: `demo.localdev.me`)
 
 So your Ingress should include a host if you want a deterministic Host header.
 
@@ -194,7 +196,7 @@ The test suite will:
 - wait for `GatewayClass Accepted=True` (for the `GatewayClass/kgateway` object present)
 - wait for `Gateway Accepted=True` and `Programmed=True`
 - wait for `HTTPRoute` parent conditions `Accepted=True` and `ResolvedRefs=True`
-- curl the Gateway external address using the first `HTTPRoute.spec.hostnames[]` it finds (fallback: the Ingress host)
+- make an HTTP request to the Gateway external address using the first `HTTPRoute.spec.hostnames[]` it finds (fallback: the Ingress host)
 
 ---
 
@@ -215,9 +217,9 @@ kubectl --context kind-i2g-kgtw -n kgateway-system get all
 kubectl --context kind-i2g-kgtw get gatewayclass,gateway,httproute -A
 ```
 
-### Curl debug output
+### HTTP debug output
 
-If connectivity never reaches HTTP 200, the suite runs a final `curl -v` from the curl client and prints it in the test logs.
+If connectivity never reaches HTTP 200, the suite logs detailed HTTP request/response information for debugging.
 
 ### Common issues
 
@@ -231,7 +233,7 @@ If connectivity never reaches HTTP 200, the suite runs a final `curl -v` from th
 
 - The kind cluster is **deleted automatically** unless `KEEP_KIND_CLUSTER=true`.
 - Per-test resources from `testdata/input/<case>.yaml` and `testdata/output/<case>.yaml` are deleted after each subtest.
-- Shared resources (curl + echo backend) remain for the whole suite run.
+- Shared resources (echo backend) remain for the whole suite run.
 
 ---
 

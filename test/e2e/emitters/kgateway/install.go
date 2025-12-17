@@ -219,35 +219,6 @@ func installKgateway(ctx context.Context) {
 	}
 }
 
-func applyCurlClient(ctx context.Context) {
-	img := envOrDefault("CURL_IMAGE", defaultCurlImage)
-	y := fmt.Sprintf(`
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: curl
-  namespace: default
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: curl
-  template:
-    metadata:
-      labels:
-        app: curl
-    spec:
-      containers:
-      - name: curl
-        image: %s
-        command: ["sh","-c","sleep 365d"]
-`, img)
-
-	log.Printf("Deploying curl client (%s)", img)
-	mustKubectlApplyStdin(ctx, y)
-	mustKubectl(ctx, "-n", "default", "rollout", "status", "deploy/curl", "--timeout=5m")
-}
-
 func applyEchoBackend(ctx context.Context) {
 	img := envOrDefault("ECHO_IMAGE", defaultEchoImage)
 	y := fmt.Sprintf(`
