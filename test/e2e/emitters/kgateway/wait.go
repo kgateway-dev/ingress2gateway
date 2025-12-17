@@ -203,11 +203,12 @@ func requireHTTPRedirectEventually(t *testing.T, hostHeader, scheme, address, po
 
 	// Parse expected status code
 	var statusCode int
-	if expectedCode == "301" {
+	switch expectedCode {
+	case "301":
 		statusCode = 301
-	} else if expectedCode == "308" {
+	case "308":
 		statusCode = 308
-	} else {
+	default:
 		t.Fatalf("unexpected redirect code: %s (expected 301 or 308)", expectedCode)
 	}
 
@@ -224,7 +225,8 @@ func requireHTTPRedirectEventually(t *testing.T, hostHeader, scheme, address, po
 		},
 		RedirectRequest: &roundtripper.RedirectRequest{
 			Scheme: "https",
-			// Host and Path will be set by the gateway-api utility based on actual redirect
+			Port:   "443",
+			Path:   path,
 		},
 	}
 
