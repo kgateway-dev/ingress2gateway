@@ -173,6 +173,22 @@ func installIngressNginx(ctx context.Context) {
 	log.Printf("Installing ingress-nginx %s from %s", ver, url)
 	mustKubectl(ctx, "apply", "-f", url)
 
+	// Enable SSL passthrough for TLS passthrough tests
+	log.Printf("Enabling SSL passthrough in ingress-nginx controller")
+	// Patch the deployment to add the --enable-ssl-passthrough flag
+	// If the flag already exists, the patch will fail, but we'll verify it's present
+	if _, err := kubectl(ctx, "-n", "ingress-nginx", "patch", "deployment", "ingress-nginx-controller",
+		"--type=json",
+		"-p", `[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--enable-ssl-passthrough"}]`); err != nil {
+		// Check if the flag is already present (patch might fail if flag exists)
+		argsOut, getErr := kubectl(ctx, "-n", "ingress-nginx", "get", "deployment", "ingress-nginx-controller", "-o", "jsonpath={.spec.template.spec.containers[0].args}")
+		if getErr == nil && strings.Contains(argsOut, "--enable-ssl-passthrough") {
+			log.Printf("SSL passthrough flag already present in ingress-nginx controller")
+		} else {
+			log.Printf("Warning: Failed to enable SSL passthrough (patch error: %v)", err)
+		}
+	}
+
 	mustKubectl(ctx, "-n", "ingress-nginx", "rollout", "status", "deploy/ingress-nginx-controller", "--timeout=1m")
 
 	if _, err := waitForServiceAddress(ctx, "ingress-nginx", "ingress-nginx-controller", 1*time.Minute); err != nil {
