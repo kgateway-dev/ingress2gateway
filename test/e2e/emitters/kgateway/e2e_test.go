@@ -95,7 +95,7 @@ func TestMain(m *testing.M) {
 
 // e2eTestSetup handles common setup for e2e tests and returns the context, gateway address, host, and ingress address.
 // The caller is responsible for cleanup and test-specific validation.
-func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, string, string, string) {
+func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, string, string, string, string) {
 	if !e2eSetupComplete {
 		t.Fatalf("e2e setup did not complete")
 	}
@@ -193,50 +193,48 @@ func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 
 	// Prefer HTTPRoute or TLSRoute hostnames if present.
 	host := hostHeader
-	if hr := firstHTTPRouteHost(outObjs); hr != "" {
+	if hr := firstRouteHost(outObjs); hr != "" {
 		host = hr
-	} else if tr := firstTLSRouteHost(outObjs); tr != "" {
-		host = tr
 	}
 
-	return ctx, gwAddr, host, ingressIP
+	return ctx, gwAddr, host, hostHeader, ingressIP
 }
 
 func TestBasic(t *testing.T) {
-	ctx, gwAddr, host, ingressIP := e2eTestSetup(t, "basic.yaml", "basic.yaml")
+	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "basic.yaml", "basic.yaml")
 
 	// Test HTTP connectivity via Ingress
-	requireHTTP200Eventually(t, ctx, host, "http", ingressIP, "", "/", 1*time.Minute)
+	requireHTTP200Eventually(t, ingressHostHeader, "http", ingressIP, "", "/", 1*time.Minute)
 
 	// Test HTTP connectivity via Gateway
-	requireHTTP200Eventually(t, ctx, host, "http", gwAddr, "80", "/", 1*time.Minute)
+	requireHTTP200Eventually(t, host, "http", gwAddr, "80", "/", 1*time.Minute)
 }
 
 func TestSSLRedirect(t *testing.T) {
-	ctx, gwAddr, host, ingressIP := e2eTestSetup(t, "ssl_redirect.yaml", "ssl_redirect.yaml")
+	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "ssl_redirect.yaml", "ssl_redirect.yaml")
 
 	// Test HTTP redirect (308) through Ingress
-	requireHTTPRedirectEventually(t, ctx, host, "http", ingressIP, "", "/", "308", 1*time.Minute)
+	requireHTTPRedirectEventually(t, ingressHostHeader, "http", ingressIP, "", "/", "308", 1*time.Minute)
 
 	// Test HTTP redirect (301) through Gateway
-	requireHTTPRedirectEventually(t, ctx, host, "http", gwAddr, "80", "/", "301", 1*time.Minute)
+	requireHTTPRedirectEventually(t, host, "http", gwAddr, "80", "/", "301", 1*time.Minute)
 
 	// Test HTTPS connectivity (HTTP 200 status code)
-	requireHTTP200OverHTTPSEventually(t, ctx, host, gwAddr, "443", "/", "ssl-redirect-tls", 1*time.Minute)
+	requireHTTP200OverHTTPSEventually(t, host, gwAddr, "443", "/", "ssl-redirect-tls", 1*time.Minute)
 }
 
 func TestCORS(t *testing.T) {
-	ctx, gwAddr, host, ingressIP := e2eTestSetup(t, "cors.yaml", "cors.yaml")
+	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "cors.yaml", "cors.yaml")
 
 	// Test HTTP connectivity via Ingress
-	requireHTTP200Eventually(t, ctx, host, "http", ingressIP, "", "/", 1*time.Minute)
+	requireHTTP200Eventually(t, ingressHostHeader, "http", ingressIP, "", "/", 1*time.Minute)
 
 	// Test HTTP connectivity via Gateway
-	requireHTTP200Eventually(t, ctx, host, "http", gwAddr, "80", "/", 1*time.Minute)
+	requireHTTP200Eventually(t, host, "http", gwAddr, "80", "/", 1*time.Minute)
 }
 
 func TestSSLPassthrough(t *testing.T) {
-	ctx, gwAddr, host, ingressIP := e2eTestSetup(t, "ssl_passthrough.yaml", "ssl_passthrough.yaml")
+	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "ssl_passthrough.yaml", "ssl_passthrough.yaml")
 
 	// Load TLS certificates from secret for verification
 	cl, err := getKubernetesClient()
@@ -250,8 +248,8 @@ func TestSSLPassthrough(t *testing.T) {
 
 	// Test TLS passthrough connectivity via Ingress using TLS certificates
 	// For TLS passthrough, the backend certificate is presented to the client through the gateway
-	requireHTTP200OverTLSEventually(t, ctx, host, ingressIP, "443", "/", certPem, keyPem, 1*time.Minute)
+	requireHTTP200OverTLSEventually(t, ingressHostHeader, ingressIP, "443", "/", certPem, keyPem, 1*time.Minute)
 
 	// Test TLS passthrough connectivity via Gateway using TLS certificates
-	requireHTTP200OverTLSEventually(t, ctx, host, gwAddr, "443", "/", certPem, keyPem, 1*time.Minute)
+	requireHTTP200OverTLSEventually(t, host, gwAddr, "443", "/", certPem, keyPem, 1*time.Minute)
 }

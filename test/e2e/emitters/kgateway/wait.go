@@ -144,7 +144,7 @@ func getRoundTripper() roundtripper.RoundTripper {
 	}
 }
 
-func requireHTTP200Eventually(t *testing.T, ctx context.Context, hostHeader, scheme, address, port, path string, timeout time.Duration) {
+func requireHTTP200Eventually(t *testing.T, hostHeader, scheme, address, port, path string, timeout time.Duration) {
 	t.Helper()
 
 	// Set defaults
@@ -183,7 +183,7 @@ func requireHTTP200Eventually(t *testing.T, ctx context.Context, hostHeader, sch
 // requireHTTPRedirectEventually waits for an HTTP redirect response with the expected status code
 // and verifies the Location header contains https:// scheme.
 // expectedCode should be "301" (Moved Permanently) or "308" (Permanent Redirect).
-func requireHTTPRedirectEventually(t *testing.T, ctx context.Context, hostHeader, scheme, address, port, path string, expectedCode string, timeout time.Duration) {
+func requireHTTPRedirectEventually(t *testing.T, hostHeader, scheme, address, port, path string, expectedCode string, timeout time.Duration) {
 	t.Helper()
 
 	// Set defaults
@@ -236,7 +236,7 @@ func requireHTTPRedirectEventually(t *testing.T, ctx context.Context, hostHeader
 
 // requireHTTP200OverHTTPSEventually waits for HTTP 200 status code over an HTTPS connection with TLS certificates.
 // Uses Gateway API conformance TLS utilities with certificates from the specified secret.
-func requireHTTP200OverHTTPSEventually(t *testing.T, ctx context.Context, hostHeader, address, port, path, secretName string, timeout time.Duration) {
+func requireHTTP200OverHTTPSEventually(t *testing.T, hostHeader, address, port, path, secretName string, timeout time.Duration) {
 	t.Helper()
 
 	// Load TLS certificates from the specified secret
@@ -249,7 +249,7 @@ func requireHTTP200OverHTTPSEventually(t *testing.T, ctx context.Context, hostHe
 		t.Fatalf("unexpected error finding TLS secret: %v", err)
 	}
 
-	requireHTTP200OverTLSEventually(t, ctx, hostHeader, address, port, path, certPem, keyPem, timeout)
+	requireHTTP200OverTLSEventually(t, hostHeader, address, port, path, certPem, keyPem, timeout)
 }
 
 // getKubernetesClient creates a Kubernetes client using the kubeconfig context.
@@ -288,7 +288,7 @@ func getRoundTripperForIP(ip string, hostname string) roundtripper.RoundTripper 
 
 // requireHTTP200OverTLSEventually waits for HTTP 200 status code over an HTTPS connection with TLS certificates.
 // Uses Gateway API conformance TLS utilities for proper TLS passthrough testing.
-func requireHTTP200OverTLSEventually(t *testing.T, ctx context.Context, hostHeader, address, port, path string, certPem, keyPem []byte, timeout time.Duration) {
+func requireHTTP200OverTLSEventually(t *testing.T, hostHeader, address, port, path string, certPem, keyPem []byte, timeout time.Duration) {
 	t.Helper()
 
 	// Set defaults

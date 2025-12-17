@@ -90,22 +90,9 @@ func firstIngressHost(ing unstructured.Unstructured) (string, bool) {
 	return h, h != ""
 }
 
-func firstHTTPRouteHost(objs []unstructured.Unstructured) string {
+func firstRouteHost(objs []unstructured.Unstructured) string {
 	for _, o := range objs {
-		if o.GetKind() != "HTTPRoute" {
-			continue
-		}
-		hosts, found, _ := unstructured.NestedStringSlice(o.Object, "spec", "hostnames")
-		if found && len(hosts) > 0 && hosts[0] != "" {
-			return hosts[0]
-		}
-	}
-	return ""
-}
-
-func firstTLSRouteHost(objs []unstructured.Unstructured) string {
-	for _, o := range objs {
-		if o.GetKind() != "TLSRoute" {
+		if o.GetKind() != "HTTPRoute" && o.GetKind() != "TLSRoute" {
 			continue
 		}
 		hosts, found, _ := unstructured.NestedStringSlice(o.Object, "spec", "hostnames")
