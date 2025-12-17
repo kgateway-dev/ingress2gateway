@@ -152,13 +152,13 @@ func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 	if hostHeader == "" {
 		hostHeader = "demo.localdev.me"
 	}
-	log.Printf("ingressIP: %s", ingressIP)
+
 	// Test connectivity via Ingress (HTTP requests made directly from test code).
-	// if inputFile == "ssl_redirect.yaml" {
-	// 	requireHTTPRedirectEventually(t, ctx, hostHeader, "http", ingressIP, "", "/", "308", 1*time.Minute)
-	// } else {
-	// 	requireHTTP200Eventually(t, ctx, hostHeader, "http", ingressIP, "", "/", 1*time.Minute)
-	// }
+	if inputFile == "ssl_redirect.yaml" {
+		requireHTTPRedirectEventually(t, ctx, hostHeader, "http", ingressIP, "", "/", "308", 1*time.Minute)
+	} else {
+		requireHTTP200Eventually(t, ctx, hostHeader, "http", ingressIP, "", "/", 1*time.Minute)
+	}
 
 	// Apply the matching ingress2gateway output YAML.
 	if _, err := os.Stat(outPath); err != nil {
