@@ -225,7 +225,7 @@ func requireHTTPRedirectEventually(t *testing.T, hostHeader, scheme, address, po
 		},
 		RedirectRequest: &roundtripper.RedirectRequest{
 			Scheme: "https",
-			Port:   "443",
+			Port:   "",
 			Path:   path,
 		},
 	}
