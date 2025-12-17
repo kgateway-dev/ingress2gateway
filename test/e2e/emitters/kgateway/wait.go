@@ -235,51 +235,21 @@ func requireHTTPRedirectEventually(t *testing.T, ctx context.Context, hostHeader
 }
 
 // requireHTTP200OverHTTPSEventually waits for HTTP 200 status code over an HTTPS connection with TLS certificates.
-// Uses Gateway API conformance TLS utilities with certificates from ssl-redirect-tls secret.
-func requireHTTP200OverHTTPSEventually(t *testing.T, ctx context.Context, hostHeader, address, port, path string, timeout time.Duration) {
+// Uses Gateway API conformance TLS utilities with certificates from the specified secret.
+func requireHTTP200OverHTTPSEventually(t *testing.T, ctx context.Context, hostHeader, address, port, path, secretName string, timeout time.Duration) {
 	t.Helper()
 
-	// Set defaults
-	if port == "" {
-		port = "443"
-	}
-	if path == "" {
-		path = "/"
-	}
-
-	// Load TLS certificates from ssl-redirect-tls secret
+	// Load TLS certificates from the specified secret
 	cl, err := getKubernetesClient()
 	if err != nil {
 		t.Fatalf("failed to create Kubernetes client: %v", err)
 	}
-	certPem, keyPem, err := gwtests.GetTLSSecret(cl, types.NamespacedName{Namespace: "default", Name: "ssl-redirect-tls"})
+	certPem, keyPem, err := gwtests.GetTLSSecret(cl, types.NamespacedName{Namespace: "default", Name: secretName})
 	if err != nil {
 		t.Fatalf("unexpected error finding TLS secret: %v", err)
 	}
 
-	gwAddr := net.JoinHostPort(address, port)
-
-	expected := gwhttp.ExpectedResponse{
-		Request: gwhttp.Request{
-			Host:   hostHeader,
-			Method: "GET",
-			Path:   path,
-		},
-		Response: gwhttp.Response{
-			StatusCode: 200,
-		},
-	}
-
-	// Create roundtripper that connects to IP but uses hostname for SNI
-	rt := getRoundTripperForIP(address, hostHeader)
-
-	// Configure timeout config for the TLS request
-	timeoutConfig := gwconfig.DefaultTimeoutConfig()
-	timeoutConfig.MaxTimeToConsistency = timeout
-	timeoutConfig.RequiredConsecutiveSuccesses = 1
-
-	// Use Gateway API TLS utilities to make the request with certificates
-	gwtls.MakeTLSRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, certPem, keyPem, hostHeader, expected)
+	requireHTTP200OverTLSEventually(t, ctx, hostHeader, address, port, path, certPem, keyPem, timeout)
 }
 
 // getKubernetesClient creates a Kubernetes client using the kubeconfig context.

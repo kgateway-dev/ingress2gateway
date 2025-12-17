@@ -93,9 +93,9 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// e2eTestSetup handles common setup for e2e tests and returns the context, gateway address, and host.
+// e2eTestSetup handles common setup for e2e tests and returns the context, gateway address, host, and ingress address.
 // The caller is responsible for cleanup and test-specific validation.
-func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, string, string) {
+func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, string, string, string) {
 	if !e2eSetupComplete {
 		t.Fatalf("e2e setup did not complete")
 	}
@@ -160,18 +160,6 @@ func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 		hostHeader = "demo.localdev.me"
 	}
 
-	// Test connectivity via Ingress (HTTP requests made directly from test code).
-	// Skip connectivity test for SSL passthrough since it uses TLS, not HTTP.
-	// SSL passthrough will be tested separately in the test function.
-	if inputFile == "ssl_redirect.yaml" {
-		requireHTTPRedirectEventually(t, ctx, hostHeader, "http", ingressIP, "", "/", "308", 1*time.Minute)
-	} else if inputFile == "ssl_passthrough.yaml" {
-		// SSL passthrough uses TLS, skip HTTP connectivity test here
-		// TLS connectivity will be tested in TestSSLPassthrough
-	} else {
-		requireHTTP200Eventually(t, ctx, hostHeader, "http", ingressIP, "", "/", 1*time.Minute)
-	}
-
 	// Apply the matching ingress2gateway output YAML.
 	if _, err := os.Stat(outPath); err != nil {
 		t.Fatalf("expected output file missing: %s (%v)", outPath, err)
@@ -211,59 +199,44 @@ func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 		host = tr
 	}
 
-	return ctx, gwAddr, host
+	return ctx, gwAddr, host, ingressIP
 }
 
 func TestBasic(t *testing.T) {
-	ctx, gwAddr, host := e2eTestSetup(t, "basic.yaml", "basic.yaml")
+	ctx, gwAddr, host, ingressIP := e2eTestSetup(t, "basic.yaml", "basic.yaml")
 
-	// Standard HTTP test
+	// Test HTTP connectivity via Ingress
+	requireHTTP200Eventually(t, ctx, host, "http", ingressIP, "", "/", 1*time.Minute)
+
+	// Test HTTP connectivity via Gateway
 	requireHTTP200Eventually(t, ctx, host, "http", gwAddr, "80", "/", 1*time.Minute)
 }
 
 func TestSSLRedirect(t *testing.T) {
-	ctx, gwAddr, host := e2eTestSetup(t, "ssl_redirect.yaml", "ssl_redirect.yaml")
+	ctx, gwAddr, host, ingressIP := e2eTestSetup(t, "ssl_redirect.yaml", "ssl_redirect.yaml")
 
-	// Test HTTP redirect (301) to HTTPS
+	// Test HTTP redirect (308) through Ingress
+	requireHTTPRedirectEventually(t, ctx, host, "http", ingressIP, "", "/", "308", 1*time.Minute)
+
+	// Test HTTP redirect (301) through Gateway
 	requireHTTPRedirectEventually(t, ctx, host, "http", gwAddr, "80", "/", "301", 1*time.Minute)
 
-	// Test HTTPS connectivity (HTTP 200 status code) with insecure flag
-	requireHTTP200OverHTTPSEventually(t, ctx, host, gwAddr, "443", "/", 1*time.Minute)
+	// Test HTTPS connectivity (HTTP 200 status code)
+	requireHTTP200OverHTTPSEventually(t, ctx, host, gwAddr, "443", "/", "ssl-redirect-tls", 1*time.Minute)
 }
 
 func TestCORS(t *testing.T) {
-	ctx, gwAddr, host := e2eTestSetup(t, "cors.yaml", "cors.yaml")
+	ctx, gwAddr, host, ingressIP := e2eTestSetup(t, "cors.yaml", "cors.yaml")
 
-	// Standard HTTP test
+	// Test HTTP connectivity via Ingress
+	requireHTTP200Eventually(t, ctx, host, "http", ingressIP, "", "/", 1*time.Minute)
+
+	// Test HTTP connectivity via Gateway
 	requireHTTP200Eventually(t, ctx, host, "http", gwAddr, "80", "/", 1*time.Minute)
 }
 
 func TestSSLPassthrough(t *testing.T) {
-	ctx, gwAddr, host := e2eTestSetup(t, "ssl_passthrough.yaml", "ssl_passthrough.yaml")
-
-	// Get Ingress address for testing
-	root, err := moduleRoot(ctx)
-	if err != nil {
-		t.Fatalf("moduleRoot: %v", err)
-	}
-	inPath := filepath.Join(root, "test/e2e/emitters/kgateway/testdata/input/ssl_passthrough.yaml")
-	ingObjs, err := decodeObjects(inPath)
-	if err != nil {
-		t.Fatalf("decode input objects: %v", err)
-	}
-	ingresses := filterKind(ingObjs, "Ingress")
-	if len(ingresses) == 0 {
-		t.Fatalf("no Ingress objects found")
-	}
-	ing := ingresses[0]
-	ns := ing.GetNamespace()
-	if ns == "" {
-		ns = "default"
-	}
-	ingressIP, err := getIngressAddress(ctx, ns, ing.GetName())
-	if err != nil {
-		t.Fatalf("get ingress address: %v", err)
-	}
+	ctx, gwAddr, host, ingressIP := e2eTestSetup(t, "ssl_passthrough.yaml", "ssl_passthrough.yaml")
 
 	// Load TLS certificates from secret for verification
 	cl, err := getKubernetesClient()
