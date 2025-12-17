@@ -18,17 +18,16 @@ package kgateway
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net"
-	"net/http"
-	"strings"
 	"testing"
 	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
+	gwtests "sigs.k8s.io/gateway-api/conformance/tests"
 	gwconfig "sigs.k8s.io/gateway-api/conformance/utils/config"
 	gwhttp "sigs.k8s.io/gateway-api/conformance/utils/http"
 	"sigs.k8s.io/gateway-api/conformance/utils/roundtripper"
@@ -145,61 +144,7 @@ func getRoundTripper() roundtripper.RoundTripper {
 	}
 }
 
-// getRoundTripperWithSNI creates a DefaultRoundTripper with custom dialer for SNI support.
-// The dialer connects to the provided IP address but uses the hostname for SNI.
-// If insecure is true, TLS verification is skipped.
-func getRoundTripperWithSNI(ip string, hostname string, insecure bool) roundtripper.RoundTripper {
-	timeoutConfig := gwconfig.DefaultTimeoutConfig()
-	timeoutConfig.RequestTimeout = 5 * time.Second
-
-	return &roundtripper.DefaultRoundTripper{
-		TimeoutConfig: timeoutConfig,
-		CustomDialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			// Parse the address to extract port
-			_, port, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
-			}
-			// Connect to the IP address instead of resolving the hostname
-			dialer := &net.Dialer{}
-			return dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
-		},
-	}
-}
-
 func requireHTTP200Eventually(t *testing.T, ctx context.Context, hostHeader, scheme, address, port, path string, timeout time.Duration) {
-	t.Helper()
-
-	deadline := time.Now().Add(timeout)
-	interval := 2 * time.Second
-
-	var lastCode string
-	var lastOut string
-	var lastErr error
-
-	for attempt := 1; time.Now().Before(deadline); attempt++ {
-		code, out, err := httpCodeFromClient(t, hostHeader, scheme, address, port, path)
-		lastCode, lastOut, lastErr = code, out, err
-
-		if err == nil && strings.TrimSpace(code) == "200" {
-			return
-		}
-
-		if attempt == 1 || attempt%10 == 0 {
-			t.Logf("waiting for HTTP 200 (attempt=%d host=%s scheme=%s address=%s port=%s path=%s): code=%q err=%v",
-				attempt, hostHeader, scheme, address, port, path, strings.TrimSpace(code), err)
-		}
-		time.Sleep(interval)
-	}
-
-	_ = debugHTTPVerbose(t, hostHeader, scheme, address, port, path)
-
-	t.Fatalf("timed out waiting for HTTP 200 (host=%s scheme=%s address=%s port=%s path=%s timeout=%s). lastCode=%q lastErr=%v lastOut=%s",
-		hostHeader, scheme, address, port, path, timeout, strings.TrimSpace(lastCode), lastErr, lastOut)
-}
-
-// httpCodeFromClient makes an HTTP request using Gateway API conformance utilities and returns the status code.
-func httpCodeFromClient(t *testing.T, hostHeader, scheme, address, port, path string) (code string, out string, err error) {
 	t.Helper()
 
 	// Set defaults
@@ -214,8 +159,6 @@ func httpCodeFromClient(t *testing.T, hostHeader, scheme, address, port, path st
 		path = "/"
 	}
 
-	// gwhttp.MakeRequest expects gwAddr in format "host:port" or just "host" (it handles default ports)
-	// But CalculateHost will strip default ports, so we need to pass address:port
 	gwAddr := net.JoinHostPort(address, port)
 
 	expected := gwhttp.ExpectedResponse{
@@ -225,31 +168,75 @@ func httpCodeFromClient(t *testing.T, hostHeader, scheme, address, port, path st
 			Path:   path,
 		},
 		Response: gwhttp.Response{
-			StatusCode: 200, // We'll check the actual status code from the response
+			StatusCode: 200,
 		},
 	}
 
-	req := gwhttp.MakeRequest(t, &expected, gwAddr, strings.ToUpper(scheme), scheme)
 	rt := getRoundTripper()
+	timeoutConfig := gwconfig.DefaultTimeoutConfig()
+	timeoutConfig.MaxTimeToConsistency = timeout
+	timeoutConfig.RequiredConsecutiveSuccesses = 1
 
-	cReq, cRes, err := rt.CaptureRoundTrip(req)
-	if err != nil {
-		return "000", fmt.Sprintf("request failed: %v", err), err
-	}
-
-	statusCode := fmt.Sprintf("%d", cRes.StatusCode)
-	responseInfo := fmt.Sprintf("Status: %d, Protocol: %s", cRes.StatusCode, cRes.Protocol)
-	if cReq != nil {
-		responseInfo += fmt.Sprintf(", Path: %s, Host: %s", cReq.Path, cReq.Host)
-	}
-
-	return statusCode, responseInfo, nil
+	gwhttp.MakeRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, expected)
 }
 
-// httpCodeWithSNIFromClient makes an HTTPS request with SNI support using Gateway API conformance utilities.
-// It connects to the IP address but uses the hostname for SNI.
-// If insecure is true, TLS certificate verification is skipped.
-func httpCodeWithSNIFromClient(t *testing.T, hostHeader, address, port, path string, insecure bool) (code string, out string, err error) {
+// requireHTTPRedirectEventually waits for an HTTP redirect response with the expected status code
+// and verifies the Location header contains https:// scheme.
+// expectedCode should be "301" (Moved Permanently) or "308" (Permanent Redirect).
+func requireHTTPRedirectEventually(t *testing.T, ctx context.Context, hostHeader, scheme, address, port, path string, expectedCode string, timeout time.Duration) {
+	t.Helper()
+
+	// Set defaults
+	if port == "" {
+		if scheme == "https" {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	if path == "" {
+		path = "/"
+	}
+
+	gwAddr := net.JoinHostPort(address, port)
+
+	// Parse expected status code
+	var statusCode int
+	if expectedCode == "301" {
+		statusCode = 301
+	} else if expectedCode == "308" {
+		statusCode = 308
+	} else {
+		t.Fatalf("unexpected redirect code: %s (expected 301 or 308)", expectedCode)
+	}
+
+	expected := gwhttp.ExpectedResponse{
+		Request: gwhttp.Request{
+			Host:             hostHeader,
+			Method:           "GET",
+			Path:             path,
+			UnfollowRedirect: true,
+		},
+		Response: gwhttp.Response{
+			StatusCodes: []int{statusCode},
+		},
+		RedirectRequest: &roundtripper.RedirectRequest{
+			Scheme: "https",
+			// Host and Path will be set by the gateway-api utility based on actual redirect
+		},
+	}
+
+	rt := getRoundTripper()
+	timeoutConfig := gwconfig.DefaultTimeoutConfig()
+	timeoutConfig.MaxTimeToConsistency = timeout
+	timeoutConfig.RequiredConsecutiveSuccesses = 1
+
+	gwhttp.MakeRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, expected)
+}
+
+// requireHTTP200OverHTTPSEventually waits for HTTP 200 status code over an HTTPS connection with TLS certificates.
+// Uses Gateway API conformance TLS utilities with certificates from ssl-redirect-tls secret.
+func requireHTTP200OverHTTPSEventually(t *testing.T, ctx context.Context, hostHeader, address, port, path string, timeout time.Duration) {
 	t.Helper()
 
 	// Set defaults
@@ -260,231 +247,16 @@ func httpCodeWithSNIFromClient(t *testing.T, hostHeader, address, port, path str
 		path = "/"
 	}
 
-	ip := address
-
-	expected := gwhttp.ExpectedResponse{
-		Request: gwhttp.Request{
-			Host:   hostHeader,
-			Method: "GET",
-			Path:   path,
-			SNI:    hostHeader, // Set SNI to the hostname
-		},
-		Response: gwhttp.Response{
-			StatusCode: 200,
-		},
-	}
-
-	req := gwhttp.MakeRequest(t, &expected, fmt.Sprintf("%s:%s", hostHeader, port), "HTTPS", "https")
-	req.Server = hostHeader // Set Server for SNI
-
-	// Create roundtripper with custom dialer for IP connection and SNI
-	rt := getRoundTripperWithSNI(ip, hostHeader, insecure)
-
-	// For insecure connections, we need to customize the TLS config
-	// The roundtripper doesn't directly support InsecureSkipVerify via Request,
-	// so we'll need to handle this in the custom dialer or create a custom transport
-	if insecure {
-		// We'll handle this by creating a custom transport wrapper
-		timeoutConfig := gwconfig.DefaultTimeoutConfig()
-		timeoutConfig.RequestTimeout = 5 * time.Second
-		rt = &roundtripper.DefaultRoundTripper{
-			TimeoutConfig: timeoutConfig,
-			CustomDialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				_, port, err := net.SplitHostPort(addr)
-				if err != nil {
-					return nil, err
-				}
-				dialer := &net.Dialer{}
-				return dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
-			},
-		}
-		// We need to set TLS config with InsecureSkipVerify
-		// This requires accessing the transport, which we'll do via a custom implementation
-		// For now, let's use a simpler approach with a custom HTTP client
-		return httpCodeWithSNIInsecure(t, hostHeader, ip, port, path)
-	}
-
-	cReq, cRes, err := rt.CaptureRoundTrip(req)
+	// Load TLS certificates from ssl-redirect-tls secret
+	cl, err := getKubernetesClient()
 	if err != nil {
-		return "000", fmt.Sprintf("request failed: %v", err), err
+		t.Fatalf("failed to create Kubernetes client: %v", err)
 	}
-
-	statusCode := fmt.Sprintf("%d", cRes.StatusCode)
-	responseInfo := fmt.Sprintf("Status: %d, Protocol: %s", cRes.StatusCode, cRes.Protocol)
-	if cReq != nil {
-		responseInfo += fmt.Sprintf(", Path: %s, Host: %s", cReq.Path, cReq.Host)
-	}
-
-	return statusCode, responseInfo, nil
-}
-
-// httpCodeWithSNIInsecure makes an HTTPS request with SNI and insecure TLS verification.
-func httpCodeWithSNIInsecure(t *testing.T, hostname, ip, port, path string) (code string, out string, err error) {
-	t.Helper()
-
-	// Create a custom HTTP client with TLS config that skips verification
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				ServerName:         hostname,
-				InsecureSkipVerify: true,
-			},
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				dialer := &net.Dialer{}
-				return dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
-			},
-		},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-
-	urlStr := fmt.Sprintf("https://%s:%s%s", hostname, port, path)
-	req, err := http.NewRequest("GET", urlStr, nil)
+	certPem, keyPem, err := gwtests.GetTLSSecret(cl, types.NamespacedName{Namespace: "default", Name: "ssl-redirect-tls"})
 	if err != nil {
-		return "000", "", fmt.Errorf("create request: %w", err)
-	}
-	req.Host = hostname
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "000", fmt.Sprintf("request failed: %v", err), err
-	}
-	defer resp.Body.Close()
-
-	statusCode := fmt.Sprintf("%d", resp.StatusCode)
-	responseInfo := fmt.Sprintf("Status: %d, Protocol: %s", resp.StatusCode, resp.Proto)
-
-	return statusCode, responseInfo, nil
-}
-
-// httpRedirectFromClient makes an HTTP request and returns the status code and Location header.
-// It does NOT follow redirects so we can see the redirect response.
-// If insecure is true, TLS certificate verification is skipped (useful for HTTPS with self-signed certs).
-func httpRedirectFromClient(t *testing.T, hostHeader, scheme, address, port, path string, insecure bool) (code string, location string, out string, err error) {
-	t.Helper()
-
-	// Set defaults
-	if port == "" {
-		if scheme == "https" {
-			port = "443"
-		} else {
-			port = "80"
-		}
-	}
-	if path == "" {
-		path = "/"
+		t.Fatalf("unexpected error finding TLS secret: %v", err)
 	}
 
-	// gwhttp.MakeRequest expects gwAddr in format "host:port" or just "host" (it handles default ports)
-	// But CalculateHost will strip default ports, so we need to pass address:port
-	gwAddr := net.JoinHostPort(address, port)
-
-	expected := gwhttp.ExpectedResponse{
-		Request: gwhttp.Request{
-			Host:             hostHeader,
-			Method:           "GET",
-			Path:             path,
-			UnfollowRedirect: true, // Don't follow redirects
-		},
-		Response: gwhttp.Response{
-			StatusCode: 200, // We'll check the actual status code from the response
-		},
-	}
-
-	req := gwhttp.MakeRequest(t, &expected, gwAddr, strings.ToUpper(scheme), scheme)
-	req.UnfollowRedirect = true
-
-	var rt roundtripper.RoundTripper
-	if scheme == "https" && insecure {
-		// For HTTPS with insecure, use custom client
-		return httpRedirectInsecure(t, hostHeader, address, port, path)
-	}
-
-	rt = getRoundTripper()
-	_, cRes, err := rt.CaptureRoundTrip(req)
-	if err != nil {
-		return "000", "", fmt.Sprintf("request failed: %v", err), err
-	}
-
-	statusCode := fmt.Sprintf("%d", cRes.StatusCode)
-	locationHeader := ""
-	if cRes.Headers != nil {
-		for k, v := range cRes.Headers {
-			if strings.ToLower(k) == "location" && len(v) > 0 {
-				locationHeader = v[0]
-				break
-			}
-		}
-	}
-
-	responseInfo := fmt.Sprintf("Status: %d, Protocol: %s", cRes.StatusCode, cRes.Protocol)
-	if locationHeader != "" {
-		responseInfo += fmt.Sprintf(", Location: %s", locationHeader)
-	}
-
-	return statusCode, locationHeader, responseInfo, nil
-}
-
-// httpRedirectInsecure makes an HTTP request with insecure TLS and returns redirect info.
-func httpRedirectInsecure(t *testing.T, hostHeader, address, port, path string) (code string, location string, out string, err error) {
-	t.Helper()
-
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-		},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse // Don't follow redirects
-		},
-	}
-
-	urlStr := fmt.Sprintf("https://%s:%s%s", address, port, path)
-	req, err := http.NewRequest("GET", urlStr, nil)
-	if err != nil {
-		return "000", "", "", fmt.Errorf("create request: %w", err)
-	}
-	req.Host = hostHeader
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "000", "", fmt.Sprintf("request failed: %v", err), err
-	}
-	defer resp.Body.Close()
-
-	statusCode := fmt.Sprintf("%d", resp.StatusCode)
-	locationHeader := resp.Header.Get("Location")
-
-	responseInfo := fmt.Sprintf("Status: %d, Protocol: %s", resp.StatusCode, resp.Proto)
-	if locationHeader != "" {
-		responseInfo += fmt.Sprintf(", Location: %s", locationHeader)
-	}
-
-	return statusCode, locationHeader, responseInfo, nil
-}
-
-// debugHTTPVerbose logs detailed HTTP request/response information for debugging.
-func debugHTTPVerbose(t *testing.T, hostHeader, scheme, address, port, path string) error {
-	t.Helper()
-
-	// Set defaults
-	if port == "" {
-		if scheme == "https" {
-			port = "443"
-		} else {
-			port = "80"
-		}
-	}
-	if path == "" {
-		path = "/"
-	}
-
-	// gwhttp.MakeRequest expects gwAddr in format "host:port" or just "host" (it handles default ports)
-	// But CalculateHost will strip default ports, so we need to pass address:port
 	gwAddr := net.JoinHostPort(address, port)
 
 	expected := gwhttp.ExpectedResponse{
@@ -498,108 +270,16 @@ func debugHTTPVerbose(t *testing.T, hostHeader, scheme, address, port, path stri
 		},
 	}
 
-	req := gwhttp.MakeRequest(t, &expected, gwAddr, strings.ToUpper(scheme), scheme)
-	rt := getRoundTripper()
+	// Create roundtripper that connects to IP but uses hostname for SNI
+	rt := getRoundTripperForIP(address, hostHeader)
 
-	cReq, cRes, err := rt.CaptureRoundTrip(req)
-	if err != nil {
-		t.Logf("debug: request failed: %v", err)
-		return err
-	}
+	// Configure timeout config for the TLS request
+	timeoutConfig := gwconfig.DefaultTimeoutConfig()
+	timeoutConfig.MaxTimeToConsistency = timeout
+	timeoutConfig.RequiredConsecutiveSuccesses = 1
 
-	t.Logf("debug HTTP request details:")
-	t.Logf("  Scheme: %s", scheme)
-	t.Logf("  Address: %s", address)
-	t.Logf("  Port: %s", port)
-	t.Logf("  Path: %s", path)
-	t.Logf("  Host header: %s", hostHeader)
-	if cReq != nil {
-		t.Logf("  Request Path: %s", cReq.Path)
-		t.Logf("  Request Host: %s", cReq.Host)
-		t.Logf("  Request Method: %s", cReq.Method)
-		t.Logf("  Request Protocol: %s", cReq.Protocol)
-	}
-	if cRes != nil {
-		t.Logf("  Response Status: %d", cRes.StatusCode)
-		t.Logf("  Response Protocol: %s", cRes.Protocol)
-		if cRes.Headers != nil {
-			t.Logf("  Response Headers: %v", cRes.Headers)
-		}
-	}
-
-	return nil
-}
-
-// requireHTTPRedirectEventually waits for an HTTP redirect response with the expected status code
-// and verifies the Location header contains https:// scheme.
-// expectedCode should be "301" (Moved Permanently) or "308" (Permanent Redirect).
-func requireHTTPRedirectEventually(t *testing.T, ctx context.Context, hostHeader, scheme, address, port, path string, expectedCode string, timeout time.Duration) {
-	t.Helper()
-
-	deadline := time.Now().Add(timeout)
-	interval := 2 * time.Second
-
-	var lastCode string
-	var lastLocation string
-	var lastOut string
-	var lastErr error
-
-	for attempt := 1; time.Now().Before(deadline); attempt++ {
-		code, location, out, err := httpRedirectFromClient(t, hostHeader, scheme, address, port, path, false)
-		lastCode, lastLocation, lastOut, lastErr = code, location, out, err
-
-		codeTrimmed := strings.TrimSpace(code)
-		if err == nil && codeTrimmed == expectedCode {
-			// Verify Location header contains https://
-			if strings.HasPrefix(strings.ToLower(location), "https://") {
-				return
-			}
-		}
-
-		if attempt == 1 || attempt%10 == 0 {
-			t.Logf("waiting for HTTP %s redirect (attempt=%d host=%s scheme=%s address=%s port=%s path=%s): code=%q location=%q err=%v",
-				expectedCode, attempt, hostHeader, scheme, address, port, path, codeTrimmed, location, err)
-		}
-		time.Sleep(interval)
-	}
-
-	_ = debugHTTPVerbose(t, hostHeader, scheme, address, port, path)
-
-	t.Fatalf("timed out waiting for HTTP %s redirect (host=%s scheme=%s address=%s port=%s path=%s timeout=%s). lastCode=%q lastLocation=%q lastErr=%v lastOut=%s",
-		expectedCode, hostHeader, scheme, address, port, path, timeout, strings.TrimSpace(lastCode), lastLocation, lastErr, lastOut)
-}
-
-// requireHTTP200OverHTTPSEventually waits for HTTP 200 status code over an HTTPS connection with insecure TLS verification.
-func requireHTTP200OverHTTPSEventually(t *testing.T, ctx context.Context, hostHeader, address, port, path string, timeout time.Duration) {
-	t.Helper()
-
-	deadline := time.Now().Add(timeout)
-	interval := 2 * time.Second
-
-	var lastCode string
-	var lastOut string
-	var lastErr error
-
-	for attempt := 1; time.Now().Before(deadline); attempt++ {
-		code, out, err := httpCodeWithSNIFromClient(t, hostHeader, address, port, path, true)
-		lastCode, lastOut, lastErr = code, out, err
-
-		if err == nil && strings.TrimSpace(code) == "200" {
-			return
-		}
-
-		if attempt == 1 || attempt%10 == 0 {
-			t.Logf("waiting for HTTP 200 over HTTPS (attempt=%d host=%s address=%s port=%s path=%s): code=%q err=%v",
-				attempt, hostHeader, address, port, path, strings.TrimSpace(code), err)
-		}
-		time.Sleep(interval)
-	}
-
-	// Debug with verbose HTTP
-	_ = debugHTTPVerbose(t, hostHeader, "https", address, port, path)
-
-	t.Fatalf("timed out waiting for HTTP 200 over HTTPS (host=%s address=%s port=%s path=%s timeout=%s). lastCode=%q lastErr=%v lastOut=%s",
-		hostHeader, address, port, path, timeout, strings.TrimSpace(lastCode), lastErr, lastOut)
+	// Use Gateway API TLS utilities to make the request with certificates
+	gwtls.MakeTLSRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, certPem, keyPem, hostHeader, expected)
 }
 
 // getKubernetesClient creates a Kubernetes client using the kubeconfig context.
