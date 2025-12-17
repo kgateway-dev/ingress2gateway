@@ -162,6 +162,7 @@ func requireHTTP200Eventually(t *testing.T, hostHeader, scheme, address, port, p
 	gwAddr := net.JoinHostPort(address, port)
 
 	expected := gwhttp.ExpectedResponse{
+		Namespace: "default",
 		Request: gwhttp.Request{
 			Host:   hostHeader,
 			Method: "GET",
@@ -211,6 +212,7 @@ func requireHTTPRedirectEventually(t *testing.T, hostHeader, scheme, address, po
 	}
 
 	expected := gwhttp.ExpectedResponse{
+		Namespace: "default",
 		Request: gwhttp.Request{
 			Host:             hostHeader,
 			Method:           "GET",
@@ -302,6 +304,7 @@ func requireHTTP200OverTLSEventually(t *testing.T, hostHeader, address, port, pa
 	gwAddr := net.JoinHostPort(address, port)
 
 	expected := gwhttp.ExpectedResponse{
+		Namespace: "default",
 		Request: gwhttp.Request{
 			Host:   hostHeader,
 			Method: "GET",
