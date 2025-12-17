@@ -8,6 +8,10 @@ metadata:
   namespace: default
 spec:
   ingressClassName: nginx
+  tls:
+  - hosts:
+    - redirect.example
+    secretName: redirect-tls
   rules:
   - host: redirect.example
     http:
@@ -30,6 +34,10 @@ metadata:
   namespace: default
 spec:
   ingressClassName: nginx
+  tls:
+  - hosts:
+    - redirect.example
+    secretName: redirect-tls
   rules:
   - host: redirect.example
     http:
@@ -59,6 +67,10 @@ metadata:
   namespace: default
 spec:
   ingressClassName: nginx
+  tls:
+  - hosts:
+    - force-redirect.example
+    secretName: force-redirect-tls
   rules:
   - host: force-redirect.example
     http:

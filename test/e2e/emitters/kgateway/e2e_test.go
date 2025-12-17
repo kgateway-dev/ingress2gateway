@@ -22,7 +22,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -88,13 +87,15 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func TestIngress2GatewayE2E(t *testing.T) {
+// e2eTestSetup handles common setup for e2e tests and returns the context, gateway address, and host.
+// The caller is responsible for cleanup and test-specific validation.
+func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, string, string) {
 	if !e2eSetupComplete {
 		t.Fatalf("e2e setup did not complete")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
+	t.Cleanup(cancel)
 
 	root, err := moduleRoot(ctx)
 	if err != nil {
@@ -104,107 +105,115 @@ func TestIngress2GatewayE2E(t *testing.T) {
 	inputDir := filepath.Join(root, "test/e2e/emitters/kgateway/testdata/input")
 	outputDir := filepath.Join(root, "test/e2e/emitters/kgateway/testdata/output")
 
-	inFiles, err := filepath.Glob(filepath.Join(inputDir, "*.yaml"))
+	inPath := filepath.Join(inputDir, inputFile)
+	outPath := filepath.Join(outputDir, outputFile)
+
+	// Apply input Ingress YAML.
+	mustKubectl(ctx, "apply", "-f", inPath)
+
+	// Ensure cleanup of per-test resources (but keep curl + echo).
+	t.Cleanup(func() {
+		if _, delErr := kubectl(ctx, "delete", "-f", outPath, "--ignore-not-found=true", "--wait=true", "--timeout=2m"); delErr != nil {
+			t.Logf("failed to delete output: %v", delErr)
+		}
+		if _, delErr := kubectl(ctx, "delete", "-f", inPath, "--ignore-not-found=true", "--wait=true", "--timeout=2m"); delErr != nil {
+			t.Logf("failed to delete input: %v", delErr)
+		}
+	})
+
+	ingObjs, err := decodeObjects(inPath)
 	if err != nil {
-		t.Fatalf("glob input: %v", err)
+		t.Fatalf("decode input objects: %v", err)
 	}
-	if len(inFiles) == 0 {
-		t.Fatalf("no test cases found in %s", inputDir)
+	ingresses := filterKind(ingObjs, "Ingress")
+	if len(ingresses) == 0 {
+		t.Fatalf("input %s had no Ingress objects", inPath)
 	}
 
-	for _, inPath := range inFiles {
-		name := strings.TrimSuffix(filepath.Base(inPath), filepath.Ext(inPath))
-		outPath := filepath.Join(outputDir, name+".yaml")
+	// Wait for Ingress status before proceeding.
+	var ingressIP string
+	var hostHeader string
+	for _, ing := range ingresses {
+		ns := ing.GetNamespace()
+		if ns == "" {
+			ns = "default"
+		}
+		waitForIngressAddress(t, ctx, ns, ing.GetName(), 1*time.Minute)
 
-		t.Run(name, func(t *testing.T) {
-			// Apply input Ingress YAML.
-			mustKubectl(ctx, "apply", "-f", inPath)
+		ipOrHost, err := getIngressAddress(ctx, ns, ing.GetName())
+		if err != nil {
+			t.Fatalf("get ingress address: %v", err)
+		}
+		ingressIP = ipOrHost
 
-			// Ensure cleanup of per-test resources (but keep curl + echo).
-			t.Cleanup(func() {
-				if _, delErr := kubectl(ctx, "delete", "-f", outPath, "--ignore-not-found=true", "--wait=true", "--timeout=2m"); delErr != nil {
-					t.Logf("failed to delete output: %v", delErr)
-				}
-				if _, delErr := kubectl(ctx, "delete", "-f", inPath, "--ignore-not-found=true", "--wait=true", "--timeout=2m"); delErr != nil {
-					t.Logf("failed to delete input: %v", delErr)
-				}
-			})
-
-			ingObjs, err := decodeObjects(inPath)
-			if err != nil {
-				t.Fatalf("decode input objects: %v", err)
-			}
-			ingresses := filterKind(ingObjs, "Ingress")
-			if len(ingresses) == 0 {
-				t.Fatalf("input %s had no Ingress objects", inPath)
-			}
-
-			// Wait for Ingress status before proceeding.
-			var ingressIP string
-			var hostHeader string
-			for _, ing := range ingresses {
-				ns := ing.GetNamespace()
-				if ns == "" {
-					ns = "default"
-				}
-				waitForIngressAddress(t, ctx, ns, ing.GetName(), 1*time.Minute)
-
-				ipOrHost, err := getIngressAddress(ctx, ns, ing.GetName())
-				if err != nil {
-					t.Fatalf("get ingress address: %v", err)
-				}
-				ingressIP = ipOrHost
-
-				if h, _ := firstIngressHost(ing); h != "" {
-					hostHeader = h
-				}
-			}
-			if hostHeader == "" {
-				hostHeader = "demo.localdev.me"
-			}
-
-			// Curl via Ingress (from the in-cluster curl client).
-			requireHTTP200Eventually(t, ctx, hostHeader, fmt.Sprintf("http://%s/", ingressIP), 1*time.Minute)
-
-			// Apply the matching ingress2gateway output YAML.
-			if _, err := os.Stat(outPath); err != nil {
-				t.Fatalf("expected output file missing: %s (%v)", outPath, err)
-			}
-			mustKubectl(ctx, "apply", "-f", outPath)
-
-			outObjs, err := decodeObjects(outPath)
-			if err != nil {
-				t.Fatalf("decode output objects: %v", err)
-			}
-
-			// Check expected status conditions (GatewayClass, Gateway, HTTPRoute, etc.).
-			waitForOutputReadiness(t, ctx, outObjs, 1*time.Minute)
-
-			// Get Gateway address.
-			gws := filterKind(outObjs, "Gateway")
-			if len(gws) == 0 {
-				t.Fatalf("output %s had no Gateway objects", outPath)
-			}
-			gw := gws[0]
-			gwNS := gw.GetNamespace()
-			if gwNS == "" {
-				gwNS = "default"
-			}
-			gwName := gw.GetName()
-
-			gwAddr, err := waitForGatewayAddress(ctx, gwNS, gwName, 1*time.Minute)
-			if err != nil {
-				t.Fatalf("gateway address: %v", err)
-			}
-
-			// Prefer HTTPRoute hostnames if present.
-			host := hostHeader
-			if hr := firstHTTPRouteHost(outObjs); hr != "" {
-				host = hr
-			}
-
-			// Curl via Gateway.
-			requireHTTP200Eventually(t, ctx, host, fmt.Sprintf("http://%s:80/", gwAddr), 1*time.Minute)
-		})
+		if h, _ := firstIngressHost(ing); h != "" {
+			hostHeader = h
+		}
 	}
+	if hostHeader == "" {
+		hostHeader = "demo.localdev.me"
+	}
+
+	// Curl via Ingress (from the in-cluster curl client).
+	if inputFile == "ssl_redirect.yaml" {
+		requireHTTPRedirectEventually(t, ctx, hostHeader, fmt.Sprintf("http://%s/", ingressIP), "308", 1*time.Minute)
+	} else {
+		requireHTTP200Eventually(t, ctx, hostHeader, fmt.Sprintf("http://%s/", ingressIP), 1*time.Minute)
+	}
+
+	// Apply the matching ingress2gateway output YAML.
+	if _, err := os.Stat(outPath); err != nil {
+		t.Fatalf("expected output file missing: %s (%v)", outPath, err)
+	}
+	mustKubectl(ctx, "apply", "-f", outPath)
+
+	outObjs, err := decodeObjects(outPath)
+	if err != nil {
+		t.Fatalf("decode output objects: %v", err)
+	}
+
+	// Check expected status conditions (GatewayClass, Gateway, HTTPRoute, etc.).
+	waitForOutputReadiness(t, ctx, outObjs, 1*time.Minute)
+
+	// Get Gateway address.
+	gws := filterKind(outObjs, "Gateway")
+	if len(gws) == 0 {
+		t.Fatalf("output %s had no Gateway objects", outPath)
+	}
+	gw := gws[0]
+	gwNS := gw.GetNamespace()
+	if gwNS == "" {
+		gwNS = "default"
+	}
+	gwName := gw.GetName()
+
+	gwAddr, err := waitForGatewayAddress(ctx, gwNS, gwName, 1*time.Minute)
+	if err != nil {
+		t.Fatalf("gateway address: %v", err)
+	}
+
+	// Prefer HTTPRoute hostnames if present.
+	host := hostHeader
+	if hr := firstHTTPRouteHost(outObjs); hr != "" {
+		host = hr
+	}
+
+	return ctx, gwAddr, host
+}
+
+func TestBasic(t *testing.T) {
+	ctx, gwAddr, host := e2eTestSetup(t, "basic.yaml", "basic.yaml")
+
+	// Standard HTTP test
+	requireHTTP200Eventually(t, ctx, host, fmt.Sprintf("http://%s:80/", gwAddr), 1*time.Minute)
+}
+
+func TestSSLRedirect(t *testing.T) {
+	ctx, gwAddr, host := e2eTestSetup(t, "ssl_redirect.yaml", "ssl_redirect.yaml")
+
+	// Test HTTP redirect (301) to HTTPS
+	requireHTTPRedirectEventually(t, ctx, host, fmt.Sprintf("http://%s:80/", gwAddr), "301", 1*time.Minute)
+
+	// Test HTTPS connectivity (HTTP 200 status code) with insecure flag
+	requireHTTP200OverHTTPSEventually(t, ctx, host, fmt.Sprintf("https://%s:443/", gwAddr), 1*time.Minute)
 }
