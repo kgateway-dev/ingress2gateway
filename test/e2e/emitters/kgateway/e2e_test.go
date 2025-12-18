@@ -26,6 +26,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 	gwtests "sigs.k8s.io/gateway-api/conformance/tests"
+	"sigs.k8s.io/gateway-api/conformance/utils/roundtripper"
 )
 
 func TestMain(m *testing.M) {
@@ -41,6 +42,7 @@ func TestMain(m *testing.M) {
 	mustHaveBin("helm")
 	mustHaveBin("go")
 	mustHaveBin("openssl")
+	mustHaveBin("htpasswd")
 
 	ctx := context.Background()
 
@@ -76,6 +78,9 @@ func TestMain(m *testing.M) {
 
 	// TLS-enabled backend for SSL passthrough tests.
 	applyTLSBackend(ctx)
+
+	// Create auth-map secret for basic auth tests.
+	createAuthMapSecret(ctx, "auth-map-secret", "testuser", "testpass")
 
 	e2eSetupComplete = true
 
@@ -204,33 +209,102 @@ func TestBasic(t *testing.T) {
 	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "basic.yaml", "basic.yaml")
 
 	// Test HTTP connectivity via Ingress
-	requireHTTP200Eventually(t, ingressHostHeader, "http", ingressIP, "", "/", 1*time.Minute)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         ingressHostHeader,
+		Scheme:             "http",
+		Address:            ingressIP,
+		Port:               "",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+	})
 
 	// Test HTTP connectivity via Gateway
-	requireHTTP200Eventually(t, host, "http", gwAddr, "80", "/", 1*time.Minute)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         host,
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+	})
 }
 
 func TestSSLRedirect(t *testing.T) {
 	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "ssl_redirect.yaml", "ssl_redirect.yaml")
 
 	// Test HTTP redirect (308) through Ingress
-	requireHTTPRedirectEventually(t, ingressHostHeader, ingressIP, "", "", "308", 5*time.Second)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:          ingressHostHeader,
+		Address:             ingressIP,
+		Port:                "",
+		Path:                "",
+		ExpectedStatusCodes: []int{308},
+		Timeout:             5 * time.Second,
+		UnfollowRedirect:    true,
+		SNI:                 ingressHostHeader,
+		RedirectRequest: &roundtripper.RedirectRequest{
+			Scheme: "https",
+			Port:   "",
+			Path:   "",
+		},
+	})
 
 	// Test HTTP redirect (301) through Gateway
-	requireHTTPRedirectEventually(t, host, gwAddr, "", "/", "301", 5*time.Second)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:          host,
+		Address:             gwAddr,
+		Port:                "",
+		Path:                "/",
+		ExpectedStatusCodes: []int{301},
+		Timeout:             5 * time.Second,
+		UnfollowRedirect:    true,
+		SNI:                 host,
+		RedirectRequest: &roundtripper.RedirectRequest{
+			Scheme: "https",
+			Port:   "",
+			Path:   "/",
+		},
+	})
 
 	// Test HTTPS connectivity (HTTP 200 status code)
-	requireHTTP200OverHTTPSEventually(t, host, gwAddr, "443", "/", "ssl-redirect-tls", 5*time.Second)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         host,
+		Scheme:             "https",
+		Address:            gwAddr,
+		Port:               "443",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            5 * time.Second,
+		SecretName:         "ssl-redirect-tls",
+	})
 }
 
 func TestLoadBalance(t *testing.T) {
 	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "load_balance.yaml", "load_balance.yaml")
 
 	// Test HTTP connectivity via Ingress
-	requireHTTP200Eventually(t, ingressHostHeader, "http", ingressIP, "", "/", 1*time.Minute)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         ingressHostHeader,
+		Scheme:             "http",
+		Address:            ingressIP,
+		Port:               "",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+	})
 
 	// Test HTTP connectivity via Gateway
-	requireHTTP200Eventually(t, host, "http", gwAddr, "80", "/", 1*time.Minute)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         host,
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+	})
 
 	// Assert we actually see all 3 backends.
 	requireLoadBalancedAcrossPodsEventually(t, host, "http", gwAddr, "80", "/", 3, 1*time.Minute)
@@ -240,10 +314,26 @@ func TestCORS(t *testing.T) {
 	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "cors.yaml", "cors.yaml")
 
 	// Test HTTP connectivity via Ingress
-	requireHTTP200Eventually(t, ingressHostHeader, "http", ingressIP, "", "/", 1*time.Minute)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         ingressHostHeader,
+		Scheme:             "http",
+		Address:            ingressIP,
+		Port:               "",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+	})
 
 	// Test HTTP connectivity via Gateway
-	requireHTTP200Eventually(t, host, "http", gwAddr, "80", "/", 1*time.Minute)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         host,
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+	})
 }
 
 func TestSSLPassthrough(t *testing.T) {
@@ -261,40 +351,96 @@ func TestSSLPassthrough(t *testing.T) {
 
 	// Test TLS passthrough connectivity via Ingress using TLS certificates
 	// For TLS passthrough, the backend certificate is presented to the client through the gateway
-	requireHTTP200OverTLSEventually(t, ingressHostHeader, ingressIP, "443", "/", certPem, keyPem, 1*time.Minute)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         ingressHostHeader,
+		Scheme:             "https",
+		Address:            ingressIP,
+		Port:               "443",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+		CertPem:            certPem,
+		KeyPem:             keyPem,
+	})
 
 	// Test TLS passthrough connectivity via Gateway using TLS certificates
-	requireHTTP200OverTLSEventually(t, host, gwAddr, "443", "/", certPem, keyPem, 1*time.Minute)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         host,
+		Scheme:             "https",
+		Address:            gwAddr,
+		Port:               "443",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+		CertPem:            certPem,
+		KeyPem:             keyPem,
+	})
 }
 
 func TestBasicAuth(t *testing.T) {
-	ctx, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "basic_auth.yaml", "basic_auth.yaml")
+	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "basic_auth.yaml", "basic_auth.yaml")
 
-	// Create auth-map secret with test credentials
-	secretName := "auth-map-secret"
 	username := "testuser"
 	password := "testpass"
-	createAuthMapSecret(ctx, secretName, username, password)
-
-	// Ensure cleanup of the secret
-	t.Cleanup(func() {
-		if _, delErr := kubectl(ctx, "delete", "secret", secretName, "-n", "default", "--ignore-not-found=true"); delErr != nil {
-			t.Logf("failed to delete secret: %v", delErr)
-		}
-	})
 
 	// Test unauthenticated request → expect 401 via Ingress
-	requireHTTP401Eventually(t, ingressHostHeader, "http", ingressIP, "", "/", 1*time.Minute)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         ingressHostHeader,
+		Scheme:             "http",
+		Address:            ingressIP,
+		Port:               "",
+		Path:               "/",
+		ExpectedStatusCode: 401,
+		Timeout:            1 * time.Minute,
+	})
 
 	// Test unauthenticated request → expect 401 via Gateway
-	requireHTTP401Eventually(t, host, "http", gwAddr, "80", "/", 1*time.Minute)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         host,
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/",
+		ExpectedStatusCode: 401,
+		Timeout:            1 * time.Minute,
+	})
 
 	// Test authenticated request with valid credentials → expect 200 via Ingress
-	requireHTTP200WithBasicAuthEventually(t, ingressHostHeader, "http", ingressIP, "", "/", username, password, 1*time.Minute)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         ingressHostHeader,
+		Scheme:             "http",
+		Address:            ingressIP,
+		Port:               "",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+		Username:           username,
+		Password:           password,
+	})
 
 	// Test authenticated request with valid credentials → expect 200 via Gateway
-	requireHTTP200WithBasicAuthEventually(t, host, "http", gwAddr, "80", "/", username, password, 1*time.Minute)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         host,
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+		Username:           username,
+		Password:           password,
+	})
 
 	// Test authenticated request with invalid credentials → expect 401 via Gateway
-	requireHTTP401WithBasicAuthEventually(t, host, "http", gwAddr, "80", "/", username, "wrongpassword", 1*time.Minute)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         host,
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/",
+		ExpectedStatusCode: 401,
+		Timeout:            1 * time.Minute,
+		Username:           username,
+		Password:           "wrongpassword",
+	})
 }
