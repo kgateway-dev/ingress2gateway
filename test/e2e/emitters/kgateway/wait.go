@@ -169,43 +169,6 @@ func getRoundTripper() roundtripper.RoundTripper {
 	}
 }
 
-func requireHTTP200Eventually(t *testing.T, hostHeader, scheme, address, port, path string, timeout time.Duration) {
-	t.Helper()
-
-	// Set defaults
-	if port == "" {
-		if scheme == "https" {
-			port = "443"
-		} else {
-			port = "80"
-		}
-	}
-	if path == "" {
-		path = "/"
-	}
-
-	gwAddr := net.JoinHostPort(address, port)
-
-	expected := gwhttp.ExpectedResponse{
-		Namespace: "default",
-		Request: gwhttp.Request{
-			Host:   hostHeader,
-			Method: "GET",
-			Path:   path,
-		},
-		Response: gwhttp.Response{
-			StatusCode: 200,
-		},
-	}
-
-	rt := getRoundTripper()
-	timeoutConfig := gwconfig.DefaultTimeoutConfig()
-	timeoutConfig.MaxTimeToConsistency = timeout
-	timeoutConfig.RequiredConsecutiveSuccesses = 1
-
-	gwhttp.MakeRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, expected)
-}
-
 func requireStickySessionEventually(
 	t *testing.T,
 	hostHeader, scheme, address, port, path string,

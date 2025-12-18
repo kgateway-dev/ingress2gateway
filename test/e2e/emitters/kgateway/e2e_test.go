@@ -347,14 +347,62 @@ func TestUseRegex(t *testing.T) {
 	_, gwAddr, _, _, ingressIP := e2eTestSetup(t, "use_regex.yaml", "use_regex.yaml")
 
 	// Test HTTP connectivity via Ingress
-	requireHTTP200Eventually(t, "myservicea.foo.org", "http", ingressIP, "", "/path/one", 1*time.Minute)
-	requireHTTP200Eventually(t, "myservicea.foo.org", "http", ingressIP, "", "/path/two", 1*time.Minute)
-	requireHTTP200Eventually(t, "myserviceb.foo.org", "http", ingressIP, "", "/", 1*time.Minute)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         "myservicea.foo.org",
+		Scheme:             "http",
+		Address:            ingressIP,
+		Port:               "",
+		Path:               "/path/one",
+		Timeout:            1 * time.Minute,
+		ExpectedStatusCode: 200,
+	})
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         "myservicea.foo.org",
+		Scheme:             "http",
+		Address:            ingressIP,
+		Port:               "",
+		Path:               "/path/two",
+		Timeout:            1 * time.Minute,
+		ExpectedStatusCode: 200,
+	})
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         "myserviceb.foo.org",
+		Scheme:             "http",
+		Address:            ingressIP,
+		Port:               "",
+		Path:               "/",
+		Timeout:            1 * time.Minute,
+		ExpectedStatusCode: 200,
+	})
 
 	// Test HTTP connectivity via Gateway
-	requireHTTP200Eventually(t, "myservicea.foo.org", "http", gwAddr, "80", "/path/one", 1*time.Minute)
-	requireHTTP200Eventually(t, "myservicea.foo.org", "http", gwAddr, "80", "/path/two", 1*time.Minute)
-	requireHTTP200Eventually(t, "myserviceb.foo.org", "http", gwAddr, "80", "/", 1*time.Minute)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         "myservicea.foo.org",
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/path/one",
+		Timeout:            1 * time.Minute,
+		ExpectedStatusCode: 200,
+	})
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         "myservicea.foo.org",
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/path/two",
+		Timeout:            1 * time.Minute,
+		ExpectedStatusCode: 200,
+	})
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         "myserviceb.foo.org",
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/",
+		Timeout:            1 * time.Minute,
+		ExpectedStatusCode: 200,
+	})
 }
 
 func TestUseRegexRewriteTarget(t *testing.T) {
@@ -371,8 +419,24 @@ func TestSessionAffinityCookie(t *testing.T) {
 	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "session_affinity.yaml", "session_affinity.yaml")
 
 	// Test HTTP connectivity via Ingress and Gateway
-	requireHTTP200Eventually(t, ingressHostHeader, "http", ingressIP, "", "/session/affinity", 1*time.Minute)
-	requireHTTP200Eventually(t, host, "http", gwAddr, "80", "/session/affinity", 1*time.Minute)
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         ingressHostHeader,
+		Scheme:             "http",
+		Address:            ingressIP,
+		Port:               "",
+		Path:               "/session/affinity",
+		Timeout:            1 * time.Minute,
+		ExpectedStatusCode: 200,
+	})
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         host,
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/session/affinity",
+		Timeout:            1 * time.Minute,
+		ExpectedStatusCode: 200,
+	})
 
 	// With the same cookie value, we should stick to one pod.
 	requireStickySessionEventually(t, host, "http", gwAddr, "80", "/session/affinity",
