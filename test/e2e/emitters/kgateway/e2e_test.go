@@ -220,7 +220,7 @@ func TestSSLRedirect(t *testing.T) {
 	requireHTTPRedirectEventually(t, host, "http", gwAddr, "80", "/", "301", 1*time.Minute)
 
 	// Test HTTPS connectivity (HTTP 200 status code)
-	requireHTTP200OverHTTPSEventually(t, host, gwAddr, "443", "/", "ssl-redirect-tls", 1*time.Minute)
+	requireHTTP200OverHTTPSEventually(t, host, gwAddr, "443", "", "ssl-redirect-tls", 1*time.Minute)
 }
 
 func TestCORS(t *testing.T) {
