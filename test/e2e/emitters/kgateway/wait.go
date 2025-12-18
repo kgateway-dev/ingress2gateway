@@ -260,25 +260,6 @@ func getKubernetesClient() (client.Client, error) {
 	return cl, nil
 }
 
-// getRoundTripperForIP creates a roundtripper that connects to a specific IP address
-// but uses the hostname for SNI. This is needed for TLS passthrough testing.
-func getRoundTripperForIP(ip string, hostname string) roundtripper.RoundTripper {
-	timeoutConfig := gwconfig.DefaultTimeoutConfig()
-	timeoutConfig.RequestTimeout = 5 * time.Second
-
-	return &roundtripper.DefaultRoundTripper{
-		TimeoutConfig: timeoutConfig,
-		CustomDialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			_, port, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
-			}
-			dialer := &net.Dialer{}
-			return dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
-		},
-	}
-}
-
 // requireHTTP200OverTLSEventually waits for HTTP 200 status code over an HTTPS connection with TLS certificates.
 // Uses Gateway API conformance TLS utilities for proper TLS passthrough testing.
 func requireHTTP200OverTLSEventually(t *testing.T, host, address, port, path string, certPem, keyPem []byte, timeout time.Duration) {
@@ -307,7 +288,7 @@ func requireHTTP200OverTLSEventually(t *testing.T, host, address, port, path str
 	}
 
 	// Create roundtripper that connects to IP but uses hostname for SNI
-	rt := getRoundTripperForIP(address, host)
+	rt := getRoundTripper()
 
 	// Configure timeout config for the TLS request
 	timeoutConfig := gwconfig.DefaultTimeoutConfig()
