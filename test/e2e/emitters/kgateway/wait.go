@@ -184,20 +184,8 @@ func requireHTTP200Eventually(t *testing.T, hostHeader, scheme, address, port, p
 // requireHTTPRedirectEventually waits for an HTTP redirect response with the expected status code
 // and verifies the Location header contains https:// scheme.
 // expectedCode should be "301" (Moved Permanently) or "308" (Permanent Redirect).
-func requireHTTPRedirectEventually(t *testing.T, hostHeader, scheme, address, port, path string, expectedCode string, timeout time.Duration) {
+func requireHTTPRedirectEventually(t *testing.T, hostHeader, address, port, path string, expectedCode string, timeout time.Duration) {
 	t.Helper()
-
-	// Set defaults
-	// if port == "" {
-	// 	if scheme == "https" {
-	// 		port = "443"
-	// 	} else {
-	// 		port = "80"
-	// 	}
-	// }
-	// if path == "" {
-	// 	path = "/"
-	// }
 
 	gwAddr := net.JoinHostPort(address, port)
 

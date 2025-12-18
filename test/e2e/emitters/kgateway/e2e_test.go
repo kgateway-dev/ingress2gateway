@@ -214,10 +214,10 @@ func TestSSLRedirect(t *testing.T) {
 	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "ssl_redirect.yaml", "ssl_redirect.yaml")
 
 	// Test HTTP redirect (308) through Ingress
-	requireHTTPRedirectEventually(t, ingressHostHeader, "http", ingressIP, "", "", "308", 1*time.Minute)
+	requireHTTPRedirectEventually(t, ingressHostHeader, ingressIP, "", "", "308", 1*time.Minute)
 
 	// Test HTTP redirect (301) through Gateway
-	requireHTTPRedirectEventually(t, host, "http", gwAddr, "80", "/", "301", 1*time.Minute)
+	requireHTTPRedirectEventually(t, host, gwAddr, "", "", "301", 1*time.Minute)
 
 	// Test HTTPS connectivity (HTTP 200 status code)
 	requireHTTP200OverHTTPSEventually(t, host, gwAddr, "443", "", "ssl-redirect-tls", 1*time.Minute)
