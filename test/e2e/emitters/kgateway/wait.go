@@ -18,6 +18,7 @@ package kgateway
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"strings"
@@ -298,6 +299,132 @@ func requireHTTP200OverTLSEventually(t *testing.T, host, address, port, path str
 
 	// Use Gateway API TLS utilities to make the request with certificates
 	gwtls.MakeTLSRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, certPem, keyPem, host, expected)
+}
+
+// requireHTTP401Eventually waits for HTTP 401 status code (Unauthorized).
+func requireHTTP401Eventually(t *testing.T, hostHeader, scheme, address, port, path string, timeout time.Duration) {
+	t.Helper()
+
+	// Set defaults
+	if port == "" {
+		if scheme == "https" {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	if path == "" {
+		path = "/"
+	}
+
+	gwAddr := net.JoinHostPort(address, port)
+
+	expected := gwhttp.ExpectedResponse{
+		Namespace: "default",
+		Request: gwhttp.Request{
+			Host:   hostHeader,
+			Method: "GET",
+			Path:   path,
+		},
+		Response: gwhttp.Response{
+			StatusCode: 401,
+		},
+	}
+
+	rt := getRoundTripper()
+	timeoutConfig := gwconfig.DefaultTimeoutConfig()
+	timeoutConfig.MaxTimeToConsistency = timeout
+	timeoutConfig.RequiredConsecutiveSuccesses = 1
+
+	gwhttp.MakeRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, expected)
+}
+
+// requireHTTP200WithBasicAuthEventually waits for HTTP 200 status code with Basic authentication.
+func requireHTTP200WithBasicAuthEventually(t *testing.T, hostHeader, scheme, address, port, path, username, password string, timeout time.Duration) {
+	t.Helper()
+
+	// Set defaults
+	if port == "" {
+		if scheme == "https" {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	if path == "" {
+		path = "/"
+	}
+
+	gwAddr := net.JoinHostPort(address, port)
+
+	// Create Basic auth header
+	auth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+
+	expected := gwhttp.ExpectedResponse{
+		Namespace: "default",
+		Request: gwhttp.Request{
+			Host:   hostHeader,
+			Method: "GET",
+			Path:   path,
+			Headers: map[string]string{
+				"Authorization": "Basic " + auth,
+			},
+		},
+		Response: gwhttp.Response{
+			StatusCode: 200,
+		},
+	}
+
+	rt := getRoundTripper()
+	timeoutConfig := gwconfig.DefaultTimeoutConfig()
+	timeoutConfig.MaxTimeToConsistency = timeout
+	timeoutConfig.RequiredConsecutiveSuccesses = 1
+
+	gwhttp.MakeRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, expected)
+}
+
+// requireHTTP401WithBasicAuthEventually waits for HTTP 401 status code with Basic authentication (invalid credentials).
+func requireHTTP401WithBasicAuthEventually(t *testing.T, hostHeader, scheme, address, port, path, username, password string, timeout time.Duration) {
+	t.Helper()
+
+	// Set defaults
+	if port == "" {
+		if scheme == "https" {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	if path == "" {
+		path = "/"
+	}
+
+	gwAddr := net.JoinHostPort(address, port)
+
+	// Create Basic auth header
+	auth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+
+	expected := gwhttp.ExpectedResponse{
+		Namespace: "default",
+		Request: gwhttp.Request{
+			Host:   hostHeader,
+			Method: "GET",
+			Path:   path,
+			Headers: map[string]string{
+				"Authorization": "Basic " + auth,
+			},
+		},
+		Response: gwhttp.Response{
+			StatusCode: 401,
+		},
+	}
+
+	rt := getRoundTripper()
+	timeoutConfig := gwconfig.DefaultTimeoutConfig()
+	timeoutConfig.MaxTimeToConsistency = timeout
+	timeoutConfig.RequiredConsecutiveSuccesses = 1
+
+	gwhttp.MakeRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, expected)
 }
 
 func waitForGatewayAddress(ctx context.Context, ns, gwName string, timeout time.Duration) (string, error) {

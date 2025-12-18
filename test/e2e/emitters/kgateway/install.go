@@ -419,3 +419,48 @@ func createTLSSecret(ctx context.Context, secretName, hostname string) {
 
 	log.Printf("Created TLS secret %s for hostname %s", secretName, hostname)
 }
+
+// createAuthMapSecret creates a Kubernetes Secret with auth-map format for basic authentication.
+// The secret has keys as usernames and values as bcrypt-hashed passwords.
+func createAuthMapSecret(ctx context.Context, secretName, username, password string) {
+	// Check if secret already exists
+	if _, err := kubectl(ctx, "get", "secret", secretName, "-n", "default"); err == nil {
+		log.Printf("Auth-map secret %s already exists, skipping creation", secretName)
+		return
+	}
+
+	// Generate bcrypt hash using htpasswd
+	// htpasswd -nbBC 10 username password outputs: username:$2y$10$...
+	cmd := exec.CommandContext(ctx, "htpasswd", "-nbBC", "10", username, password)
+	htpasswdOutput, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Fatalf("failed to generate bcrypt hash with htpasswd: %v\nOutput:\n%s", err, string(htpasswdOutput))
+	}
+
+	// Parse output: username:$2y$10$... or username:$2a$10$...
+	// Extract just the hash part (everything after the colon)
+	outputStr := strings.TrimSpace(string(htpasswdOutput))
+	parts := strings.SplitN(outputStr, ":", 2)
+	if len(parts) != 2 {
+		log.Fatalf("unexpected htpasswd output format: %s", outputStr)
+	}
+	hash := parts[1]
+
+	// Create Kubernetes secret with auth-map format
+	// The key is the username, the value is the bcrypt hash
+	cmd = exec.CommandContext(ctx, "kubectl",
+		"--context", kubeContext,
+		"create", "secret", "generic", secretName,
+		"--from-literal", fmt.Sprintf("%s=%s", username, hash),
+		"-n", "default",
+		"--dry-run=client",
+		"-o", "yaml",
+	)
+	secretYAML, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Fatalf("failed to create auth-map secret manifest for %s: %v\nOutput:\n%s", secretName, err, string(secretYAML))
+	}
+	mustKubectlApplyStdin(ctx, string(secretYAML))
+
+	log.Printf("Created auth-map secret %s for username %s", secretName, username)
+}

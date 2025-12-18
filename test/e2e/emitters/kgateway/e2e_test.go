@@ -266,3 +266,35 @@ func TestSSLPassthrough(t *testing.T) {
 	// Test TLS passthrough connectivity via Gateway using TLS certificates
 	requireHTTP200OverTLSEventually(t, host, gwAddr, "443", "/", certPem, keyPem, 1*time.Minute)
 }
+
+func TestBasicAuth(t *testing.T) {
+	ctx, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "basic_auth.yaml", "basic_auth.yaml")
+
+	// Create auth-map secret with test credentials
+	secretName := "auth-map-secret"
+	username := "testuser"
+	password := "testpass"
+	createAuthMapSecret(ctx, secretName, username, password)
+
+	// Ensure cleanup of the secret
+	t.Cleanup(func() {
+		if _, delErr := kubectl(ctx, "delete", "secret", secretName, "-n", "default", "--ignore-not-found=true"); delErr != nil {
+			t.Logf("failed to delete secret: %v", delErr)
+		}
+	})
+
+	// Test unauthenticated request → expect 401 via Ingress
+	requireHTTP401Eventually(t, ingressHostHeader, "http", ingressIP, "", "/", 1*time.Minute)
+
+	// Test unauthenticated request → expect 401 via Gateway
+	requireHTTP401Eventually(t, host, "http", gwAddr, "80", "/", 1*time.Minute)
+
+	// Test authenticated request with valid credentials → expect 200 via Ingress
+	requireHTTP200WithBasicAuthEventually(t, ingressHostHeader, "http", ingressIP, "", "/", username, password, 1*time.Minute)
+
+	// Test authenticated request with valid credentials → expect 200 via Gateway
+	requireHTTP200WithBasicAuthEventually(t, host, "http", gwAddr, "80", "/", username, password, 1*time.Minute)
+
+	// Test authenticated request with invalid credentials → expect 401 via Gateway
+	requireHTTP401WithBasicAuthEventually(t, host, "http", gwAddr, "80", "/", username, "wrongpassword", 1*time.Minute)
+}
