@@ -219,6 +219,7 @@ func requireHTTPRedirectEventually(t *testing.T, hostHeader, scheme, address, po
 			Method:           "GET",
 			Path:             path,
 			UnfollowRedirect: true,
+			SNI:              hostHeader,
 		},
 		Response: gwhttp.Response{
 			StatusCodes: []int{statusCode},
