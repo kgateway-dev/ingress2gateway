@@ -226,7 +226,7 @@ func requireHTTPRedirectEventually(t *testing.T, hostHeader, scheme, address, po
 		RedirectRequest: &roundtripper.RedirectRequest{
 			Scheme: "https",
 			Port:   "",
-			Path:   "",
+			Path:   path,
 		},
 	}
 
@@ -292,7 +292,7 @@ func getRoundTripperForIP(ip string, hostname string) roundtripper.RoundTripper 
 
 // requireHTTP200OverTLSEventually waits for HTTP 200 status code over an HTTPS connection with TLS certificates.
 // Uses Gateway API conformance TLS utilities for proper TLS passthrough testing.
-func requireHTTP200OverTLSEventually(t *testing.T, hostHeader, address, port, path string, certPem, keyPem []byte, timeout time.Duration) {
+func requireHTTP200OverTLSEventually(t *testing.T, host, address, port, path string, certPem, keyPem []byte, timeout time.Duration) {
 	t.Helper()
 
 	// Set defaults
@@ -308,7 +308,7 @@ func requireHTTP200OverTLSEventually(t *testing.T, hostHeader, address, port, pa
 	expected := gwhttp.ExpectedResponse{
 		Namespace: "default",
 		Request: gwhttp.Request{
-			Host:   hostHeader,
+			Host:   host,
 			Method: "GET",
 			Path:   path,
 		},
@@ -318,7 +318,7 @@ func requireHTTP200OverTLSEventually(t *testing.T, hostHeader, address, port, pa
 	}
 
 	// Create roundtripper that connects to IP but uses hostname for SNI
-	rt := getRoundTripperForIP(address, hostHeader)
+	rt := getRoundTripperForIP(address, host)
 
 	// Configure timeout config for the TLS request
 	timeoutConfig := gwconfig.DefaultTimeoutConfig()
@@ -326,7 +326,7 @@ func requireHTTP200OverTLSEventually(t *testing.T, hostHeader, address, port, pa
 	timeoutConfig.RequiredConsecutiveSuccesses = 1
 
 	// Use Gateway API TLS utilities to make the request with certificates
-	gwtls.MakeTLSRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, certPem, keyPem, hostHeader, expected)
+	gwtls.MakeTLSRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, certPem, keyPem, host, expected)
 }
 
 func waitForGatewayAddress(ctx context.Context, ns, gwName string, timeout time.Duration) (string, error) {
