@@ -25,6 +25,11 @@ kind: Ingress
 metadata:
   annotations:
     ingress2gateway.kubernetes.io/implementation: kgateway
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/session-cookie-name: "session-id"
+    nginx.ingress.kubernetes.io/session-cookie-path: "/api"
+    nginx.ingress.kubernetes.io/session-cookie-domain: "example.com"
   name: ingress-myservicea2
   namespace: default
 spec:

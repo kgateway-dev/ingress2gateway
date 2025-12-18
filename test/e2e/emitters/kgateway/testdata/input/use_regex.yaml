@@ -14,9 +14,9 @@ spec:
       paths:
       - backend:
           service:
-            name: myservicea
+            name: echo-backend
             port:
-              number: 80
+              number: 8080
         path: /path/one
         pathType: Prefix
 ---
@@ -35,9 +35,9 @@ spec:
       paths:
       - backend:
           service:
-            name: myservicea
+            name: echo-backend
             port:
-              number: 80
+              number: 8080
         path: /path/two
         pathType: Prefix
 ---
@@ -46,7 +46,7 @@ kind: Ingress
 metadata:
   annotations:
     ingress2gateway.kubernetes.io/implementation: kgateway
-    nginx.ingress.kubernetes.io/use-regex: "false" # should not produce a regex path matcher
+    nginx.ingress.kubernetes.io/use-regex: "false"
   name: ingress-myserviceb
   namespace: default
 spec:
@@ -57,8 +57,8 @@ spec:
       paths:
       - backend:
           service:
-            name: myserviceb
+            name: echo-backend
             port:
-              number: 80
+              number: 8080
         path: /
         pathType: Prefix

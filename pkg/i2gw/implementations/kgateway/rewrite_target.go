@@ -76,34 +76,29 @@ func applyRewriteTargetPolicies(
 			continue
 		}
 
-		pattern := deriveRulePathRegexPattern(httpRouteCtx.Spec.Rules[ruleIdx])
-
-		// Name is unique per ingress + rule, so we can safely create multiple TPs per ingress.
-		tpName := fmt.Sprintf("%s-rewrite-%d", sourceIngressName, ruleIdx)
-		t := ensureTrafficPolicy(tp, tpName, namespace)
-
-		t.Spec.UrlRewrite = &kgateway.URLRewrite{
-			PathRegex: &kgateway.PathRegexRewrite{
-				Pattern:      pattern,
-				Substitution: *pol.RewriteTarget,
-			},
-		}
-
-		// Attach this rewrite TP to every covered backendRef in the rule via ExtensionRef filter.
-		backendSet := byRule[ruleIdx]
-		backendIdxs := make([]int, 0, len(backendSet))
-		for b := range backendSet {
-			backendIdxs = append(backendIdxs, b)
-		}
-		sort.Ints(backendIdxs)
-
-		for _, backendIdx := range backendIdxs {
-			if backendIdx >= len(httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs) {
-				continue
+		// Regex rewrite only when use-regex=true.
+		if pol.UseRegexPaths != nil && *pol.UseRegexPaths {
+			pattern := deriveRulePathRegexPattern(httpRouteCtx.Spec.Rules[ruleIdx])
+			tpName := fmt.Sprintf("%s-rewrite-%d", sourceIngressName, ruleIdx)
+			t := ensureTrafficPolicy(tp, tpName, namespace)
+			t.Spec.UrlRewrite = &kgateway.URLRewrite{
+				PathRegex: &kgateway.PathRegexRewrite{
+					Pattern:      pattern,
+					Substitution: *pol.RewriteTarget,
+				},
 			}
 
-			httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs[backendIdx].Filters =
-				append(
+			backendSet := byRule[ruleIdx]
+			backendIdxs := make([]int, 0, len(backendSet))
+			for b := range backendSet {
+				backendIdxs = append(backendIdxs, b)
+			}
+			sort.Ints(backendIdxs)
+			for _, backendIdx := range backendIdxs {
+				if backendIdx >= len(httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs) {
+					continue
+				}
+				httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs[backendIdx].Filters = append(
 					httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs[backendIdx].Filters,
 					gwv1.HTTPRouteFilter{
 						Type: gwv1.HTTPRouteFilterExtensionRef,
@@ -114,7 +109,12 @@ func applyRewriteTargetPolicies(
 						},
 					},
 				)
+			}
+			continue
 		}
+
+		// Non-regex: use native Gateway API URLRewrite/ReplaceFullPath at the rule level.
+		ensureRuleURLRewriteReplaceFullPath(&httpRouteCtx.Spec.Rules[ruleIdx], *pol.RewriteTarget)
 	}
 }
 
@@ -148,4 +148,35 @@ func deriveRulePathRegexPattern(rule gwv1.HTTPRouteRule) string {
 	}
 
 	return "^(.*)"
+}
+
+// ensureRuleURLRewriteReplaceFullPath ensures the given rule has a URLRewrite filter
+// that performs a ReplaceFullPath with the given value.
+func ensureRuleURLRewriteReplaceFullPath(rule *gwv1.HTTPRouteRule, replaceFullPath string) {
+	// Update existing URLRewrite filter if present.
+	for i := range rule.Filters {
+		if rule.Filters[i].Type != gwv1.HTTPRouteFilterURLRewrite {
+			continue
+		}
+		if rule.Filters[i].URLRewrite == nil {
+			rule.Filters[i].URLRewrite = &gwv1.HTTPURLRewriteFilter{}
+		}
+		if rule.Filters[i].URLRewrite.Path == nil {
+			rule.Filters[i].URLRewrite.Path = &gwv1.HTTPPathModifier{}
+		}
+		rule.Filters[i].URLRewrite.Path.Type = gwv1.FullPathHTTPPathModifier
+		rule.Filters[i].URLRewrite.Path.ReplaceFullPath = &replaceFullPath
+		return
+	}
+
+	// Otherwise append a new URLRewrite filter.
+	rule.Filters = append(rule.Filters, gwv1.HTTPRouteFilter{
+		Type: gwv1.HTTPRouteFilterURLRewrite,
+		URLRewrite: &gwv1.HTTPURLRewriteFilter{
+			Path: &gwv1.HTTPPathModifier{
+				Type:            gwv1.FullPathHTTPPathModifier,
+				ReplaceFullPath: &replaceFullPath,
+			},
+		},
+	})
 }
