@@ -1,0 +1,38 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: nginx
+  namespace: default
+spec:
+  gatewayClassName: kgateway
+  listeners:
+  - hostname: ssl-passthrough.localdev.me
+    name: ssl-passthrough-localdev-me-tls-passthrough
+    port: 443
+    protocol: TLS
+    tls:
+      mode: Passthrough
+status: {}
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TLSRoute
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: ssl-passthrough-localhost-ssl-passthrough-localdev-me
+  namespace: default
+spec:
+  hostnames:
+  - ssl-passthrough.localdev.me
+  parentRefs:
+  - name: nginx
+    sectionName: ssl-passthrough-localdev-me-tls-passthrough
+  rules:
+  - backendRefs:
+    - name: tls-svc
+      port: 443
+status:
+  parents: []
+

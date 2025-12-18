@@ -173,6 +173,22 @@ func installIngressNginx(ctx context.Context) {
 	log.Printf("Installing ingress-nginx %s from %s", ver, url)
 	mustKubectl(ctx, "apply", "-f", url)
 
+	// Enable SSL passthrough for TLS passthrough tests
+	log.Printf("Enabling SSL passthrough in ingress-nginx controller")
+	// Patch the deployment to add the --enable-ssl-passthrough flag
+	// If the flag already exists, the patch will fail, but we'll verify it's present
+	if _, err := kubectl(ctx, "-n", "ingress-nginx", "patch", "deployment", "ingress-nginx-controller",
+		"--type=json",
+		"-p", `[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--enable-ssl-passthrough"}]`); err != nil {
+		// Check if the flag is already present (patch might fail if flag exists)
+		argsOut, getErr := kubectl(ctx, "-n", "ingress-nginx", "get", "deployment", "ingress-nginx-controller", "-o", "jsonpath={.spec.template.spec.containers[0].args}")
+		if getErr == nil && strings.Contains(argsOut, "--enable-ssl-passthrough") {
+			log.Printf("SSL passthrough flag already present in ingress-nginx controller")
+		} else {
+			log.Printf("Warning: Failed to enable SSL passthrough (patch error: %v)", err)
+		}
+	}
+
 	mustKubectl(ctx, "-n", "ingress-nginx", "rollout", "status", "deploy/ingress-nginx-controller", "--timeout=1m")
 
 	if _, err := waitForServiceAddress(ctx, "ingress-nginx", "ingress-nginx-controller", 1*time.Minute); err != nil {
@@ -275,4 +291,131 @@ spec:
 	log.Printf("Deploying echo backend (%s)", img)
 	mustKubectlApplyStdin(ctx, y)
 	mustKubectl(ctx, "-n", "default", "rollout", "status", "deploy/echo-backend", "--timeout=5m")
+}
+
+func applyTLSBackend(ctx context.Context) {
+	img := envOrDefault("ECHO_IMAGE", defaultEchoImage)
+
+	// Generate TLS certificates for the backend
+	createTLSSecret(ctx, "tls-secret", "ssl-passthrough.localdev.me")
+
+	y := fmt.Sprintf(`
+apiVersion: v1
+kind: Service
+metadata:
+  name: tls-svc
+  namespace: default
+  labels:
+    app: tls-svc
+spec:
+  ports:
+  - port: 443
+    targetPort: 8443
+    protocol: TCP
+  selector:
+    app: backend-tls
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-tls
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend-tls
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: backend-tls
+        version: v1
+    spec:
+      containers:
+      - image: %s
+        imagePullPolicy: IfNotPresent
+        name: backend-tls
+        ports:
+        - containerPort: 8443
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: SERVICE_NAME
+          value: tls-svc
+        - name: HTTPS_PORT
+          value: "8443"
+        - name: TLS_SERVER_CERT
+          value: /etc/server-certs/tls.crt
+        - name: TLS_SERVER_PRIVKEY
+          value: /etc/server-certs/tls.key
+        volumeMounts:
+        - name: server-certs
+          mountPath: /etc/server-certs
+          readOnly: true
+      volumes:
+      - name: server-certs
+        secret:
+          secretName: tls-secret
+`, img)
+
+	log.Printf("Deploying TLS backend (%s)", img)
+	mustKubectlApplyStdin(ctx, y)
+	mustKubectl(ctx, "-n", "default", "rollout", "status", "deploy/backend-tls", "--timeout=5m")
+}
+
+func createTLSSecret(ctx context.Context, secretName, hostname string) {
+	// Check if secret already exists
+	if _, err := kubectl(ctx, "get", "secret", secretName, "-n", "default"); err == nil {
+		log.Printf("TLS secret %s already exists, skipping creation", secretName)
+		return
+	}
+
+	// Generate self-signed certificate using openssl
+	// Create a temporary directory for cert files
+	tmpDir := "/tmp/i2g-tls-certs"
+	mustRun(ctx, "mkdir", "-p", tmpDir)
+
+	certFile := fmt.Sprintf("%s/tls.crt", tmpDir)
+	keyFile := fmt.Sprintf("%s/tls.key", tmpDir)
+
+	// Generate certificate valid for 365 days
+	subject := fmt.Sprintf("/CN=%s/O=ingress2gateway", hostname)
+	subjectAltName := fmt.Sprintf("subjectAltName=DNS:%s", hostname)
+	mustRun(
+		ctx,
+		"openssl", "req",
+		"-x509",
+		"-nodes",
+		"-days", "365",
+		"-newkey", "rsa:2048",
+		"-keyout", keyFile,
+		"-out", certFile,
+		"-subj", subject,
+		"-addext", subjectAltName,
+	)
+
+	// Create Kubernetes secret from the certificate files
+	cmd := exec.CommandContext(ctx, "kubectl",
+		"--context", kubeContext,
+		"create", "secret", "tls", secretName,
+		"--cert="+certFile,
+		"--key="+keyFile,
+		"-n", "default",
+		"--dry-run=client",
+		"-o", "yaml",
+	)
+	secretYAML, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Fatalf("failed to create TLS secret manifest for %s: %v\nOutput:\n%s", secretName, err, string(secretYAML))
+	}
+	mustKubectlApplyStdin(ctx, string(secretYAML))
+
+	log.Printf("Created TLS secret %s for hostname %s", secretName, hostname)
 }

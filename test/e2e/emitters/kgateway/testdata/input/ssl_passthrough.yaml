@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    ingress2gateway.kubernetes.io/implementation: kgateway
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+  name: ssl-passthrough-localhost
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: ssl-passthrough.localdev.me
+    http:
+      paths:
+      - backend:
+          service:
+            name: tls-svc
+            port:
+              number: 443
+        path: /
+        pathType: Prefix
+
