@@ -321,41 +321,6 @@ func podAndCodeFromClientWithCookie(
 	return pod, code, out, nil
 }
 
-// requireHTTP200OverTLSEventually waits for HTTP 200 status code over a TLS connection with the provided certificates.
-func requireHTTP200OverTLSEventually(t *testing.T, hostHeader, address, port, path string, certPem, keyPem []byte, timeout time.Duration) {
-	t.Helper()
-
-	// Set defaults
-	if port == "" {
-		port = "443"
-	}
-	if path == "" {
-		path = "/"
-	}
-
-	gwAddr := net.JoinHostPort(address, port)
-
-	expected := gwhttp.ExpectedResponse{
-		Namespace: "default",
-		Request: gwhttp.Request{
-			Host:   hostHeader,
-			Method: "GET",
-			Path:   path,
-			SNI:    hostHeader,
-		},
-		Response: gwhttp.Response{
-			StatusCode: 200,
-		},
-	}
-
-	rt := getRoundTripper()
-	timeoutConfig := gwconfig.DefaultTimeoutConfig()
-	timeoutConfig.MaxTimeToConsistency = timeout
-	timeoutConfig.RequiredConsecutiveSuccesses = 1
-
-	gwtls.MakeTLSRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, certPem, keyPem, hostHeader, expected)
-}
-
 // getKubernetesClient creates a Kubernetes client using the kubeconfig context.
 func getKubernetesClient() (client.Client, error) {
 	cfg, err := ctrlconfig.GetConfigWithContext(kubeContext)
