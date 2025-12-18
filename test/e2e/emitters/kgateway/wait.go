@@ -169,6 +169,294 @@ func getRoundTripper() roundtripper.RoundTripper {
 	}
 }
 
+func requireHTTP200Eventually(t *testing.T, hostHeader, scheme, address, port, path string, timeout time.Duration) {
+	t.Helper()
+
+	// Set defaults
+	if port == "" {
+		if scheme == "https" {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	if path == "" {
+		path = "/"
+	}
+
+	gwAddr := net.JoinHostPort(address, port)
+
+	expected := gwhttp.ExpectedResponse{
+		Namespace: "default",
+		Request: gwhttp.Request{
+			Host:   hostHeader,
+			Method: "GET",
+			Path:   path,
+		},
+		Response: gwhttp.Response{
+			StatusCode: 200,
+		},
+	}
+
+	rt := getRoundTripper()
+	timeoutConfig := gwconfig.DefaultTimeoutConfig()
+	timeoutConfig.MaxTimeToConsistency = timeout
+	timeoutConfig.RequiredConsecutiveSuccesses = 1
+
+	gwhttp.MakeRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, expected)
+}
+
+func requireStickySessionEventually(
+	t *testing.T,
+	hostHeader, scheme, address, port, path string,
+	cookieName, cookieValue string,
+	numRequests int,
+	timeout time.Duration,
+) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	interval := 2 * time.Second
+
+	for attempt := 1; time.Now().Before(deadline); attempt++ {
+		var basePod string
+		ok := true
+
+		for i := 0; i < numRequests; i++ {
+			pod, code, _, err := podAndCodeFromClientWithCookie(t, hostHeader, scheme, address, port, path, cookieName, cookieValue)
+			if err != nil || strings.TrimSpace(code) != "200" || pod == "" {
+				ok = false
+				break
+			}
+			if basePod == "" {
+				basePod = pod
+				continue
+			}
+			if pod != basePod {
+				ok = false
+				break
+			}
+		}
+
+		if ok && basePod != "" {
+			t.Logf("sticky session OK: cookie %s=%s consistently routed to pod %s", cookieName, cookieValue, basePod)
+			return
+		}
+
+		if attempt == 1 || attempt%5 == 0 {
+			t.Logf("waiting for sticky session to converge (attempt=%d cookie=%s=%s)", attempt, cookieName, cookieValue)
+		}
+		time.Sleep(interval)
+	}
+
+	t.Fatalf("timed out waiting for sticky session routing with cookie %s=%s", cookieName, cookieValue)
+}
+
+func requireDifferentSessionUsuallyDifferentPod(
+	t *testing.T,
+	hostHeader, scheme, address, port, path string,
+	cookieName string,
+	cookieValueA, cookieValueB string,
+	numRequests int,
+	timeout time.Duration,
+) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	interval := 2 * time.Second
+
+	for time.Now().Before(deadline) {
+		podA, okA := stablePodForCookie(t, hostHeader, scheme, address, port, path, cookieName, cookieValueA, numRequests)
+		podB, okB := stablePodForCookie(t, hostHeader, scheme, address, port, path, cookieName, cookieValueB, numRequests)
+
+		if okA && okB && podA != "" && podB != "" && podA != podB {
+			t.Logf("different cookies mapped to different pods: %q->%s, %q->%s", cookieValueA, podA, cookieValueB, podB)
+			return
+		}
+		time.Sleep(interval)
+	}
+
+	// Don't hard-fail if it never differs; environments can legitimately hash both cookies to same pod.
+	t.Logf("note: different cookie values did not map to different pods within timeout; sticky routing still validated")
+}
+
+func stablePodForCookie(
+	t *testing.T,
+	hostHeader, scheme, address, port, path, cookieName, cookieValue string,
+	numRequests int,
+) (string, bool) {
+	var basePod string
+	for i := 0; i < numRequests; i++ {
+		pod, code, _, err := podAndCodeFromClientWithCookie(t, hostHeader, scheme, address, port, path, cookieName, cookieValue)
+		if err != nil || strings.TrimSpace(code) != "200" || pod == "" {
+			return "", false
+		}
+		if basePod == "" {
+			basePod = pod
+			continue
+		}
+		if pod != basePod {
+			return "", false
+		}
+	}
+	return basePod, true
+}
+
+func podAndCodeFromClientWithCookie(
+	t *testing.T,
+	hostHeader, scheme, address, port, path string,
+	cookieName, cookieValue string,
+) (pod, code, out string, err error) {
+	t.Helper()
+
+	if port == "" {
+		if scheme == "https" {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	if path == "" {
+		path = "/"
+	}
+
+	gwAddr := net.JoinHostPort(address, port)
+
+	expected := gwhttp.ExpectedResponse{
+		Request: gwhttp.Request{
+			Host:   hostHeader,
+			Method: "GET",
+			Path:   path,
+		},
+		Response: gwhttp.Response{StatusCode: 200},
+	}
+
+	req := gwhttp.MakeRequest(t, &expected, gwAddr, strings.ToUpper(scheme), scheme)
+
+	if req.Headers == nil {
+		req.Headers = map[string][]string{}
+	}
+	// Keep same downstream connection behavior controlled (optional).
+	req.Headers["Connection"] = []string{"close"}
+	req.Headers["X-E2E-Nonce"] = []string{fmt.Sprintf("%d", time.Now().UnixNano())}
+
+	// Set the cookie expected by the policy.
+	// HTTP Cookie header format: "name=value"
+	req.Headers["Cookie"] = []string{fmt.Sprintf("%s=%s", cookieName, cookieValue)}
+
+	rt := getRoundTripper()
+	cReq, cRes, err := rt.CaptureRoundTrip(req)
+	if err != nil {
+		return "", "000", fmt.Sprintf("request failed: %v", err), err
+	}
+
+	if cReq != nil {
+		pod = cReq.Pod
+	}
+	code = fmt.Sprintf("%d", cRes.StatusCode)
+	out = fmt.Sprintf("Status: %d, Protocol: %s, Pod: %s", cRes.StatusCode, cRes.Protocol, pod)
+	return pod, code, out, nil
+}
+
+// requireHTTPRedirectEventually waits for an HTTP redirect response with the expected status code
+// and verifies the Location header contains https:// scheme.
+// expectedCode should be "301" (Moved Permanently) or "308" (Permanent Redirect).
+func requireHTTPRedirectEventually(t *testing.T, hostHeader, address, port, path string, expectedCode string, timeout time.Duration) {
+	t.Helper()
+
+	gwAddr := net.JoinHostPort(address, port)
+
+	// Parse expected status code
+	var statusCode int
+	switch expectedCode {
+	case "301":
+		statusCode = 301
+	case "308":
+		statusCode = 308
+	default:
+		t.Fatalf("unexpected redirect code: %s (expected 301 or 308)", expectedCode)
+	}
+
+	expected := gwhttp.ExpectedResponse{
+		Namespace: "default",
+		Request: gwhttp.Request{
+			Host:             hostHeader,
+			Method:           "GET",
+			Path:             path,
+			UnfollowRedirect: true,
+			SNI:              hostHeader,
+		},
+		Response: gwhttp.Response{
+			StatusCodes: []int{statusCode},
+		},
+		RedirectRequest: &roundtripper.RedirectRequest{
+			Scheme: "https",
+			Port:   "",
+			Path:   path,
+		},
+	}
+
+	rt := getRoundTripper()
+	timeoutConfig := gwconfig.DefaultTimeoutConfig()
+	timeoutConfig.MaxTimeToConsistency = timeout
+	timeoutConfig.RequiredConsecutiveSuccesses = 1
+
+	gwhttp.MakeRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, expected)
+}
+
+// requireHTTP200OverTLSEventually waits for HTTP 200 status code over a TLS connection with the provided certificates.
+func requireHTTP200OverTLSEventually(t *testing.T, hostHeader, address, port, path string, certPem, keyPem []byte, timeout time.Duration) {
+	t.Helper()
+
+	// Set defaults
+	if port == "" {
+		port = "443"
+	}
+	if path == "" {
+		path = "/"
+	}
+
+	gwAddr := net.JoinHostPort(address, port)
+
+	expected := gwhttp.ExpectedResponse{
+		Namespace: "default",
+		Request: gwhttp.Request{
+			Host:   hostHeader,
+			Method: "GET",
+			Path:   path,
+			SNI:    hostHeader,
+		},
+		Response: gwhttp.Response{
+			StatusCode: 200,
+		},
+	}
+
+	rt := getRoundTripper()
+	timeoutConfig := gwconfig.DefaultTimeoutConfig()
+	timeoutConfig.MaxTimeToConsistency = timeout
+	timeoutConfig.RequiredConsecutiveSuccesses = 1
+
+	gwtls.MakeTLSRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, certPem, keyPem, hostHeader, expected)
+}
+
+// requireHTTP200OverHTTPSEventually waits for HTTP 200 status code over an HTTPS connection with TLS certificates.
+// Uses Gateway API conformance TLS utilities with certificates from the specified secret.
+func requireHTTP200OverHTTPSEventually(t *testing.T, hostHeader, address, port, path, secretName string, timeout time.Duration) {
+	t.Helper()
+
+	// Load TLS certificates from the specified secret
+	cl, err := getKubernetesClient()
+	if err != nil {
+		t.Fatalf("failed to create Kubernetes client: %v", err)
+	}
+	certPem, keyPem, err := gwtests.GetTLSSecret(cl, types.NamespacedName{Namespace: "default", Name: secretName})
+	if err != nil {
+		t.Fatalf("unexpected error finding TLS secret: %v", err)
+	}
+
+	requireHTTP200OverTLSEventually(t, hostHeader, address, port, path, certPem, keyPem, timeout)
+}
+
 // getKubernetesClient creates a Kubernetes client using the kubeconfig context.
 func getKubernetesClient() (client.Client, error) {
 	cfg, err := ctrlconfig.GetConfigWithContext(kubeContext)
@@ -354,6 +642,90 @@ func podAndCodeFromClient(t *testing.T, hostHeader, scheme, address, port, path 
 	code = fmt.Sprintf("%d", cRes.StatusCode)
 	out = fmt.Sprintf("Status: %d, Protocol: %s, Pod: %s", cRes.StatusCode, cRes.Protocol, pod)
 	return pod, code, out, nil
+}
+
+// pathAndCodeFromClient makes an HTTP request and returns the backend echoed path and status code.
+// The echoed path comes from the conformance CapturedRequest (decoded from echo-backend JSON).
+func pathAndCodeFromClient(t *testing.T, hostHeader, scheme, address, port, path string) (echoPath, code, out string, err error) {
+	t.Helper()
+
+	if port == "" {
+		if scheme == "https" {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	if path == "" {
+		path = "/"
+	}
+
+	gwAddr := net.JoinHostPort(address, port)
+
+	expected := gwhttp.ExpectedResponse{
+		Request: gwhttp.Request{
+			Host:   hostHeader,
+			Method: "GET",
+			Path:   path,
+		},
+		Response: gwhttp.Response{StatusCode: 200},
+	}
+
+	req := gwhttp.MakeRequest(t, &expected, gwAddr, strings.ToUpper(scheme), scheme)
+
+	// Reduce chances of connection-based stickiness.
+	if req.Headers == nil {
+		req.Headers = map[string][]string{}
+	}
+	req.Headers["Connection"] = []string{"close"}
+	req.Headers["X-E2E-Nonce"] = []string{fmt.Sprintf("%d", time.Now().UnixNano())}
+
+	rt := getRoundTripper()
+	cReq, cRes, err := rt.CaptureRoundTrip(req)
+	if err != nil {
+		return "", "000", fmt.Sprintf("request failed: %v", err), err
+	}
+
+	if cReq != nil {
+		echoPath = cReq.Path
+	}
+	code = fmt.Sprintf("%d", cRes.StatusCode)
+	out = fmt.Sprintf("Status: %d, Protocol: %s, EchoPath: %s", cRes.StatusCode, cRes.Protocol, echoPath)
+	return echoPath, code, out, nil
+}
+
+func requireEchoedPathEventually(
+	t *testing.T,
+	hostHeader, scheme, address, port, requestPath, expectedEchoPath string,
+	timeout time.Duration,
+) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	interval := 2 * time.Second
+
+	var lastOut string
+	var lastErr error
+	var lastCode string
+	var lastEchoPath string
+
+	for attempt := 1; time.Now().Before(deadline); attempt++ {
+		echoPath, code, out, err := pathAndCodeFromClient(t, hostHeader, scheme, address, port, requestPath)
+		lastEchoPath, lastCode, lastOut, lastErr = echoPath, code, out, err
+
+		if err == nil && strings.TrimSpace(code) == "200" && echoPath == expectedEchoPath {
+			return
+		}
+
+		if attempt == 1 || attempt%10 == 0 {
+			t.Logf("waiting for echoed path %q (attempt=%d host=%s scheme=%s address=%s port=%s reqPath=%s): gotPath=%q code=%q err=%v out=%s",
+				expectedEchoPath, attempt, hostHeader, scheme, address, port, requestPath, echoPath, strings.TrimSpace(code), err, out)
+		}
+		time.Sleep(interval)
+	}
+
+	t.Fatalf("timed out waiting for echoed path %q (request %q). lastEchoPath=%q lastCode=%q lastErr=%v lastOut=%s",
+		expectedEchoPath, requestPath, lastEchoPath, strings.TrimSpace(lastCode), lastErr, lastOut)
 }
 
 func requireLoadBalancedAcrossPodsEventually(

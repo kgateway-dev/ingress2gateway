@@ -32,25 +32,19 @@ spec:
   - name: nginx
   rules:
   - backendRefs:
-    - name: myservicea
-      port: 80
-    filters:
-    - type: URLRewrite
-      urlRewrite:
-        path:
-          replaceFullPath: /rewritten
-          type: ReplaceFullPath
+    - name: echo-backend
+      port: 8080
     matches:
     - path:
-        type: PathPrefix
-        value: /
+        type: RegularExpression
+        value: ^/path/one
   - backendRefs:
-    - name: myservicea
-      port: 80
+    - name: echo-backend
+      port: 8080
     matches:
     - path:
         type: PathPrefix
-        value: /2
+        value: /path/two
 status:
   parents: []
 ---
@@ -68,8 +62,8 @@ spec:
   - name: nginx
   rules:
   - backendRefs:
-    - name: myserviceb
-      port: 80
+    - name: echo-backend
+      port: 8080
     matches:
     - path:
         type: PathPrefix

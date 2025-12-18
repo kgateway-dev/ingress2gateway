@@ -34,23 +34,17 @@ spec:
   - backendRefs:
     - name: myservicea
       port: 80
-    filters:
-    - type: URLRewrite
-      urlRewrite:
-        path:
-          replaceFullPath: /rewritten
-          type: ReplaceFullPath
     matches:
     - path:
-        type: PathPrefix
-        value: /
+        type: RegularExpression
+        value: ^/path/one
   - backendRefs:
     - name: myservicea
       port: 80
     matches:
     - path:
-        type: PathPrefix
-        value: /2
+        type: RegularExpression
+        value: ^/path/two
 status:
   parents: []
 ---
@@ -76,3 +70,22 @@ spec:
         value: /
 status:
   parents: []
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: BackendConfigPolicy
+metadata:
+  name: myservicea-backend-config
+  namespace: default
+spec:
+  loadBalancer:
+    ringHash:
+      hashPolicies:
+      - cookie:
+          name: session-id
+          path: /api
+  targetRefs:
+  - group: ""
+    kind: Service
+    name: myservicea
+status:
+  ancestors: null

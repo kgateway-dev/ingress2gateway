@@ -17,8 +17,6 @@ limitations under the License.
 package kgateway
 
 import (
-	"regexp"
-
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
@@ -28,8 +26,7 @@ import (
 // ingress-nginx "regex location modifier" semantics are enforced for the host.
 //
 // This is the emitter-side realization of host-wide regex enforcement driven by:
-//   - nginx.ingress.kubernetes.io/use-regex=true, and/or
-//   - nginx.ingress.kubernetes.io/rewrite-target present anywhere for the host.
+//   - nginx.ingress.kubernetes.io/use-regex=true
 //
 // Behavior:
 //   - If RegexLocationForHost is true, convert any PathPrefix/Exact matches into RegularExpression matches.
@@ -57,8 +54,18 @@ func applyRegexPathMatchingForHost(
 		}
 	}
 
+	// If nothing is actually marked use-regex, do not mutate any matches.
+	if len(userRegexRule) == 0 {
+		return false
+	}
+
 	mutated := false
 	for ri := range httpRouteCtx.Spec.Rules {
+		// Only rewrite rules that originated from a use-regex ingress.
+		if !userRegexRule[ri] {
+			continue
+		}
+
 		rule := &httpRouteCtx.Spec.Rules[ri]
 		for mi := range rule.Matches {
 			m := &rule.Matches[mi]
@@ -78,18 +85,12 @@ func applyRegexPathMatchingForHost(
 			}
 
 			val := *m.Path.Value
-			isUserRegex := userRegexRule[ri]
-			lit := val
-			if !isUserRegex {
-				lit = regexp.QuoteMeta(val)
-			}
-
 			var re string
 			switch matchType {
 			case gwv1.PathMatchExact:
-				re = "^" + lit + "$"
+				re = "^" + val + "$"
 			case gwv1.PathMatchPathPrefix:
-				re = "^" + lit
+				re = "^" + val
 			default:
 				continue
 			}

@@ -17,10 +17,12 @@ limitations under the License.
 package ingressnginx
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
 
 	networkingv1 "k8s.io/api/networking/v1"
@@ -54,14 +56,17 @@ func useRegexFeature(
 		if anns == nil {
 			continue
 		}
+
 		raw, ok := anns[nginxUseRegexAnnotation]
 		if !ok {
 			continue
 		}
+
 		s := strings.TrimSpace(raw)
 		if s == "" {
 			continue
 		}
+
 		b, err := strconv.ParseBool(s)
 		if err != nil {
 			errs = append(errs, field.Invalid(
@@ -71,8 +76,22 @@ func useRegexFeature(
 			))
 			continue
 		}
-		if b {
-			useRegexTrue[types.NamespacedName{Namespace: ing.Namespace, Name: ing.Name}] = true
+
+		if !b {
+			continue
+		}
+
+		ingKey := types.NamespacedName{Namespace: ing.Namespace, Name: ing.Name}
+		useRegexTrue[ingKey] = true
+
+		// Validate: use-regex=true  affinity=cookie requires session-cookie-path.
+		if strings.TrimSpace(anns[nginxAffinityAnnotation]) == "cookie" {
+			if strings.TrimSpace(anns[nginxSessionCookiePathAnnotation]) == "" {
+				errs = append(errs, field.Required(
+					field.NewPath("ingress", ing.Namespace, ing.Name, "metadata", "annotations").Key(nginxSessionCookiePathAnnotation),
+					"session-cookie-path must be set when use-regex=true and affinity=cookie; session cookie paths do not support regex",
+				))
+			}
 		}
 	}
 
@@ -125,6 +144,39 @@ func useRegexFeature(
 		} else {
 			*httpCtx.ProviderSpecificIR.IngressNginx.RegexLocationForHost =
 				*httpCtx.ProviderSpecificIR.IngressNginx.RegexLocationForHost || true
+		}
+
+		// Notification: use-regex + cookie affinity + session-cookie-path => warn/info.
+		// Emit once per ingress contributing to this host-group.
+		notified := map[types.NamespacedName]bool{}
+		for _, r := range rg.Rules {
+			ing := r.Ingress
+			ingKey := types.NamespacedName{Namespace: ing.Namespace, Name: ing.Name}
+			if notified[ingKey] || !useRegexTrue[ingKey] {
+				continue
+			}
+			anns := ing.Annotations
+			if anns == nil {
+				continue
+			}
+			if strings.TrimSpace(anns[nginxAffinityAnnotation]) != "cookie" {
+				continue
+			}
+			if strings.TrimSpace(anns[nginxSessionCookiePathAnnotation]) == "" {
+				// Missing path is already reported as an error above.
+				continue
+			}
+
+			notify(
+				notifications.InfoNotification,
+				fmt.Sprintf("Session cookie paths do not support regex (ingress %s/%s): %s is used for affinity=cookie while %s=true; ensure the session cookie path is a literal path",
+					ing.Namespace, ing.Name,
+					nginxSessionCookiePathAnnotation,
+					nginxUseRegexAnnotation,
+				),
+				&httpCtx.HTTPRoute,
+			)
+			notified[ingKey] = true
 		}
 
 		// policy-scoped: attach use regex to each ingress policy with coverage.
