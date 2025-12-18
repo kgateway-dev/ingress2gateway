@@ -140,24 +140,18 @@ func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 		t.Fatalf("input %s had no Ingress objects", inPath)
 	}
 
-	// Wait for Ingress status before proceeding.
-	var ingressIP string
+	// Get ingress-nginx-controller Service IP
+	ingressIP, err := getIngressNginxControllerAddress(ctx)
+	if err != nil {
+		t.Fatalf("get ingress-nginx-controller service address: %v", err)
+	}
+
+	// Extract host header from Ingress resources.
 	var hostHeader string
 	for _, ing := range ingresses {
-		ns := ing.GetNamespace()
-		if ns == "" {
-			ns = "default"
-		}
-		waitForIngressAddress(t, ctx, ns, ing.GetName(), 1*time.Minute)
-
-		ipOrHost, err := getIngressAddress(ctx, ns, ing.GetName())
-		if err != nil {
-			t.Fatalf("get ingress address: %v", err)
-		}
-		ingressIP = ipOrHost
-
 		if h, _ := firstIngressHost(ing); h != "" {
 			hostHeader = h
+			break
 		}
 	}
 	if hostHeader == "" {

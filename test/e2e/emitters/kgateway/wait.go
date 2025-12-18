@@ -124,19 +124,6 @@ func waitForOutputReadiness(t *testing.T, ctx context.Context, objs []unstructur
 	}
 }
 
-func waitForIngressAddress(t *testing.T, ctx context.Context, ns, name string, timeout time.Duration) {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		ipOrHost, err := getIngressAddress(ctx, ns, name)
-		if err == nil && ipOrHost != "" {
-			return
-		}
-		time.Sleep(2 * time.Second)
-	}
-	ipOrHost, err := getIngressAddress(ctx, ns, name)
-	t.Fatalf("Ingress/%s address not ready after %s (addr=%q err=%v)", name, timeout, ipOrHost, err)
-}
-
 // HTTPRequestConfig contains configuration for making HTTP requests in tests.
 type HTTPRequestConfig struct {
 	// HostHeader is the Host header value for the request
