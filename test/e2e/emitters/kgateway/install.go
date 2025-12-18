@@ -386,19 +386,36 @@ func createTLSSecret(ctx context.Context, secretName, hostname string) {
 	keyFile := fmt.Sprintf("%s/tls.key", tmpDir)
 
 	// Generate certificate valid for 365 days
-	opensslCmd := fmt.Sprintf(
-		"openssl req -x509 -nodes -days 365 -newkey rsa:2048 "+
-			"-keyout %s -out %s "+
-			"-subj \"/CN=%s/O=ingress2gateway\" "+
-			"-addext \"subjectAltName=DNS:%s\"",
-		keyFile, certFile, hostname, hostname)
-
-	mustRun(ctx, "sh", "-c", opensslCmd)
+	subject := fmt.Sprintf("/CN=%s/O=ingress2gateway", hostname)
+	subjectAltName := fmt.Sprintf("subjectAltName=DNS:%s", hostname)
+	mustRun(
+		ctx,
+		"openssl", "req",
+		"-x509",
+		"-nodes",
+		"-days", "365",
+		"-newkey", "rsa:2048",
+		"-keyout", keyFile,
+		"-out", certFile,
+		"-subj", subject,
+		"-addext", subjectAltName,
+	)
 
 	// Create Kubernetes secret from the certificate files
-	mustRun(ctx, "sh", "-c", fmt.Sprintf(
-		"kubectl --context %s create secret tls %s --cert=%s --key=%s -n default --dry-run=client -o yaml | kubectl --context %s apply -f -",
-		kubeContext, secretName, certFile, keyFile, kubeContext))
+	cmd := exec.CommandContext(ctx, "kubectl",
+		"--context", kubeContext,
+		"create", "secret", "tls", secretName,
+		"--cert="+certFile,
+		"--key="+keyFile,
+		"-n", "default",
+		"--dry-run=client",
+		"-o", "yaml",
+	)
+	secretYAML, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Fatalf("failed to create TLS secret manifest for %s: %v\nOutput:\n%s", secretName, err, string(secretYAML))
+	}
+	mustKubectlApplyStdin(ctx, string(secretYAML))
 
 	log.Printf("Created TLS secret %s for hostname %s", secretName, hostname)
 }
