@@ -59,10 +59,10 @@ func TestMain(m *testing.M) {
 	mustRun(ctx, "kind", "export", "kubeconfig", "--name", kindClusterName)
 
 	// MetalLB so LoadBalancer services get external IPs in kind.
-	// installMetalLB(ctx)
+	installMetalLB(ctx)
 
 	// Gateway API CRDs (experimental install includes standard + experimental types).
-	// installGatewayAPICRDs(ctx)
+	installGatewayAPICRDs(ctx)
 
 	// Install ingress-nginx (from the provided manifest URL, with version variable).
 	installIngressNginx(ctx)
@@ -211,16 +211,16 @@ func TestBasic(t *testing.T) {
 }
 
 func TestSSLRedirect(t *testing.T) {
-	_, gwAddr, host, _, _ := e2eTestSetup(t, "ssl_redirect.yaml", "ssl_redirect.yaml")
+	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "ssl_redirect.yaml", "ssl_redirect.yaml")
 
 	// Test HTTP redirect (308) through Ingress
-	// requireHTTPRedirectEventually(t, ingressHostHeader, "http", ingressIP, "", "/", "308", 1*time.Minute)
+	requireHTTPRedirectEventually(t, ingressHostHeader, "http", ingressIP, "", "/", "308", 1*time.Minute)
 
 	// Test HTTP redirect (301) through Gateway
 	requireHTTPRedirectEventually(t, host, "http", gwAddr, "80", "/", "301", 1*time.Minute)
 
 	// Test HTTPS connectivity (HTTP 200 status code)
-	requireHTTP200OverHTTPSEventually(t, host, gwAddr, "443", "/", "ssl-redirect-tls", 1*time.Minute)
+	requireHTTP200OverHTTPSEventually(t, host, gwAddr, "443", "", "ssl-redirect-tls", 1*time.Minute)
 }
 
 func TestCORS(t *testing.T) {

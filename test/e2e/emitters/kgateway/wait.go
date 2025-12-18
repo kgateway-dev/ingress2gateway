@@ -188,16 +188,16 @@ func requireHTTPRedirectEventually(t *testing.T, hostHeader, scheme, address, po
 	t.Helper()
 
 	// Set defaults
-	if port == "" {
-		if scheme == "https" {
-			port = "443"
-		} else {
-			port = "80"
-		}
-	}
-	if path == "" {
-		path = "/"
-	}
+	// if port == "" {
+	// 	if scheme == "https" {
+	// 		port = "443"
+	// 	} else {
+	// 		port = "80"
+	// 	}
+	// }
+	// if path == "" {
+	// 	path = "/"
+	// }
 
 	gwAddr := net.JoinHostPort(address, port)
 
@@ -226,7 +226,7 @@ func requireHTTPRedirectEventually(t *testing.T, hostHeader, scheme, address, po
 		RedirectRequest: &roundtripper.RedirectRequest{
 			Scheme: "https",
 			Port:   "",
-			Path:   path,
+			Path:   "",
 		},
 	}
 
