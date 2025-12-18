@@ -298,6 +298,15 @@ func TestKgatewayIngressNginxIntegration_Golden(t *testing.T) {
 			),
 		},
 		{
+			name: "use_regex_session_affinity",
+			inputRel: filepath.Join(
+				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "use_regex_session_affinity.yaml",
+			),
+			goldenRel: filepath.Join(
+				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "use_regex_session_affinity.yaml",
+			),
+		},
+		{
 			name: "rewrite_target",
 			inputRel: filepath.Join(
 				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "rewrite_target.yaml",
@@ -307,12 +316,21 @@ func TestKgatewayIngressNginxIntegration_Golden(t *testing.T) {
 			),
 		},
 		{
-			name: "rewrite_target_and_use_regex",
+			name: "rewrite_target_use_regex",
 			inputRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "rewrite_target_and_use_regex.yaml",
+				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "rewrite_target_use_regex.yaml",
 			),
 			goldenRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "rewrite_target_and_use_regex.yaml",
+				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "rewrite_target_use_regex.yaml",
+			),
+		},
+		{
+			name: "session_affinity",
+			inputRel: filepath.Join(
+				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "session_affinity.yaml",
+			),
+			goldenRel: filepath.Join(
+				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "session_affinity.yaml",
 			),
 		},
 	}

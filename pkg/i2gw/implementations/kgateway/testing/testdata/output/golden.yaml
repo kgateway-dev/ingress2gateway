@@ -1,24 +1,114 @@
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: BackendConfigPolicy
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
 metadata:
-  name: httpbin-backend-config
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: nginx
   namespace: default
 spec:
-  loadBalancer:
-    ringHash:
-      hashPolicies:
-        - cookie:
-            name: session-id
-            path: /api
-            sameSite: Strict
-            secure: true
-            ttl: 168h0m0s
-  targetRefs:
-    - group: ""
-      kind: Service
-      name: httpbin
+  gatewayClassName: kgateway
+  listeners:
+  - hostname: myservicea.foo.org
+    name: myservicea-foo-org-http
+    port: 80
+    protocol: HTTP
+  - hostname: myserviceb.foo.org
+    name: myserviceb-foo-org-http
+    port: 80
+    protocol: HTTP
+  - hostname: tls.example.org
+    name: tls-example-org-http
+    port: 80
+    protocol: HTTP
+status: {}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: ingress-myservicea1-myservicea-foo-org
+  namespace: default
+spec:
+  hostnames:
+  - myservicea.foo.org
+  parentRefs:
+  - name: nginx
+  rules:
+  - backendRefs:
+    - filters:
+      - extensionRef:
+          group: gateway.kgateway.dev
+          kind: TrafficPolicy
+          name: ingress-myservicea1
+        type: ExtensionRef
+      name: myservicea
+      port: 80
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+  - backendRefs:
+    - filters:
+      - extensionRef:
+          group: gateway.kgateway.dev
+          kind: TrafficPolicy
+          name: ingress-myservicea2
+        type: ExtensionRef
+      name: myservicea
+      port: 80
+    matches:
+    - path:
+        type: PathPrefix
+        value: /2
 status:
-  ancestors: null
+  parents: []
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: ingress-myserviceb-myserviceb-foo-org
+  namespace: default
+spec:
+  hostnames:
+  - myserviceb.foo.org
+  parentRefs:
+  - name: nginx
+  rules:
+  - backendRefs:
+    - name: myserviceb
+      port: 80
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+status:
+  parents: []
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: ingress-backendtls-tls-example-org
+  namespace: default
+spec:
+  hostnames:
+  - tls.example.org
+  parentRefs:
+  - name: nginx
+  rules:
+  - backendRefs:
+    - name: httpbin2
+      port: 80
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+status:
+  parents: []
 ---
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: BackendConfigPolicy
@@ -27,9 +117,9 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: ""
-      kind: Service
-      name: httpbin2
+  - group: ""
+    kind: Service
+    name: httpbin2
   tls:
     secretRef:
       name: base-certificate-tls
@@ -45,9 +135,9 @@ metadata:
 spec:
   connectTimeout: 30s
   targetRefs:
-    - group: ""
-      kind: Service
-      name: myservicea
+  - group: ""
+    kind: Service
+    name: myservicea
 status:
   ancestors: null
 ---
@@ -59,39 +149,11 @@ metadata:
 spec:
   connectTimeout: 2m0s
   targetRefs:
-    - group: ""
-      kind: Service
-      name: myserviceb
+  - group: ""
+    kind: Service
+    name: myserviceb
 status:
   ancestors: null
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata:
-  annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
-  name: nginx
-  namespace: default
-spec:
-  gatewayClassName: kgateway
-  listeners:
-    - hostname: myservicea.foo.org
-      name: myservicea-foo-org-http
-      port: 80
-      protocol: HTTP
-    - hostname: myserviceb.foo.org
-      name: myserviceb-foo-org-http
-      port: 80
-      protocol: HTTP
-    - hostname: sessionaffinity.example.org
-      name: sessionaffinity-example-org-http
-      port: 80
-      protocol: HTTP
-    - hostname: tls.example.org
-      name: tls-example-org-http
-      port: 80
-      protocol: HTTP
-status: {}
 ---
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: HTTPListenerPolicy
@@ -100,126 +162,18 @@ metadata:
   namespace: default
 spec:
   accessLog:
-    - fileSink:
-        path: /dev/stdout
-        stringFormat: '[%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"%n'
+  - fileSink:
+      path: /dev/stdout
+      stringFormat: '[%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%
+        %PROTOCOL%" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT%
+        %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% "%REQ(X-FORWARDED-FOR)%"
+        "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"%n'
   targetRefs:
-    - group: ""
-      kind: Gateway
-      name: nginx
+  - group: ""
+    kind: Gateway
+    name: nginx
 status:
   ancestors: null
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
-  name: ingress-backendtls-tls-example-org
-  namespace: default
-spec:
-  hostnames:
-    - tls.example.org
-  parentRefs:
-    - name: nginx
-  rules:
-    - backendRefs:
-        - name: httpbin2
-          port: 80
-      matches:
-        - path:
-            type: PathPrefix
-            value: /
-status:
-  parents: []
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
-  name: ingress-myservicea1-myservicea-foo-org
-  namespace: default
-spec:
-  hostnames:
-    - myservicea.foo.org
-  parentRefs:
-    - name: nginx
-  rules:
-    - backendRefs:
-        - filters:
-            - extensionRef:
-                group: gateway.kgateway.dev
-                kind: TrafficPolicy
-                name: ingress-myservicea1
-              type: ExtensionRef
-          name: myservicea
-          port: 80
-      matches:
-        - path:
-            type: PathPrefix
-            value: /
-    - backendRefs:
-        - filters:
-            - extensionRef:
-                group: gateway.kgateway.dev
-                kind: TrafficPolicy
-                name: ingress-myservicea2
-              type: ExtensionRef
-          name: myservicea
-          port: 80
-      matches:
-        - path:
-            type: PathPrefix
-            value: /2
-status:
-  parents: []
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
-  name: ingress-myserviceb-myserviceb-foo-org
-  namespace: default
-spec:
-  hostnames:
-    - myserviceb.foo.org
-  parentRefs:
-    - name: nginx
-  rules:
-    - backendRefs:
-        - name: myserviceb
-          port: 80
-      matches:
-        - path:
-            type: PathPrefix
-            value: /
-status:
-  parents: []
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
-  name: ingress-sessionaffinity-sessionaffinity-example-org
-  namespace: default
-spec:
-  hostnames:
-    - sessionaffinity.example.org
-  parentRefs:
-    - name: nginx
-  rules:
-    - backendRefs:
-        - name: httpbin
-          port: 80
-      matches:
-        - path:
-            type: PathPrefix
-            value: /
-status:
-  parents: []
 ---
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: TrafficPolicy
@@ -276,9 +230,9 @@ spec:
         maxTokens: 250
         tokensPerFill: 50
   targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: ingress-myserviceb-myserviceb-foo-org
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: ingress-myserviceb-myserviceb-foo-org
   timeouts:
     request: 1m30s
     streamIdle: 1m30s

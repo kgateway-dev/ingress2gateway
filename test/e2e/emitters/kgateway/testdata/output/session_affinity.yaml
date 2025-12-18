@@ -1,0 +1,57 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: nginx
+spec:
+  gatewayClassName: kgateway
+  listeners:
+  - hostname: session.affinity.localdev.me
+    name: session-affinity-localdev-me-http
+    port: 80
+    protocol: HTTP
+status: {}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: session-affinity-localhost-session-affinity-localdev-me
+spec:
+  hostnames:
+  - session.affinity.localdev.me
+  parentRefs:
+  - name: nginx
+  rules:
+  - backendRefs:
+    - name: echo-backend
+      port: 8080
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+status:
+  parents: []
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: BackendConfigPolicy
+metadata:
+  name: echo-backend-backend-config
+spec:
+  loadBalancer:
+    ringHash:
+      hashPolicies:
+      - cookie:
+          name: session-id
+          path: /api
+          sameSite: Strict
+          secure: true
+          ttl: 168h0m0s
+  targetRefs:
+  - group: ""
+    kind: Service
+    name: echo-backend
+status:
+  ancestors: null

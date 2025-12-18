@@ -47,6 +47,7 @@ kind: Ingress
 metadata:
   annotations:
     ingress2gateway.kubernetes.io/implementation: kgateway
+    nginx.ingress.kubernetes.io/rewrite-target: /rewritten
   name: ingress-myserviceb
   namespace: default
 spec:

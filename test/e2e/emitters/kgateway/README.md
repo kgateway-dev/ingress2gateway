@@ -84,13 +84,13 @@ make test-e2e
 From the repo root using `go test`:
 
 ```bash
-go test ./test/e2e/emitters/kgateway -v -run TestIngress2GatewayE2E
+go test -v ./test/e2e/emitters/kgateway/...
 ```
 
 To run a single test case (subtest name matches the input filename):
 
 ```bash
-go test ./test/e2e/emitters/kgateway -v -run 'TestIngress2GatewayE2E/basic'
+go test -v ./test/e2e/emitters/kgateway -run 'TestBasic'
 ```
 
 ---

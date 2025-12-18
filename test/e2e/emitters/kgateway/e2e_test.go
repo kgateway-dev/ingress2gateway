@@ -246,6 +246,62 @@ func TestCORS(t *testing.T) {
 	requireHTTP200Eventually(t, host, "http", gwAddr, "80", "/", 1*time.Minute)
 }
 
+func TestRewriteTarget(t *testing.T) {
+	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "rewrite_target.yaml", "rewrite_target.yaml")
+
+	// Must match "test/e2e/emitters/kgateway/testdata/output/rewrite_target.yaml".
+	reqPath := "/before/rewrite"
+	wantPath := "/after/rewrite"
+
+	// Validate behavior through Ingress (ingress-nginx)
+	requireEchoedPathEventually(t, ingressHostHeader, "http", ingressIP, "", reqPath, wantPath, 1*time.Minute)
+
+	// Validate behavior through Gateway (kgateway + generated TrafficPolicy)
+	requireEchoedPathEventually(t, host, "http", gwAddr, "80", reqPath, wantPath, 1*time.Minute)
+}
+
+func TestUseRegex(t *testing.T) {
+	_, gwAddr, _, _, ingressIP := e2eTestSetup(t, "use_regex.yaml", "use_regex.yaml")
+
+	// Test HTTP connectivity via Ingress
+	requireHTTP200Eventually(t, "myservicea.foo.org", "http", ingressIP, "", "/path/one", 1*time.Minute)
+	requireHTTP200Eventually(t, "myservicea.foo.org", "http", ingressIP, "", "/path/two", 1*time.Minute)
+	requireHTTP200Eventually(t, "myserviceb.foo.org", "http", ingressIP, "", "/", 1*time.Minute)
+
+	// Test HTTP connectivity via Gateway
+	requireHTTP200Eventually(t, "myservicea.foo.org", "http", gwAddr, "80", "/path/one", 1*time.Minute)
+	requireHTTP200Eventually(t, "myservicea.foo.org", "http", gwAddr, "80", "/path/two", 1*time.Minute)
+	requireHTTP200Eventually(t, "myserviceb.foo.org", "http", gwAddr, "80", "/", 1*time.Minute)
+}
+
+func TestUseRegexRewriteTarget(t *testing.T) {
+	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "rewrite_target_use_regex.yaml", "rewrite_target_use_regex.yaml")
+
+	// Ingress should rewrite /before/rewrite -> /after/rewrite
+	requireEchoedPathEventually(t, ingressHostHeader, "http", ingressIP, "", "/before/rewrite", "/after/rewrite", 1*time.Minute)
+
+	// Gateway should also rewrite /before/rewrite -> /after/rewrite
+	requireEchoedPathEventually(t, host, "http", gwAddr, "80", "/before/rewrite", "/after/rewrite", 1*time.Minute)
+}
+
+func TestSessionAffinityCookie(t *testing.T) {
+	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "session_affinity.yaml", "session_affinity.yaml")
+
+	// Test HTTP connectivity via Ingress and Gateway
+	requireHTTP200Eventually(t, ingressHostHeader, "http", ingressIP, "", "/session/affinity", 1*time.Minute)
+	requireHTTP200Eventually(t, host, "http", gwAddr, "80", "/session/affinity", 1*time.Minute)
+
+	// With the same cookie value, we should stick to one pod.
+	requireStickySessionEventually(t, host, "http", gwAddr, "80", "/session/affinity",
+		"session-id", "abc123",
+		20, 1*time.Minute)
+
+	// Different cookie value should usually map to a different pod (best-effort).
+	requireDifferentSessionUsuallyDifferentPod(t, host, "http", gwAddr, "80", "/session/affinity",
+		"session-id", "abc123", "xyz789",
+		20, 1*time.Minute)
+}
+
 func TestSSLPassthrough(t *testing.T) {
 	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "ssl_passthrough.yaml", "ssl_passthrough.yaml")
 
