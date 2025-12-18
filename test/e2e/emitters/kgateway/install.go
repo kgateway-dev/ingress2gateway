@@ -257,7 +257,7 @@ metadata:
   name: echo-backend
   namespace: default
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: echo-backend

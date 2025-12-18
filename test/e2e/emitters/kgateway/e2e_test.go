@@ -223,6 +223,19 @@ func TestSSLRedirect(t *testing.T) {
 	requireHTTP200OverHTTPSEventually(t, host, gwAddr, "443", "/", "ssl-redirect-tls", 5*time.Second)
 }
 
+func TestLoadBalance(t *testing.T) {
+	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "load_balance.yaml", "load_balance.yaml")
+
+	// Test HTTP connectivity via Ingress
+	requireHTTP200Eventually(t, ingressHostHeader, "http", ingressIP, "", "/", 1*time.Minute)
+
+	// Test HTTP connectivity via Gateway
+	requireHTTP200Eventually(t, host, "http", gwAddr, "80", "/", 1*time.Minute)
+
+	// Assert we actually see all 3 backends.
+	requireLoadBalancedAcrossPodsEventually(t, host, "http", gwAddr, "80", "/", 3, 1*time.Minute)
+}
+
 func TestCORS(t *testing.T) {
 	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "cors.yaml", "cors.yaml")
 
