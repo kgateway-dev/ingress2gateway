@@ -202,18 +202,6 @@ func getKubernetesClient() (client.Client, error) {
 func makeHTTPRequestEventually(t *testing.T, cfg HTTPRequestConfig) {
 	t.Helper()
 
-	// Set defaults
-	if cfg.Port == "" {
-		if cfg.Scheme == "https" {
-			cfg.Port = "443"
-		} else {
-			cfg.Port = "80"
-		}
-	}
-	if cfg.Path == "" {
-		cfg.Path = "/"
-	}
-
 	// Load TLS certificates from secret if SecretName is specified
 	if cfg.SecretName != "" {
 		cl, err := getKubernetesClient()
