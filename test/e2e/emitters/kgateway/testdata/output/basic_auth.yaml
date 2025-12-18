@@ -45,7 +45,8 @@ metadata:
 spec:
   basicAuth:
     secretRef:
-      name: auth-map-secret
+      key: auth
+      name: basic-auth
   targetRefs:
   - group: gateway.networking.k8s.io
     kind: HTTPRoute

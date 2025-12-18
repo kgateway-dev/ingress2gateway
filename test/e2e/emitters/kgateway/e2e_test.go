@@ -42,7 +42,6 @@ func TestMain(m *testing.M) {
 	mustHaveBin("helm")
 	mustHaveBin("go")
 	mustHaveBin("openssl")
-	mustHaveBin("htpasswd")
 
 	ctx := context.Background()
 
@@ -79,8 +78,8 @@ func TestMain(m *testing.M) {
 	// TLS-enabled backend for SSL passthrough tests.
 	applyTLSBackend(ctx)
 
-	// Create auth-map secret for basic auth tests.
-	createAuthMapSecret(ctx, "auth-map-secret", "testuser", "testpass")
+	// Create file-based secret for basic auth tests.
+	createBasicAuthFileSecret(ctx, "basic-auth")
 
 	e2eSetupComplete = true
 
@@ -380,8 +379,8 @@ func TestSSLPassthrough(t *testing.T) {
 func TestBasicAuth(t *testing.T) {
 	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "basic_auth.yaml", "basic_auth.yaml")
 
-	username := "testuser"
-	password := "testpass"
+	username := "user"
+	password := "password"
 
 	// Test unauthenticated request → expect 401 via Ingress
 	makeHTTPRequestEventually(t, HTTPRequestConfig{

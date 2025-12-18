@@ -420,47 +420,29 @@ func createTLSSecret(ctx context.Context, secretName, hostname string) {
 	log.Printf("Created TLS secret %s for hostname %s", secretName, hostname)
 }
 
-// createAuthMapSecret creates a Kubernetes Secret with auth-map format for basic authentication.
-// The secret has keys as usernames and values as bcrypt-hashed passwords.
-func createAuthMapSecret(ctx context.Context, secretName, username, password string) {
+// createBasicAuthFileSecret creates a Kubernetes Secret with auth-file format for basic authentication.
+// The secret contains an htpasswd file in the key "auth".
+func createBasicAuthFileSecret(ctx context.Context, secretName string) {
 	// Check if secret already exists
 	if _, err := kubectl(ctx, "get", "secret", secretName, "-n", "default"); err == nil {
-		log.Printf("Auth-map secret %s already exists, skipping creation", secretName)
+		log.Printf("Basic auth file secret %s already exists, skipping creation", secretName)
 		return
 	}
 
-	// Generate bcrypt hash using htpasswd
-	// htpasswd -nbBC 10 username password outputs: username:$2y$10$...
-	cmd := exec.CommandContext(ctx, "htpasswd", "-nbBC", "10", username, password)
-	htpasswdOutput, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Fatalf("failed to generate bcrypt hash with htpasswd: %v\nOutput:\n%s", err, string(htpasswdOutput))
-	}
+	// Create Kubernetes secret with auth-file format
+	// The secret contains the htpasswd data in the key "auth"
+	// Username: user, Password: password
+	secretYAML := `
+apiVersion: v1
+data:
+  auth: dXNlcjp7U0hBfVc2cGg1TW01UHo4R2dpVUxiUGd6RzM3bWo5Zz0=
+kind: Secret
+metadata:
+  name: basic-auth
+  namespace: default
+type: Opaque
+`
+	mustKubectlApplyStdin(ctx, secretYAML)
 
-	// Parse output: username:$2y$10$... or username:$2a$10$...
-	// Extract just the hash part (everything after the colon)
-	outputStr := strings.TrimSpace(string(htpasswdOutput))
-	parts := strings.SplitN(outputStr, ":", 2)
-	if len(parts) != 2 {
-		log.Fatalf("unexpected htpasswd output format: %s", outputStr)
-	}
-	hash := parts[1]
-
-	// Create Kubernetes secret with auth-map format
-	// The key is the username, the value is the bcrypt hash
-	cmd = exec.CommandContext(ctx, "kubectl",
-		"--context", kubeContext,
-		"create", "secret", "generic", secretName,
-		"--from-literal", fmt.Sprintf("%s=%s", username, hash),
-		"-n", "default",
-		"--dry-run=client",
-		"-o", "yaml",
-	)
-	secretYAML, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Fatalf("failed to create auth-map secret manifest for %s: %v\nOutput:\n%s", secretName, err, string(secretYAML))
-	}
-	mustKubectlApplyStdin(ctx, string(secretYAML))
-
-	log.Printf("Created auth-map secret %s for username %s", secretName, username)
+	log.Printf("Created basic auth file secret %s", secretName)
 }

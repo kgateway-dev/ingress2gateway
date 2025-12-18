@@ -232,14 +232,26 @@ func makeHTTPRequestEventually(t *testing.T, cfg HTTPRequestConfig) {
 
 	// Build request headers
 	headers := make(map[string]string)
+	var expectedRequest *gwhttp.ExpectedRequest
 	if cfg.Username != "" && cfg.Password != "" {
+		// Add Authorization header for basic auth
 		auth := base64.StdEncoding.EncodeToString([]byte(cfg.Username + ":" + cfg.Password))
 		headers["Authorization"] = "Basic " + auth
+		// For basic auth, gateways strip Authorization header after validation,
+		// so we expect it to be absent from the backend request
+		expectedRequest = &gwhttp.ExpectedRequest{
+			Request: gwhttp.Request{
+				Host:   cfg.HostHeader,
+				Method: "GET",
+				Path:   cfg.Path,
+			},
+		}
 	}
 
 	// Build expected response
 	expected := gwhttp.ExpectedResponse{
-		Namespace: "default",
+		Namespace:       "default",
+		ExpectedRequest: expectedRequest,
 		Request: gwhttp.Request{
 			Host:             cfg.HostHeader,
 			Method:           "GET",
