@@ -358,52 +358,6 @@ func podAndCodeFromClientWithCookie(
 	return pod, code, out, nil
 }
 
-// requireHTTPRedirectEventually waits for an HTTP redirect response with the expected status code
-// and verifies the Location header contains https:// scheme.
-// expectedCode should be "301" (Moved Permanently) or "308" (Permanent Redirect).
-func requireHTTPRedirectEventually(t *testing.T, hostHeader, address, port, path string, expectedCode string, timeout time.Duration) {
-	t.Helper()
-
-	gwAddr := net.JoinHostPort(address, port)
-
-	// Parse expected status code
-	var statusCode int
-	switch expectedCode {
-	case "301":
-		statusCode = 301
-	case "308":
-		statusCode = 308
-	default:
-		t.Fatalf("unexpected redirect code: %s (expected 301 or 308)", expectedCode)
-	}
-
-	expected := gwhttp.ExpectedResponse{
-		Namespace: "default",
-		Request: gwhttp.Request{
-			Host:             hostHeader,
-			Method:           "GET",
-			Path:             path,
-			UnfollowRedirect: true,
-			SNI:              hostHeader,
-		},
-		Response: gwhttp.Response{
-			StatusCodes: []int{statusCode},
-		},
-		RedirectRequest: &roundtripper.RedirectRequest{
-			Scheme: "https",
-			Port:   "",
-			Path:   path,
-		},
-	}
-
-	rt := getRoundTripper()
-	timeoutConfig := gwconfig.DefaultTimeoutConfig()
-	timeoutConfig.MaxTimeToConsistency = timeout
-	timeoutConfig.RequiredConsecutiveSuccesses = 1
-
-	gwhttp.MakeRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, expected)
-}
-
 // requireHTTP200OverTLSEventually waits for HTTP 200 status code over a TLS connection with the provided certificates.
 func requireHTTP200OverTLSEventually(t *testing.T, hostHeader, address, port, path string, certPem, keyPem []byte, timeout time.Duration) {
 	t.Helper()
