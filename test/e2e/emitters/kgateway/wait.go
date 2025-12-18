@@ -393,24 +393,6 @@ func requireHTTP200OverTLSEventually(t *testing.T, hostHeader, address, port, pa
 	gwtls.MakeTLSRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, certPem, keyPem, hostHeader, expected)
 }
 
-// requireHTTP200OverHTTPSEventually waits for HTTP 200 status code over an HTTPS connection with TLS certificates.
-// Uses Gateway API conformance TLS utilities with certificates from the specified secret.
-func requireHTTP200OverHTTPSEventually(t *testing.T, hostHeader, address, port, path, secretName string, timeout time.Duration) {
-	t.Helper()
-
-	// Load TLS certificates from the specified secret
-	cl, err := getKubernetesClient()
-	if err != nil {
-		t.Fatalf("failed to create Kubernetes client: %v", err)
-	}
-	certPem, keyPem, err := gwtests.GetTLSSecret(cl, types.NamespacedName{Namespace: "default", Name: secretName})
-	if err != nil {
-		t.Fatalf("unexpected error finding TLS secret: %v", err)
-	}
-
-	requireHTTP200OverTLSEventually(t, hostHeader, address, port, path, certPem, keyPem, timeout)
-}
-
 // getKubernetesClient creates a Kubernetes client using the kubeconfig context.
 func getKubernetesClient() (client.Client, error) {
 	cfg, err := ctrlconfig.GetConfigWithContext(kubeContext)
