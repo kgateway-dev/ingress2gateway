@@ -122,10 +122,8 @@ func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 	mustKubectl(ctx, "apply", "-f", inPath)
 
 	// Ensure cleanup of per-test resources (but keep curl + echo).
+	// Note: generatedOutPath cleanup is handled separately after it's created.
 	t.Cleanup(func() {
-		if _, delErr := kubectl(ctx, "delete", "-f", outPath, "--ignore-not-found=true", "--wait=true", "--timeout=2m"); delErr != nil {
-			t.Logf("failed to delete output: %v", delErr)
-		}
 		if _, delErr := kubectl(ctx, "delete", "-f", inPath, "--ignore-not-found=true", "--wait=true", "--timeout=2m"); delErr != nil {
 			t.Logf("failed to delete input: %v", delErr)
 		}
@@ -158,13 +156,33 @@ func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 		hostHeader = "demo.localdev.me"
 	}
 
-	// Apply the matching ingress2gateway output YAML.
+	// Verify expected output file exists for comparison.
 	if _, err := os.Stat(outPath); err != nil {
 		t.Fatalf("expected output file missing: %s (%v)", outPath, err)
 	}
-	mustKubectl(ctx, "apply", "-f", outPath)
 
-	outObjs, err := decodeObjects(outPath)
+	// Run ingress2gateway to generate output from input, compare with expected output,
+	// and get the path to the generated output file.
+	generatedOutPath, err := compareAndGenerateOutput(ctx, t, root, inPath, outPath)
+	if err != nil {
+		t.Fatalf("failed to generate and compare output: %v", err)
+	}
+
+	// Cleanup: delete generated resources, then remove the temp file.
+	// Cleanup functions run in reverse order, so this will run after resource deletion.
+	t.Cleanup(func() {
+		if _, delErr := kubectl(ctx, "delete", "-f", generatedOutPath, "--ignore-not-found=true", "--wait=true", "--timeout=2m"); delErr != nil {
+			t.Logf("failed to delete generated output resources: %v", delErr)
+		}
+		if err := os.Remove(generatedOutPath); err != nil {
+			t.Logf("failed to remove generated output temp file %q: %v", generatedOutPath, err)
+		}
+	})
+
+	// Apply the generated ingress2gateway output YAML.
+	mustKubectl(ctx, "apply", "-f", generatedOutPath)
+
+	outObjs, err := decodeObjects(generatedOutPath)
 	if err != nil {
 		t.Fatalf("decode output objects: %v", err)
 	}
@@ -175,7 +193,7 @@ func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 	// Get Gateway address.
 	gws := filterKind(outObjs, "Gateway")
 	if len(gws) == 0 {
-		t.Fatalf("output %s had no Gateway objects", outPath)
+		t.Fatalf("generated output had no Gateway objects")
 	}
 	gw := gws[0]
 	gwNS := gw.GetNamespace()

@@ -10,7 +10,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-  - host: cors2.localdev.me
+  - host: cors.localdev.me
     http:
       paths:
       - path: /
