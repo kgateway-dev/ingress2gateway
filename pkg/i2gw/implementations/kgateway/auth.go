@@ -159,7 +159,10 @@ func applyExtAuthPolicy(
 				Port:      ptr.To(gwv1.PortNumber(parsed.port)),
 			},
 		},
-		PathPrefix: parsed.path,
+	}
+	// Only set PathPrefix if it's not the default "/" to avoid redirect issues
+	if parsed.path != "" && parsed.path != "/" {
+		extHttpService.PathPrefix = parsed.path
 	}
 
 	// Set AuthorizationResponse if response headers are specified.

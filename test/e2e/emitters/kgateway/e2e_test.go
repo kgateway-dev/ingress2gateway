@@ -78,6 +78,9 @@ func TestMain(m *testing.M) {
 	// TLS-enabled backend for SSL passthrough tests.
 	applyTLSBackend(ctx)
 
+	// External auth service for external auth tests.
+	applyExternalAuthService(ctx)
+
 	// Create file-based secret for basic auth tests.
 	createBasicAuthFileSecret(ctx, "basic-auth")
 
@@ -573,5 +576,73 @@ func TestBasicAuth(t *testing.T) {
 		Timeout:            1 * time.Minute,
 		Username:           username,
 		Password:           "wrongpassword",
+	})
+}
+
+func TestExternalAuth(t *testing.T) {
+	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "external_auth.yaml", "external_auth.yaml")
+
+	// Test unauthenticated request → expect 401 via Ingress
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         ingressHostHeader,
+		Scheme:             "http",
+		Address:            ingressIP,
+		Port:               "",
+		Path:               "/",
+		ExpectedStatusCode: 401,
+		Timeout:            1 * time.Minute,
+	})
+
+	// Test authenticated request with valid token → expect 200 via Ingress
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         ingressHostHeader,
+		Scheme:             "http",
+		Address:            ingressIP,
+		Port:               "",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+		Headers: map[string]string{
+			"Authorization": "Bearer test-token",
+		},
+	})
+
+	// Test unauthenticated request → expect 401 via Gateway
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         host,
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/",
+		ExpectedStatusCode: 401,
+		Timeout:            1 * time.Minute,
+	})
+
+	// Test authenticated request with valid token → expect 200 via Gateway
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         host,
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+		Headers: map[string]string{
+			"Authorization": "Bearer test-token",
+		},
+	})
+
+	// Test authenticated request with invalid token → expect 401 via Gateway
+	makeHTTPRequestEventually(t, HTTPRequestConfig{
+		HostHeader:         host,
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/",
+		ExpectedStatusCode: 401,
+		Timeout:            1 * time.Minute,
+		Headers: map[string]string{
+			"Authorization": "Bearer invalid-token",
+		},
 	})
 }

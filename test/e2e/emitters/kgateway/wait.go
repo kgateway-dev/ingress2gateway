@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"maps"
 	"net"
 	"strings"
 	"testing"
@@ -158,6 +159,8 @@ type HTTPRequestConfig struct {
 	UnfollowRedirect bool
 	// SNI is the Server Name Indication for TLS requests
 	SNI string
+	// Headers is a map of custom HTTP headers to include in the request
+	Headers map[string]string
 }
 
 // getRoundTripper creates a DefaultRoundTripper with appropriate timeout configuration.
@@ -359,6 +362,10 @@ func makeHTTPRequestEventually(t *testing.T, cfg HTTPRequestConfig) {
 
 	// Build request headers
 	headers := make(map[string]string)
+	// Add custom headers if provided
+	if cfg.Headers != nil {
+		maps.Copy(headers, cfg.Headers)
+	}
 	var expectedRequest *gwhttp.ExpectedRequest
 	if cfg.Username != "" && cfg.Password != "" {
 		// Add Authorization header for basic auth
