@@ -103,18 +103,19 @@ func firstRouteHost(objs []unstructured.Unstructured) string {
 	return ""
 }
 
-func getIngressAddress(ctx context.Context, ns, name string) (string, error) {
-	u, err := getUnstructured(ctx, "ingress", ns, name)
+// getIngressNginxControllerAddress gets the IP address of the ingress-nginx-controller Service.
+func getIngressNginxControllerAddress(ctx context.Context) (string, error) {
+	u, err := getUnstructured(ctx, "service", "ingress-nginx", "ingress-nginx-controller")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to get ingress-nginx-controller service: %w", err)
 	}
 	ings, found, _ := unstructured.NestedSlice(u.Object, "status", "loadBalancer", "ingress")
 	if !found || len(ings) == 0 {
-		return "", fmt.Errorf("no status.loadBalancer.ingress yet")
+		return "", fmt.Errorf("ingress-nginx-controller service has no external IP/hostname")
 	}
 	m, ok := ings[0].(map[string]any)
 	if !ok {
-		return "", fmt.Errorf("unexpected ingress status shape")
+		return "", fmt.Errorf("unexpected service status shape")
 	}
 	if ip, _ := m["ip"].(string); ip != "" {
 		return ip, nil
@@ -122,7 +123,7 @@ func getIngressAddress(ctx context.Context, ns, name string) (string, error) {
 	if hn, _ := m["hostname"].(string); hn != "" {
 		return hn, nil
 	}
-	return "", fmt.Errorf("no ip/hostname in status.loadBalancer.ingress[0]")
+	return "", fmt.Errorf("no ip/hostname in ingress-nginx-controller service status")
 }
 
 func hasTopLevelCondition(u unstructured.Unstructured, typ, status string) bool {

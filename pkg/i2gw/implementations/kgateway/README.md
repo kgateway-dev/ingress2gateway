@@ -104,7 +104,7 @@ The command should generate Gateway API and Kgateway resources.
 
 - `nginx.ingress.kubernetes.io/auth-type`: Must be set to `"basic"` to enable basic authentication. Maps to `TrafficPolicy.spec.basicAuth`.
 - `nginx.ingress.kubernetes.io/auth-secret`: Specifies the secret containing basic auth credentials in `namespace/name` format (or just `name` if in the same namespace). Maps to `TrafficPolicy.spec.basicAuth.secretRef.name`.
-- `nginx.ingress.kubernetes.io/auth-secret-type`: Specifies the format of the secret. Values: `"auth-file"` (default) or `"auth-map"`. For `"auth-file"`, the secret contains an htpasswd file in the key `"auth"`. For `"auth-map"`, the keys of the secret are usernames and values are hashed passwords. When set to `"auth-file"` (or default), maps to `TrafficPolicy.spec.basicAuth.secretRef.key` set to `"auth"`.
+- `nginx.ingress.kubernetes.io/auth-secret-type`: **Only `"auth-file"` is supported** (default). The secret must contain an htpasswd file in the key `"auth"`. Only SHA hashed passwords are supported. Maps to `TrafficPolicy.spec.basicAuth.secretRef.key` set to `"auth"`.
 
 ### Backend TLS
 

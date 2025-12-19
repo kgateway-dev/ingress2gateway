@@ -419,3 +419,30 @@ func createTLSSecret(ctx context.Context, secretName, hostname string) {
 
 	log.Printf("Created TLS secret %s for hostname %s", secretName, hostname)
 }
+
+// createBasicAuthFileSecret creates a Kubernetes Secret with auth-file format for basic authentication.
+// The secret contains an htpasswd file in the key "auth".
+func createBasicAuthFileSecret(ctx context.Context, secretName string) {
+	// Check if secret already exists
+	if _, err := kubectl(ctx, "get", "secret", secretName, "-n", "default"); err == nil {
+		log.Printf("Basic auth file secret %s already exists, skipping creation", secretName)
+		return
+	}
+
+	// Create Kubernetes secret with auth-file format
+	// The secret contains the htpasswd data in the key "auth"
+	// Username: user, Password: password
+	secretYAML := `
+apiVersion: v1
+data:
+  auth: dXNlcjp7U0hBfVc2cGg1TW01UHo4R2dpVUxiUGd6RzM3bWo5Zz0=
+kind: Secret
+metadata:
+  name: basic-auth
+  namespace: default
+type: Opaque
+`
+	mustKubectlApplyStdin(ctx, secretYAML)
+
+	log.Printf("Created basic auth file secret %s", secretName)
+}

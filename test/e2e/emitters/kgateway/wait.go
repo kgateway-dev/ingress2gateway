@@ -18,6 +18,7 @@ package kgateway
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"strings"
@@ -123,17 +124,40 @@ func waitForOutputReadiness(t *testing.T, ctx context.Context, objs []unstructur
 	}
 }
 
-func waitForIngressAddress(t *testing.T, ctx context.Context, ns, name string, timeout time.Duration) {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		ipOrHost, err := getIngressAddress(ctx, ns, name)
-		if err == nil && ipOrHost != "" {
-			return
-		}
-		time.Sleep(2 * time.Second)
-	}
-	ipOrHost, err := getIngressAddress(ctx, ns, name)
-	t.Fatalf("Ingress/%s address not ready after %s (addr=%q err=%v)", name, timeout, ipOrHost, err)
+// HTTPRequestConfig contains configuration for making HTTP requests in tests.
+type HTTPRequestConfig struct {
+	// HostHeader is the Host header value for the request
+	HostHeader string
+	// Scheme is "http" or "https"
+	Scheme string
+	// Address is the IP address or hostname to connect to
+	Address string
+	// Port is the port number (empty defaults to 80 for http, 443 for https)
+	Port string
+	// Path is the request path (empty defaults to "/")
+	Path string
+	// ExpectedStatusCode is the expected HTTP status code (used if ExpectedStatusCodes is empty)
+	ExpectedStatusCode int
+	// ExpectedStatusCodes is a list of acceptable status codes (takes precedence over ExpectedStatusCode)
+	ExpectedStatusCodes []int
+	// Timeout is the maximum time to wait for the request to succeed
+	Timeout time.Duration
+	// Username for Basic authentication
+	Username string
+	// Password for Basic authentication
+	Password string
+	// CertPem is the TLS certificate PEM data (for TLS passthrough)
+	CertPem []byte
+	// KeyPem is the TLS key PEM data (for TLS passthrough)
+	KeyPem []byte
+	// SecretName is the name of a Kubernetes secret containing TLS certificates
+	SecretName string
+	// RedirectRequest specifies expected redirect details
+	RedirectRequest *roundtripper.RedirectRequest
+	// UnfollowRedirect if true, don't follow redirects
+	UnfollowRedirect bool
+	// SNI is the Server Name Indication for TLS requests
+	SNI string
 }
 
 // getRoundTripper creates a DefaultRoundTripper with appropriate timeout configuration.
@@ -143,43 +167,6 @@ func getRoundTripper() roundtripper.RoundTripper {
 	return &roundtripper.DefaultRoundTripper{
 		TimeoutConfig: timeoutConfig,
 	}
-}
-
-func requireHTTP200Eventually(t *testing.T, hostHeader, scheme, address, port, path string, timeout time.Duration) {
-	t.Helper()
-
-	// Set defaults
-	if port == "" {
-		if scheme == "https" {
-			port = "443"
-		} else {
-			port = "80"
-		}
-	}
-	if path == "" {
-		path = "/"
-	}
-
-	gwAddr := net.JoinHostPort(address, port)
-
-	expected := gwhttp.ExpectedResponse{
-		Namespace: "default",
-		Request: gwhttp.Request{
-			Host:   hostHeader,
-			Method: "GET",
-			Path:   path,
-		},
-		Response: gwhttp.Response{
-			StatusCode: 200,
-		},
-	}
-
-	rt := getRoundTripper()
-	timeoutConfig := gwconfig.DefaultTimeoutConfig()
-	timeoutConfig.MaxTimeToConsistency = timeout
-	timeoutConfig.RequiredConsecutiveSuccesses = 1
-
-	gwhttp.MakeRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, expected)
 }
 
 func requireStickySessionEventually(
@@ -252,7 +239,7 @@ func requireDifferentSessionUsuallyDifferentPod(
 		time.Sleep(interval)
 	}
 
-	// Don’t hard-fail if it never differs; environments can legitimately hash both cookies to same pod.
+	// Don't hard-fail if it never differs; environments can legitimately hash both cookies to same pod.
 	t.Logf("note: different cookie values did not map to different pods within timeout; sticky routing still validated")
 }
 
@@ -334,70 +321,6 @@ func podAndCodeFromClientWithCookie(
 	return pod, code, out, nil
 }
 
-// requireHTTPRedirectEventually waits for an HTTP redirect response with the expected status code
-// and verifies the Location header contains https:// scheme.
-// expectedCode should be "301" (Moved Permanently) or "308" (Permanent Redirect).
-func requireHTTPRedirectEventually(t *testing.T, hostHeader, address, port, path string, expectedCode string, timeout time.Duration) {
-	t.Helper()
-
-	gwAddr := net.JoinHostPort(address, port)
-
-	// Parse expected status code
-	var statusCode int
-	switch expectedCode {
-	case "301":
-		statusCode = 301
-	case "308":
-		statusCode = 308
-	default:
-		t.Fatalf("unexpected redirect code: %s (expected 301 or 308)", expectedCode)
-	}
-
-	expected := gwhttp.ExpectedResponse{
-		Namespace: "default",
-		Request: gwhttp.Request{
-			Host:             hostHeader,
-			Method:           "GET",
-			Path:             path,
-			UnfollowRedirect: true,
-			SNI:              hostHeader,
-		},
-		Response: gwhttp.Response{
-			StatusCodes: []int{statusCode},
-		},
-		RedirectRequest: &roundtripper.RedirectRequest{
-			Scheme: "https",
-			Port:   "",
-			Path:   path,
-		},
-	}
-
-	rt := getRoundTripper()
-	timeoutConfig := gwconfig.DefaultTimeoutConfig()
-	timeoutConfig.MaxTimeToConsistency = timeout
-	timeoutConfig.RequiredConsecutiveSuccesses = 1
-
-	gwhttp.MakeRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, expected)
-}
-
-// requireHTTP200OverHTTPSEventually waits for HTTP 200 status code over an HTTPS connection with TLS certificates.
-// Uses Gateway API conformance TLS utilities with certificates from the specified secret.
-func requireHTTP200OverHTTPSEventually(t *testing.T, hostHeader, address, port, path, secretName string, timeout time.Duration) {
-	t.Helper()
-
-	// Load TLS certificates from the specified secret
-	cl, err := getKubernetesClient()
-	if err != nil {
-		t.Fatalf("failed to create Kubernetes client: %v", err)
-	}
-	certPem, keyPem, err := gwtests.GetTLSSecret(cl, types.NamespacedName{Namespace: "default", Name: secretName})
-	if err != nil {
-		t.Fatalf("unexpected error finding TLS secret: %v", err)
-	}
-
-	requireHTTP200OverTLSEventually(t, hostHeader, address, port, path, certPem, keyPem, timeout)
-}
-
 // getKubernetesClient creates a Kubernetes client using the kubeconfig context.
 func getKubernetesClient() (client.Client, error) {
 	cfg, err := ctrlconfig.GetConfigWithContext(kubeContext)
@@ -413,43 +336,85 @@ func getKubernetesClient() (client.Client, error) {
 	return cl, nil
 }
 
-// requireHTTP200OverTLSEventually waits for HTTP 200 status code over an HTTPS connection with TLS certificates.
-// Uses Gateway API conformance TLS utilities for proper TLS passthrough testing.
-func requireHTTP200OverTLSEventually(t *testing.T, host, address, port, path string, certPem, keyPem []byte, timeout time.Duration) {
+// makeHTTPRequestEventually makes an HTTP request based on the provided configuration.
+// It handles regular HTTP/HTTPS requests, TLS passthrough, Basic auth, and redirects.
+func makeHTTPRequestEventually(t *testing.T, cfg HTTPRequestConfig) {
 	t.Helper()
 
-	// Set defaults
-	if port == "" {
-		port = "443"
-	}
-	if path == "" {
-		path = "/"
+	// Load TLS certificates from secret if SecretName is specified
+	if cfg.SecretName != "" {
+		cl, err := getKubernetesClient()
+		if err != nil {
+			t.Fatalf("failed to create Kubernetes client: %v", err)
+		}
+		certPem, keyPem, err := gwtests.GetTLSSecret(cl, types.NamespacedName{Namespace: "default", Name: cfg.SecretName})
+		if err != nil {
+			t.Fatalf("unexpected error finding TLS secret: %v", err)
+		}
+		cfg.CertPem = certPem
+		cfg.KeyPem = keyPem
 	}
 
-	gwAddr := net.JoinHostPort(address, port)
+	gwAddr := net.JoinHostPort(cfg.Address, cfg.Port)
 
+	// Build request headers
+	headers := make(map[string]string)
+	var expectedRequest *gwhttp.ExpectedRequest
+	if cfg.Username != "" && cfg.Password != "" {
+		// Add Authorization header for basic auth
+		auth := base64.StdEncoding.EncodeToString([]byte(cfg.Username + ":" + cfg.Password))
+		headers["Authorization"] = "Basic " + auth
+		// For basic auth, gateways strip Authorization header after validation,
+		// so we expect it to be absent from the backend request
+		expectedRequest = &gwhttp.ExpectedRequest{
+			Request: gwhttp.Request{
+				Host:   cfg.HostHeader,
+				Method: "GET",
+				Path:   cfg.Path,
+			},
+		}
+	}
+
+	// Build expected response
 	expected := gwhttp.ExpectedResponse{
-		Namespace: "default",
+		Namespace:       "default",
+		ExpectedRequest: expectedRequest,
 		Request: gwhttp.Request{
-			Host:   host,
-			Method: "GET",
-			Path:   path,
+			Host:             cfg.HostHeader,
+			Method:           "GET",
+			Path:             cfg.Path,
+			Headers:          headers,
+			UnfollowRedirect: cfg.UnfollowRedirect,
+			SNI:              cfg.SNI,
 		},
-		Response: gwhttp.Response{
-			StatusCode: 200,
-		},
+		RedirectRequest: cfg.RedirectRequest,
 	}
 
-	// Create roundtripper that connects to IP but uses hostname for SNI
-	rt := getRoundTripper()
+	// Set expected status code(s)
+	if len(cfg.ExpectedStatusCodes) > 0 {
+		expected.Response.StatusCodes = cfg.ExpectedStatusCodes
+	} else if cfg.ExpectedStatusCode != 0 {
+		expected.Response.StatusCode = cfg.ExpectedStatusCode
+	} else {
+		// Default to 200 if not specified
+		expected.Response.StatusCode = 200
+	}
 
-	// Configure timeout config for the TLS request
+	rt := getRoundTripper()
 	timeoutConfig := gwconfig.DefaultTimeoutConfig()
-	timeoutConfig.MaxTimeToConsistency = timeout
+	timeoutConfig.MaxTimeToConsistency = cfg.Timeout
 	timeoutConfig.RequiredConsecutiveSuccesses = 1
 
-	// Use Gateway API TLS utilities to make the request with certificates
-	gwtls.MakeTLSRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, certPem, keyPem, host, expected)
+	// Use TLS utilities if certificates are provided
+	if len(cfg.CertPem) > 0 && len(cfg.KeyPem) > 0 {
+		sni := cfg.SNI
+		if sni == "" {
+			sni = cfg.HostHeader
+		}
+		gwtls.MakeTLSRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, cfg.CertPem, cfg.KeyPem, sni, expected)
+	} else {
+		gwhttp.MakeRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, expected)
+	}
 }
 
 func waitForGatewayAddress(ctx context.Context, ns, gwName string, timeout time.Duration) (string, error) {

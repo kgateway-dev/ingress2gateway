@@ -1,0 +1,56 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: nginx
+  namespace: default
+spec:
+  gatewayClassName: kgateway
+  listeners:
+  - hostname: basic-auth.localdev.me
+    name: basic-auth-localdev-me-http
+    port: 80
+    protocol: HTTP
+status: {}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: basic-auth-localhost-basic-auth-localdev-me
+  namespace: default
+spec:
+  hostnames:
+  - basic-auth.localdev.me
+  parentRefs:
+  - name: nginx
+  rules:
+  - backendRefs:
+    - name: echo-backend
+      port: 8080
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+status:
+  parents: []
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: TrafficPolicy
+metadata:
+  name: basic-auth-localhost
+  namespace: default
+spec:
+  basicAuth:
+    secretRef:
+      key: auth
+      name: basic-auth
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: basic-auth-localhost-basic-auth-localdev-me
+status:
+  ancestors: null
+
