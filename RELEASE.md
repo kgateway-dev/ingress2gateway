@@ -84,25 +84,8 @@ and Kgateway-specific resources.
     git push ${REMOTE} v${MAJOR}.${MINOR}.${PATCH}
     ```
 
-7. Build the release binary.
+7. Verify the release has been published to the [releases page](https://github.com/kgateway-dev/ingress2gateway/releases).
 
-    ```shell
-    make build
-    ```
+8. Download and verify the binary version, e.g. `ingress2gateway version`.
 
-8. Verify the version of the release binary.
-
-    ```shell
-    $ ./ingress2gateway version
-    ingress2gateway version: v0.2.0
-    Built with Go version: go1.25.3
-    ```
-
-9. Create a [new release](https://github.com/kgateway-dev/ingress2gateway/releases/new):
-    1. Choose the tag that you created for the release.
-    2. Use the tag as the release title, i.e. `v0.1.0` refer to previous release for the content of the release body.
-    3. Click "Generate release notes" and preview the release body.
-    4. Click "Attach binaries by dropping them here or selecting them." and add the contents of the `ingress2gateway` binary generated from `make build`.
-    5. If this is a release candidate, select the "This is a pre-release" checkbox.
-
-10. If you find any bugs in this process, create an [issue](https://github.com/kgateway-dev/ingress2gateway/issues).
+9. If you find any bugs in this process, create an [issue](https://github.com/kgateway-dev/ingress2gateway/issues).
