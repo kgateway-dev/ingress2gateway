@@ -1,4 +1,4 @@
-# Release Process
+# Releasing Ingress2Gateway
 
 ## Overview
 
@@ -8,51 +8,101 @@ and Kgateway-specific resources.
 
 ## Releasing a new version
 
-### Writing a Changelog
+### Prerequisites
 
-To simplify release notes generation, we recommend using the [Kubernetes release
-notes generator](https://github.com/kubernetes/release/blob/master/cmd/release-notes):
+1. Permissions to push to the repository.
 
-```bash
-go install k8s.io/release/cmd/release-notes@latest
-export GITHUB_TOKEN=your_token_here
-release-notes --start-sha EXAMPLE_COMMIT --end-sha EXAMPLE_COMMIT --branch main --repo ingress2gateway --org kgateway-dev --required-author=""
-```
+2. Set the required environment variables based on the expected release number:
 
-This output will likely need to be reorganized and cleaned up a bit, but it
-provides a good starting point. Once you're satisfied with the changelog, create
-a PR. This must go through the regular PR review process and get merged into the
-`main` branch. Approval of the PR indicates community consensus for a new
-release.
+   ```shell
+   export MAJOR=0
+   export MINOR=3
+   export PATCH=0
+   export RC=1
+   export REMOTE=origin
+   ```
 
-### Patch a release
+  __Note:__ The above example assumes `origin` is the name of the `https://github.com/kgateway-dev/ingress2gateway.git` remote.
 
-1. Create a new branch in your fork named something like `<githubuser>/release-x.x.x`. Use the new branch
-  in the upcoming steps.
-1. Use `git` to cherry-pick all relevant PRs into your branch.
-1. Update the version references in the codebase with the new semver tag.
-1. Create a pull request of the `<githubuser>/release-x.x.x` branch into the `release-x.x` branch upstream
-  (which should already exist since this is a patch release). Add a hold on this PR waiting for at least
-  one maintainer/codeowner to provide a `lgtm`.
-1. Create a tag using the `HEAD` of the `release-x.x` branch. This can be done using the `git` CLI or
-  Github's [release][release] page.
+### Release Process
 
-### Release a MAJOR or MINOR release
+1. If needed, clone the repository.
 
-1. Cut a `release-major.minor` branch that we can tag things in as needed.
-1. Check out the `release-major.minor` release branch locally.
-1. Update the version references in the codebase with the new semver tag.
-1. Verify the changelog is up to date with the desired changes.
-1. Create a tag using the `HEAD` of the `release-x.x` branch. This can be done using `git tag -sa $VERSION` CLI or
-  Github's [release][release] page.
-1. Run `git push origin $VERSION`, this will trigger a github workflow that will create the release.
-1. Verify the [releases page](https://github.com/kgateway-dev/ingress2gateway/releases) to ensure that the release meets the expectations.
+   ```shell
+   git clone -o ${REMOTE} https://github.com/kgateway-dev/ingress2gateway.git
+   ```
 
-### Release a RC release
+2. If you already have the repo cloned, ensure it’s up-to-date and your local branch is clean.
 
-1. Open a PR with changes of the version references in the codebase.
-1. Include necessary changelog updates to CHANGELOG.md in this PR.
-1. Merge the PR
-1. Tag the release using the commit on main where the PR merged. This can be done using the git CLI `git tag -sa $VERSION`.
-1. Run `git push origin $VERSION`, this will trigger a github workflow that will create the release.
-1. Verify the [releases page](https://github.com/kgateway-dev/ingress2gateway/releases) to ensure that the release meets the expectations.
+3. Release Branch Handling:
+
+   - __For a Release Candidate:__
+     A release branch should already exist and contain backported commits since the previous relates tag. In this case, check out the existing branch:
+
+     ```shell
+     git checkout -b release-${MAJOR}.${MINOR}
+     ```
+
+   - __For a Major, Minor or Patch Release:__
+     Create a new release branch from the `main` branch. The branch should be named `release-${MAJOR}.${MINOR}`, for example, `release-0.1`:
+
+     ```shell
+     git checkout -b release-${MAJOR}.${MINOR} ${REMOTE}/release-${MAJOR}.${MINOR}
+     ```
+
+4. Push your release branch to the `kgateway-dev/ingress2gateway` repo.
+
+    ```shell
+    git push ${REMOTE} release-${MAJOR}.${MINOR}
+    ```
+
+5. Tag the head of your release branch with the release version.
+
+   For a release candidate:
+
+    ```shell
+    git tag -s -a v${MAJOR}.${MINOR}.${PATCH}-rc.${RC} -m 'Ingress2Gateway v${MAJOR}.${MINOR}.${PATCH}-rc.${RC} Release Candidate'
+    ```
+
+   For a major, minor or patch release:
+
+    ```shell
+    git tag -s -a v${MAJOR}.${MINOR}.${PATCH} -m 'Ingress2Gateway v${MAJOR}.${MINOR}.${PATCH} Release'
+    ```
+
+6. Push the tag to the `kgateway-dev/ingress2gateway` repo.
+
+   __For a release candidate:__
+
+    ```shell
+    git push ${REMOTE} v${MAJOR}.${MINOR}.${PATCH}-rc.${RC}
+    ```
+
+   __For a major, minor or patch release:__
+
+    ```shell
+    git push ${REMOTE} v${MAJOR}.${MINOR}.${PATCH}
+    ```
+
+7. Build the release binary.
+
+    ```shell
+    make build
+    ```
+
+8. Verify the version of the release binary.
+
+    ```shell
+    $ ./ingress2gateway version
+    ingress2gateway version: v0.2.0
+    Built with Go version: go1.25.3
+    ```
+
+9. Create a [new release](https://github.com/kgateway-dev/ingress2gateway/releases/new):
+    1. Choose the tag that you created for the release.
+    2. Use the tag as the release title, i.e. `v0.1.0` refer to previous release for the content of the release body.
+    3. Click "Generate release notes" and preview the release body.
+    4. Click "Attach binaries by dropping them here or selecting them." and add the contents of the `ingress2gateway` binary generated from `make build`.
+    5. If this is a release candidate, select the "This is a pre-release" checkbox.
+
+10. If you find any bugs in this process, create an [issue](https://github.com/kgateway-dev/ingress2gateway/issues).
