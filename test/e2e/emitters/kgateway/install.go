@@ -446,3 +446,110 @@ type: Opaque
 
 	log.Printf("Created basic auth file secret %s", secretName)
 }
+
+func applyExternalAuthService(ctx context.Context) {
+	// Deploy a simple Go HTTP server that acts as an external auth provider
+	// The server checks for Authorization: Bearer test-token header or ?auth=valid query param
+	// Returns 200 OK with X-Auth-Token and X-User-ID headers on success, 401 on failure
+	y := `
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: default
+spec:
+  selector:
+    app: auth-service
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+      - name: auth-service
+        image: golang:1.21-alpine
+        command:
+        - sh
+        - -c
+        - |
+          cat > /tmp/auth-server.go << 'EOF'
+          package main
+          import (
+            "fmt"
+            "log"
+            "net/http"
+            "os"
+          )
+          func main() {
+            http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+              // Check for Authorization header or auth query parameter
+              authHeader := r.Header.Get("Authorization")
+              authQuery := r.URL.Query().Get("auth")
+              
+              // Log incoming request for debugging (skip health probe requests)
+              if authQuery != "valid" {
+                log.Printf("Auth service received request: Method=%s Path=%s Host=%s Headers=%v Query=%v", 
+                  r.Method, r.URL.Path, r.Host, r.Header, r.URL.Query())
+              }
+              
+              // Ensure we don't redirect - return direct response
+              
+              isValid := false
+              if authHeader == "Bearer test-token" {
+                isValid = true
+              } else if authQuery == "valid" {
+                isValid = true
+              }
+              
+              // Set headers before writing status to avoid any redirect behavior
+              if isValid {
+                // Return 200 OK with response headers
+                w.Header().Set("X-Auth-Token", "test-token")
+                w.Header().Set("X-User-ID", "test-user")
+                w.Header().Set("Content-Type", "text/plain")
+                w.WriteHeader(http.StatusOK)
+                fmt.Fprintf(w, "OK")
+              } else {
+                // Return 401 Unauthorized - must write status before body
+                w.Header().Set("Content-Type", "text/plain")
+                w.WriteHeader(http.StatusUnauthorized)
+                fmt.Fprintf(w, "Unauthorized")
+              }
+            })
+            log.Println("Starting auth server on 0.0.0.0:8080")
+            if err := http.ListenAndServe("0.0.0.0:8080", nil); err != nil {
+              log.Fatal(err)
+              os.Exit(1)
+            }
+          }
+          EOF
+          go run /tmp/auth-server.go
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /?auth=valid
+            port: 8080
+          initialDelaySeconds: 2
+          periodSeconds: 2
+`
+
+	log.Printf("Deploying external auth service")
+	mustKubectlApplyStdin(ctx, y)
+	mustKubectl(ctx, "-n", "default", "rollout", "status", "deploy/auth-service", "--timeout=5m")
+}
