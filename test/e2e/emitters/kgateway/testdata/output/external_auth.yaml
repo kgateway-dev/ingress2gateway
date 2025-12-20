@@ -53,7 +53,6 @@ spec:
         name: auth-service
         namespace: default
         port: 8080
-      # pathPrefix: /
 status: {}
 ---
 apiVersion: gateway.kgateway.dev/v1alpha1
