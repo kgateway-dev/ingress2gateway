@@ -14,41 +14,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package intermediate
+package gce
 
-// GceGatewayIR contains GCE-specific fields for Gateway.
-type GceGatewayIR struct {
+type GatewayIR struct {
 	EnableHTTPSRedirect bool
 	SslPolicy           *SslPolicyConfig
 }
-
-// SslPolicyConfig holds the SSL policy configuration for GCE Gateway.
 type SslPolicyConfig struct {
 	Name string
 }
-
-// GceHTTPRouteIR contains GCE-specific fields for HTTPRoute.
-type GceHTTPRouteIR struct{}
-
-// GceServiceIR contains GCE-specific fields for Service.
-type GceServiceIR struct {
+type HTTPRouteIR struct{}
+type ServiceIR struct {
 	SessionAffinity *SessionAffinityConfig
 	SecurityPolicy  *SecurityPolicyConfig
 	HealthCheck     *HealthCheckConfig
 }
-
-// SessionAffinityConfig holds the session affinity configuration for GCE Service.
 type SessionAffinityConfig struct {
 	AffinityType string
 	CookieTTLSec *int64
 }
-
-// SecurityPolicyConfig holds the security policy configuration for GCE Service.
 type SecurityPolicyConfig struct {
 	Name string
 }
-
-// HealthCheckConfig holds the health check configuration for GCE Service.
 type HealthCheckConfig struct {
 	CheckIntervalSec   *int64
 	TimeoutSec         *int64
@@ -57,19 +44,4 @@ type HealthCheckConfig struct {
 	Type               *string
 	Port               *int64
 	RequestPath        *string
-}
-
-func mergeGceGatewayIR(current, existing *GceGatewayIR) *GceGatewayIR {
-	// If either GceGatewayIR is nil, return the other one as the merged result.
-	if current == nil {
-		return existing
-	}
-	if existing == nil {
-		return current
-	}
-
-	// If both GceGatewayIRs are not nil, merge their fields.
-	var mergedGatewayIR GceGatewayIR
-	mergedGatewayIR.EnableHTTPSRedirect = current.EnableHTTPSRedirect || existing.EnableHTTPSRedirect
-	return &mergedGatewayIR
 }

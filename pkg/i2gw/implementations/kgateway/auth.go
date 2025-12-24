@@ -22,7 +22,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
 	"k8s.io/utils/ptr"
@@ -127,7 +127,7 @@ func parseAuthURL(raw string, ingressNS string) (*parsedAuthURL, error) {
 //     (parsed from the auth URL).
 //   - An ExtAuthPolicy is added to TrafficPolicy that references the GatewayExtension.
 func applyExtAuthPolicy(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	ingressName, namespace string,
 	tp map[string]*kgateway.TrafficPolicy,
 	gatewayExtensions map[string]*kgateway.GatewayExtension,

@@ -17,7 +17,7 @@ limitations under the License.
 package kgateway
 
 import (
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	kgw "github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -50,7 +50,7 @@ func ensureStaticBackendForService(
 	svcName string,
 	host string,
 	port int32,
-	protocol *intermediate.BackendProtocol,
+	protocol *providerir.BackendProtocol,
 	backends map[types.NamespacedName]*kgw.Backend,
 ) *kgw.Backend {
 	backendKey := backendKeyForService(httpRouteKey.Namespace, svcName)
@@ -59,7 +59,7 @@ func ensureStaticBackendForService(
 	if kb, ok := backends[backendKey]; ok {
 		if protocol != nil && kb.Spec.Static != nil && kb.Spec.Static.AppProtocol == nil {
 			switch *protocol {
-			case intermediate.BackendProtocolGRPC:
+			case providerir.BackendProtocolGRPC:
 				ap := kgw.AppProtocolGrpc
 				kb.Spec.Static.AppProtocol = &ap
 			}
@@ -94,7 +94,7 @@ func ensureStaticBackendForService(
 
 	if protocol != nil {
 		switch *protocol {
-		case intermediate.BackendProtocolGRPC:
+		case providerir.BackendProtocolGRPC:
 			ap := kgw.AppProtocolGrpc
 			kb.Spec.Static.AppProtocol = &ap
 		}

@@ -19,7 +19,7 @@ package kgateway
 import (
 	"strings"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
 	corev1 "k8s.io/api/core/v1"
@@ -39,9 +39,9 @@ import (
 //   - TargetRefs are populated with all core Service backends that this Policy covers
 //     (based on RuleBackendSources).
 func applyBackendTLSPolicy(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	httpRouteKey types.NamespacedName,
-	httpRouteCtx intermediate.HTTPRouteContext,
+	httpRouteCtx providerir.HTTPRouteContext,
 	backendCfg map[types.NamespacedName]*kgateway.BackendConfigPolicy,
 ) bool {
 	if pol.BackendTLS == nil {

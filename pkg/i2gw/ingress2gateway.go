@@ -21,7 +21,9 @@ import (
 	"fmt"
 	"sort"
 
+	common_emitter "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitters/common_emitter"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -29,23 +31,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 )
 
-// GeneratorAnnotationKey is the annotation key used to indicate the generator of a Gateway API resource.
 const GeneratorAnnotationKey = "gateway.networking.k8s.io/generator"
 
 // Version holds the version string (injected by ldflags during build).
 // It will be populated by `git describe --tags --always --dirty`.
-// Examples: "v0.1.0", "v0.1.0-5-gabcdef", "v0.1.0-5-gabcdef-dirty"
+// Examples: "v0.4.0", "v0.4.0-5-gabcdef", "v0.4.0-5-gabcdef-dirty"
 var Version = "dev" // Default value if not built with linker flags
 
-// ToGatewayAPIResources converts Ingress and other provider-specific resources
-// to Gateway API resources.
-func ToGatewayAPIResources(
-	ctx context.Context,
-	namespace string,
-	inputFile string,
-	providers []string,
-	providerSpecificFlags map[string]map[string]string,
-	implementations []string) ([]GatewayResources, map[string]string, error) {
+func ToGatewayAPIResources(ctx context.Context, namespace string, inputFile string, providers []string, providerSpecificFlags map[string]map[string]string, implementations []string, emitterName string) ([]GatewayResources, map[string]string, error) {
 	var clusterClient client.Client
 
 	if inputFile == "" {
@@ -80,47 +73,66 @@ func ToGatewayAPIResources(
 		}
 	}
 
+	emitterConf := &EmitterConf{}
+	newEmitterFunc, ok := EmitterConstructorByName[EmitterName(emitterName)]
+	if !ok {
+		return nil, nil, fmt.Errorf("%s is not a supported emitter", emitterName)
+	}
+	emitter := newEmitterFunc(emitterConf)
+	commonEmitter := common_emitter.NewEmitter()
+
 	var (
 		gatewayResources []GatewayResources
 		errs             field.ErrorList
 	)
 	for _, provider := range providerByName {
-		ir, conversionErrs := provider.ToIR()
+		// 1. Get ProviderIR (rich, with provider-specific fields)
+		providerIR, conversionErrs := provider.ToProviderIR()
 		errs = append(errs, conversionErrs...)
 
-		// Run implementations on the IR before rendering GatewayResources.
+		// 2. [FORK-SPECIFIC] Run ImplementationEmitters on ProviderIR
+		//    This allows kgateway to access rich provider-specific fields before conversion
 		var implObjs []client.Object
 		for _, implName := range implementations {
-			emitter, ok := ImplementationEmitters[implName]
+			implEmitter, ok := ImplementationEmitters[implName]
 			if !ok {
-				continue // already validated in CLI
+				continue
 			}
-			objs, err := emitter.Emit(&ir)
+			objs, err := implEmitter.Emit(&providerIR)
 			if err != nil {
-				errs = append(errs, field.InternalError(field.NewPath("implementation", implName), err))
+				errs = append(errs, field.InternalError(nil, fmt.Errorf("implementation emitter %s failed: %w", implName, err)))
+				continue
 			}
 			implObjs = append(implObjs, objs...)
 		}
 
-		providerGatewayResources, conversionErrs := provider.ToGatewayResources(ir)
+		// 3. Convert ProviderIR → EmitterIR (strips provider-specific fields)
+		ir := providerir.ToEmitterIR(providerIR)
+
+		// 4. Run common emitter (transforms EmitterIR)
+		ir, conversionErrs = commonEmitter.Emit(ir)
 		errs = append(errs, conversionErrs...)
 
-		// Convert client.Objects to unstructured and append to GatewayExtensions.
+		// 5. Run provider-specific emitter (converts EmitterIR → GatewayResources)
+		providerGatewayResources, conversionErrs := emitter.Emit(ir)
+		errs = append(errs, conversionErrs...)
+
+		// 6. Convert ImplementationEmitter objects to GatewayExtensions
 		for _, obj := range implObjs {
 			u, err := CastToUnstructured(obj)
 			if err != nil {
-				// TODO [danehans]: log/notify about this conversion error.
+				errs = append(errs, field.InternalError(nil, fmt.Errorf("failed to cast implementation object: %w", err)))
 				continue
 			}
-			providerGatewayResources.GatewayExtensions = append(providerGatewayResources.GatewayExtensions, *u)
+			providerGatewayResources.GatewayExtensions = append(
+				providerGatewayResources.GatewayExtensions, *u)
 		}
 
 		gatewayResources = append(gatewayResources, providerGatewayResources)
 	}
-
 	notificationTablesMap := notifications.NotificationAggr.CreateNotificationTables()
 	if len(errs) > 0 {
-		return nil, notificationTablesMap, AggregatedErrs(errs)
+		return nil, notificationTablesMap, aggregatedErrs(errs)
 	}
 
 	return gatewayResources, notificationTablesMap, nil
@@ -162,8 +174,7 @@ func constructProviders(conf *ProviderConf, providers []string) (map[ProviderNam
 	return providerByName, nil
 }
 
-// AggregatedErrs aggregates multiple field.Error into a single error.
-func AggregatedErrs(errs field.ErrorList) error {
+func aggregatedErrs(errs field.ErrorList) error {
 	errMsg := fmt.Errorf("\n# Encountered %d errors", len(errs))
 	for _, err := range errs {
 		errMsg = fmt.Errorf("\n%w # %s", errMsg, err.Error())
@@ -182,7 +193,17 @@ func GetSupportedProviders() []string {
 	return supportedProviders
 }
 
-// CastToUnstructured converts a runtime.Object to an unstructured.Unstructured object.
+// GetSupportedEmitters returns the names of all emitters that are supported now
+func GetSupportedEmitters() []string {
+	supportedEmitters := make([]string, 0, len(EmitterConstructorByName))
+	for key := range EmitterConstructorByName {
+		supportedEmitters = append(supportedEmitters, string(key))
+	}
+	// Sort the emitter names for consistent output.
+	sort.Strings(supportedEmitters)
+	return supportedEmitters
+}
+
 func CastToUnstructured(obj runtime.Object) (*unstructured.Unstructured, error) {
 	// Convert the Kubernetes object to unstructured.Unstructured
 	unstructuredObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)

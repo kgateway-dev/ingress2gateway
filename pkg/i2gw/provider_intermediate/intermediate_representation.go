@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Kubernetes Authors.
+Copyright 2025 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,9 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package intermediate
+package providerir
 
 import (
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate/gce"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -24,11 +25,11 @@ import (
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
 
-// IR holds specifications of Gateway Objects for supporting Ingress extensions,
+// ProviderIR holds specifications of Gateway Objects for supporting Ingress extensions,
 // annotations, and proprietary API features not supported as Gateway core
-// features. An IR field can be mapped to core Gateway-API fields,
+// features. An ProviderIR field can be mapped to core Gateway-API fields,
 // or provider-specific Gateway extensions.
-type IR struct {
+type ProviderIR struct {
 	Gateways   map[types.NamespacedName]GatewayContext
 	HTTPRoutes map[types.NamespacedName]HTTPRouteContext
 	Services   map[types.NamespacedName]ProviderSpecificServiceIR
@@ -53,11 +54,8 @@ type GatewayContext struct {
 	ProviderSpecificIR ProviderSpecificGatewayIR
 }
 
-// ProviderSpecificGatewayIR contains a dedicated field for each provider to
-// specify their extension features on Gateway.
 type ProviderSpecificGatewayIR struct {
-	Gce          *GceGatewayIR
-	IngressNginx *IngressNginxGatewayIR
+	Gce *gce.GatewayIR
 }
 
 // HTTPRouteContext contains the Gateway-API HTTPRoute object and HTTPRouteIR,
@@ -73,18 +71,15 @@ type HTTPRouteContext struct {
 	RuleBackendSources [][]BackendSource
 }
 
-// ProviderSpecificHTTPRouteIR contains a dedicated field for each provider to
-// specify their extension features on HTTPRoute.
 type ProviderSpecificHTTPRouteIR struct {
-	Gce          *GceHTTPRouteIR
+	Gce          *gce.HTTPRouteIR
 	IngressNginx *IngressNginxHTTPRouteIR
 }
 
-// ProviderSpecificServiceIR contains a dedicated field for each provider to
-// specify their extension features on Service.
+// ServiceIR contains a dedicated field for each provider to specify their
+// extension features on Service.
 type ProviderSpecificServiceIR struct {
-	Gce          *GceServiceIR
-	IngressNginx *IngressNginxServiceIR
+	Gce *gce.ServiceIR
 }
 
 // BackendSource tracks the source Ingress resource that contributed

@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
@@ -67,7 +67,7 @@ func (e *Emitter) Name() string {
 // provider-specific IR. It reads generic Policies from the provider IR and turns them
 // into Kgateway resources and/or mutates the given IR. Whole-route policies are attached
 // via targetRefs; partial policies are attached as ExtensionRef filters on backendRefs.
-func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
+func (e *Emitter) Emit(ir *providerir.ProviderIR) ([]client.Object, error) {
 	var out []client.Object
 
 	// One BackendConfigPolicy per Ingress name (per namespace), aggregating all
@@ -287,7 +287,7 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 		}
 
 		// Get the Gateway for this HTTPRoute
-		var gatewayCtx *intermediate.GatewayContext
+		var gatewayCtx *providerir.GatewayContext
 		if len(httpRouteContext.Spec.ParentRefs) > 0 {
 			parentRef := httpRouteContext.Spec.ParentRefs[0]
 			gatewayNamespace := httpRouteKey.Namespace
@@ -416,13 +416,13 @@ func (e *Emitter) Emit(ir *intermediate.IR) ([]client.Object, error) {
 // This is used to ensure we only attach a single TrafficPolicy ExtensionRef
 // filter per backendRef for a given policy, even if the provider populated
 // RuleBackendSources with duplicate entries for the same (rule, backend).
-func uniquePolicyIndices(indices []intermediate.PolicyIndex) []intermediate.PolicyIndex {
+func uniquePolicyIndices(indices []providerir.PolicyIndex) []providerir.PolicyIndex {
 	if len(indices) == 0 {
 		return indices
 	}
 
-	seen := make(map[intermediate.PolicyIndex]struct{}, len(indices))
-	out := make([]intermediate.PolicyIndex, 0, len(indices))
+	seen := make(map[providerir.PolicyIndex]struct{}, len(indices))
+	out := make([]providerir.PolicyIndex, 0, len(indices))
 
 	for _, idx := range indices {
 		if _, ok := seen[idx]; ok {
@@ -448,7 +448,7 @@ func uniquePolicyIndices(indices []intermediate.PolicyIndex) []intermediate.Poli
 // which matches NGINX's proxy-body-size more directly. client-body-buffer-size is
 // treated as a fallback when proxy-body-size is not configured.
 func applyBufferPolicy(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	ingressName, namespace string,
 	tp map[string]*kgateway.TrafficPolicy,
 ) bool {
@@ -504,7 +504,7 @@ func numRules(hr gwv1.HTTPRoute) int {
 }
 
 func applyRateLimitPolicy(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	ingressName, namespace string,
 	tp map[string]*kgateway.TrafficPolicy,
 ) bool {
@@ -530,12 +530,12 @@ func applyRateLimitPolicy(
 	)
 
 	switch rl.Unit {
-	case intermediate.RateLimitUnitRPS:
+	case providerir.RateLimitUnitRPS:
 		// Requests per second.
 		tokensPerFill = rl.Limit
 		maxTokens = rl.Limit * burstMult
 		fillInterval = metav1.Duration{Duration: time.Second}
-	case intermediate.RateLimitUnitRPM:
+	case providerir.RateLimitUnitRPM:
 		// Requests per minute.
 		tokensPerFill = rl.Limit
 		maxTokens = rl.Limit * burstMult
@@ -573,7 +573,7 @@ func applyRateLimitPolicy(
 //   - If ProxySendTimeout is set, it is mapped to the Request timeout in Kgateway.
 //   - If ProxyReadTimeout is set, it is mapped to the StreamIdle timeout in Kgateway.
 func applyTimeoutPolicy(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	ingressName, namespace string,
 	tp map[string]*kgateway.TrafficPolicy,
 ) bool {
@@ -610,10 +610,10 @@ func applyTimeoutPolicy(
 //   - TargetRefs are populated with all core Service backends that this Policy covers
 //     (based on RuleBackendSources).
 func applyProxyConnectTimeoutPolicy(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	ingressName string,
 	httpRouteKey types.NamespacedName,
-	httpRouteCtx intermediate.HTTPRouteContext,
+	httpRouteCtx providerir.HTTPRouteContext,
 	backendCfg map[types.NamespacedName]*kgateway.BackendConfigPolicy,
 	svcTimeouts map[types.NamespacedName]map[string]*metav1.Duration,
 ) bool {
@@ -701,9 +701,9 @@ func applyProxyConnectTimeoutPolicy(
 //   - TargetRefs are populated with all core Service backends that this Policy covers
 //     (based on RuleBackendSources).
 func applySessionAffinityPolicy(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	httpRouteKey types.NamespacedName,
-	httpRouteCtx intermediate.HTTPRouteContext,
+	httpRouteCtx providerir.HTTPRouteContext,
 	backendCfg map[types.NamespacedName]*kgateway.BackendConfigPolicy,
 ) bool {
 	if pol.SessionAffinity == nil {
@@ -813,9 +813,9 @@ func applySessionAffinityPolicy(
 //   - That policy's Spec.AccessLog is configured with FileSink when EnableAccessLog is true.
 //   - TargetRefs are populated with the Gateway reference from HTTPRoute's ParentRefs.
 func applyAccessLogPolicy(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	httpRouteKey types.NamespacedName,
-	httpRouteCtx intermediate.HTTPRouteContext,
+	httpRouteCtx providerir.HTTPRouteContext,
 	httpListenerPolicies map[types.NamespacedName]*kgateway.HTTPListenerPolicy,
 ) bool {
 	if pol.EnableAccessLog == nil || !*pol.EnableAccessLog {
@@ -888,7 +888,7 @@ func applyAccessLogPolicy(
 //   - If BasicAuth is configured, set spec.basicAuth.secretRef.name in TrafficPolicy.
 //   - If AuthType is "auth-file" (default), also set spec.basicAuth.secretRef.key to "auth".
 func applyBasicAuthPolicy(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	ingressName, namespace string,
 	tp map[string]*kgateway.TrafficPolicy,
 ) bool {

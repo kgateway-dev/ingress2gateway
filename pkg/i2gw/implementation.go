@@ -17,7 +17,7 @@ limitations under the License.
 package i2gw
 
 import (
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -28,9 +28,9 @@ type ImplementationEmitter interface {
 	// Name of the implementation.
 	Name() string
 
-	// Emit can mutate the IR (e.g. to inject HTTPRoute filters) and returns
+	// Emit can mutate the ProviderIR (e.g. to inject HTTPRoute filters) and returns
 	// implementation-specific objects.
-	Emit(ir *intermediate.IR) ([]client.Object, error)
+	Emit(ir *providerir.ProviderIR) ([]client.Object, error)
 }
 
 // ImplementationEmitters defines a global registry, similar to ProviderConstructorByName.

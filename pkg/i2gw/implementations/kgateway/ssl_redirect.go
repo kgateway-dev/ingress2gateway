@@ -19,7 +19,7 @@ package kgateway
 import (
 	"fmt"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -32,10 +32,10 @@ import (
 //   - If SSLRedirect is enabled, mark the HTTPRoute for later splitting
 //   - Returns true if SSL redirect is enabled for this policy
 func applySSLRedirectPolicy(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	httpRouteKey types.NamespacedName,
-	httpRouteContext *intermediate.HTTPRouteContext,
-	coverage []intermediate.PolicyIndex,
+	httpRouteContext *providerir.HTTPRouteContext,
+	coverage []providerir.PolicyIndex,
 ) bool {
 	if pol.SSLRedirect == nil || !*pol.SSLRedirect {
 		return false
@@ -51,10 +51,10 @@ func applySSLRedirectPolicy(
 //
 // Returns the HTTP redirect route, HTTPS backend route, and whether splitting was successful.
 func splitHTTPRouteForSSLRedirect(
-	httpRouteContext intermediate.HTTPRouteContext,
+	httpRouteContext providerir.HTTPRouteContext,
 	httpRouteKey types.NamespacedName,
-	gatewayCtx *intermediate.GatewayContext,
-) (*intermediate.HTTPRouteContext, *intermediate.HTTPRouteContext, bool) {
+	gatewayCtx *providerir.GatewayContext,
+) (*providerir.HTTPRouteContext, *providerir.HTTPRouteContext, bool) {
 	// Find HTTP and HTTPS listeners by hostname
 	var httpListenerName, httpsListenerName *gwv1.SectionName
 	hostname := ""
@@ -88,7 +88,7 @@ func splitHTTPRouteForSSLRedirect(
 	}
 
 	// Create HTTP redirect route
-	httpRedirectRoute := intermediate.HTTPRouteContext{
+	httpRedirectRoute := providerir.HTTPRouteContext{
 		HTTPRoute:          *httpRouteContext.HTTPRoute.DeepCopy(),
 		ProviderSpecificIR: httpRouteContext.ProviderSpecificIR,
 		RuleBackendSources: httpRouteContext.RuleBackendSources,
@@ -128,9 +128,9 @@ func splitHTTPRouteForSSLRedirect(
 	}
 
 	// Create HTTPS backend route (only if HTTPS listener exists)
-	var httpsBackendRoute *intermediate.HTTPRouteContext
+	var httpsBackendRoute *providerir.HTTPRouteContext
 	if httpsListenerName != nil {
-		route := intermediate.HTTPRouteContext{
+		route := providerir.HTTPRouteContext{
 			HTTPRoute:          *httpRouteContext.HTTPRoute.DeepCopy(),
 			ProviderSpecificIR: httpRouteContext.ProviderSpecificIR,
 			RuleBackendSources: httpRouteContext.RuleBackendSources,

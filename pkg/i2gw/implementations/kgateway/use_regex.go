@@ -17,7 +17,7 @@ limitations under the License.
 package kgateway
 
 import (
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
@@ -35,8 +35,8 @@ import (
 //   - Exact "/foo"       -> "^/foo$"
 //   - Existing RegularExpression matches are preserved.
 func applyRegexPathMatchingForHost(
-	ingx *intermediate.IngressNginxHTTPRouteIR,
-	httpRouteCtx *intermediate.HTTPRouteContext,
+	ingx *providerir.IngressNginxHTTPRouteIR,
+	httpRouteCtx *providerir.HTTPRouteContext,
 ) bool {
 	if ingx == nil || ingx.RegexLocationForHost == nil || !*ingx.RegexLocationForHost {
 		return false

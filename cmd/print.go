@@ -19,7 +19,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
@@ -38,9 +37,12 @@ import (
 
 	// Call init function for the implementations
 	_ "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/implementations/kgateway"
+
+	// Call init for emitters
+	_ "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitters/kgateway"
+	_ "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitters/standard"
 )
 
-// PrintRunner holds the necessary information to perform the print action.
 type PrintRunner struct {
 	// outputFormat contains currently set output format. Value assigned via --output/-o flag.
 	// Defaults to YAML.
@@ -73,6 +75,10 @@ type PrintRunner struct {
 	// implementations indicates which implementations are used to generate
 	// implementation-specific (GEP-713 style) resources.
 	implementations []string
+
+	// emitter indicates which emitter is used to generate the Gateway API resources.
+	// Defaults to "kgateway".
+	emitter string
 }
 
 // PrintGatewayAPIObjects performs necessary steps to digest and print
@@ -82,7 +88,7 @@ type PrintRunner struct {
 func (pr *PrintRunner) PrintGatewayAPIObjects(cmd *cobra.Command, _ []string) error {
 	err := pr.initializeResourcePrinter()
 	if err != nil {
-		return fmt.Errorf("failed to initialize resource printer: %w", err)
+		return fmt.Errorf("failed to initialize resrouce printer: %w", err)
 	}
 	err = pr.initializeNamespaceFilter()
 	if err != nil {
@@ -96,6 +102,7 @@ func (pr *PrintRunner) PrintGatewayAPIObjects(cmd *cobra.Command, _ []string) er
 		pr.providers,
 		pr.getProviderSpecificFlags(),
 		pr.implementations,
+		pr.emitter,
 	)
 	if err != nil {
 		return err
@@ -322,12 +329,7 @@ func newPrintCommand() *cobra.Command {
 		Use:   "print",
 		Short: "Prints Gateway API objects generated from ingress and provider-specific resources.",
 		RunE:  pr.PrintGatewayAPIObjects,
-		PreRunE: func(_ *cobra.Command, _ []string) error {
-			openAPIExist := slices.Contains(pr.providers, "openapi3")
-			if openAPIExist && len(pr.providers) != 1 {
-				return fmt.Errorf("openapi3 must be the only provider when specified")
-			}
-
+		PreRunE: func(cmd *cobra.Command, _ []string) error {
 			// Validate implementations (if any) against registered emitters.
 			if len(pr.implementations) > 0 {
 				// Build a list of supported implementations from the registry.
@@ -365,14 +367,13 @@ func newPrintCommand() *cobra.Command {
 if specified with --namespace.`)
 
 	cmd.Flags().StringSliceVar(&pr.providers, "providers", []string{},
-		fmt.Sprintf("If present, the tool will try to convert only resources related to the specified providers, supported values are %v.", i2gw.GetSupportedProviders()))
+		"If present, the tool will try to convert only resources related to the specified providers.")
 
-	cmd.Flags().StringSliceVar(
-		&pr.implementations,
-		"implementations",
-		[]string{},
-		"Comma-separated list of implementations for which to generate implementation-specific resources.",
-	)
+	cmd.Flags().StringSliceVar(&pr.implementations, "implementations", []string{},
+		"If present, the tool will generate implementation-specific resources (CRDs) for the specified implementations.")
+
+	cmd.Flags().StringVar(&pr.emitter, "emitter", "kgateway",
+		"If present, the tool will try to use the specified emitter to generate the Gateway API resources.")
 
 	pr.providerSpecificFlags = make(map[string]*string)
 	for provider, flags := range i2gw.GetProviderSpecificFlagDefinitions() {
@@ -415,7 +416,6 @@ func (pr *PrintRunner) getProviderSpecificFlags() map[string]map[string]string {
 	return providerSpecificFlags
 }
 
-// PrintUnstructuredAsYaml prints an unstructured.Unstructured object as YAML to stdout.
 func PrintUnstructuredAsYaml(obj *unstructured.Unstructured) error {
 	// Create a YAML serializer
 	serializer := json.NewSerializerWithOptions(json.DefaultMetaFactory, nil, nil,

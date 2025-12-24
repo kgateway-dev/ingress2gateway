@@ -19,7 +19,7 @@ package kgateway
 import (
 	"strings"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -28,7 +28,7 @@ import (
 // applyCorsPolicy projects the CORS policy IR into a Kgateway TrafficPolicy,
 // returning true if it modified/created a TrafficPolicy for the given ingress.
 func applyCorsPolicy(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	ingressName, namespace string,
 	tp map[string]*kgateway.TrafficPolicy,
 ) bool {

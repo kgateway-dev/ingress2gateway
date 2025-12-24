@@ -18,15 +18,15 @@ package common
 
 import (
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// ToGatewayResources converts the received intermediate.IR to i2gw.GatewayResource
+// ToGatewayResources converts the received providerir.ProviderIR to i2gw.GatewayResource
 // without taking into consideration any provider specific logic.
-func ToGatewayResources(ir intermediate.IR) (i2gw.GatewayResources, field.ErrorList) {
+func ToGatewayResources(ir providerir.ProviderIR) (i2gw.GatewayResources, field.ErrorList) {
 	gatewayResources := i2gw.GatewayResources{
 		Gateways:           make(map[types.NamespacedName]gatewayv1.Gateway),
 		HTTPRoutes:         make(map[types.NamespacedName]gatewayv1.HTTPRoute),
@@ -43,11 +43,6 @@ func ToGatewayResources(ir intermediate.IR) (i2gw.GatewayResources, field.ErrorL
 	}
 	for key, httpRouteContext := range ir.HTTPRoutes {
 		gatewayResources.HTTPRoutes[key] = httpRouteContext.HTTPRoute
-		hr := gatewayResources.HTTPRoutes[key]
-		for i := range hr.Spec.Rules {
-			hr.Spec.Rules[i].BackendRefs = removeBackendRefsDuplicates(hr.Spec.Rules[i].BackendRefs)
-		}
-		gatewayResources.HTTPRoutes[key] = hr
 	}
 	return gatewayResources, nil
 }

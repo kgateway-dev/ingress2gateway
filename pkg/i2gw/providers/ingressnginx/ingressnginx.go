@@ -21,18 +21,14 @@ import (
 	"fmt"
 
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-// Name is the name of the provider.
+// The Name of the provider.
 const Name = "ingress-nginx"
-
-// NginxIngressClass is the default IngressClass name for ingress-nginx.
 const NginxIngressClass = "nginx"
-
-// NginxIngressClassFlag is the flag name for specifying the IngressClass name.
 const NginxIngressClassFlag = "ingress-class"
 
 func init() {
@@ -60,19 +56,20 @@ func NewProvider(conf *i2gw.ProviderConf) i2gw.Provider {
 	}
 }
 
-// ToIR converts stored Ingress-Nginx API entities to intermediate.IR
-// including the ingress-nginx specific features.
-func (p *Provider) ToIR() (intermediate.IR, field.ErrorList) {
+// ToProviderIR converts stored Ingress-Nginx API entities to providerir.ProviderIR
+// including the ingress-nginx specific features. This is used by ImplementationEmitters
+// that need access to rich provider-specific fields.
+func (p *Provider) ToProviderIR() (providerir.ProviderIR, field.ErrorList) {
 	return p.resourcesToIRConverter.convert(p.storage)
 }
 
-// ToGatewayResources converts intermediate.IR to Gateway API resources.
-func (p *Provider) ToGatewayResources(ir intermediate.IR) (i2gw.GatewayResources, field.ErrorList) {
-	return common.ToGatewayResources(ir)
-
+// ToIR converts stored Ingress-Nginx API entities to emitterir.IR
+// including the ingress-nginx specific features.
+func (p *Provider) ToIR() (emitterir.EmitterIR, field.ErrorList) {
+	ir, errs := p.ToProviderIR()
+	return providerir.ToEmitterIR(ir), errs
 }
 
-// ReadResourcesFromCluster reads ingress-nginx related resources from the cluster.
 func (p *Provider) ReadResourcesFromCluster(ctx context.Context) error {
 	storage, err := p.resourceReader.readResourcesFromCluster(ctx)
 	if err != nil {
@@ -83,7 +80,6 @@ func (p *Provider) ReadResourcesFromCluster(ctx context.Context) error {
 	return nil
 }
 
-// ReadResourcesFromFile reads ingress-nginx related resources from a file.
 func (p *Provider) ReadResourcesFromFile(_ context.Context, filename string) error {
 	storage, err := p.resourceReader.readResourcesFromFile(filename)
 	if err != nil {

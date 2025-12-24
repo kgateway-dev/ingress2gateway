@@ -18,14 +18,10 @@ package ingressnginx
 
 import (
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
-
-	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
-
-const implementationAnnotation = "ingress2gateway.kubernetes.io/implementation"
 
 // resourcesToIRConverter implements the ToIR function of i2gw.ResourcesToIRConverter interface.
 type resourcesToIRConverter struct {
@@ -37,71 +33,28 @@ func newResourcesToIRConverter() *resourcesToIRConverter {
 	return &resourcesToIRConverter{
 		featureParsers: []i2gw.FeatureParser{
 			canaryFeature,
-			bufferPolicyFeature,
-			corsPolicyFeature,
-			rateLimitPolicyFeature,
-			proxyBodySizeFeature,
-			proxySendTimeoutFeature,
-			proxyReadTimeoutFeature,
-			proxyConnectTimeoutFeature,
-			enableAccessLogFeature,
-			extAuthFeature,
-			basicAuthFeature,
-			sessionAffinityFeature,
-			loadBalancingFeature,
-			backendTLSFeature,
-			serviceUpstreamFeature,
-			backendProtocolFeature, // Must come after serviceUpstreamFeature.
-			sslRedirectFeature,
-			sslPassthroughFeature,
-			rewriteTargetFeature,
-			useRegexFeature,
 		},
 	}
 }
 
-func (c *resourcesToIRConverter) convert(storage *storage) (intermediate.IR, field.ErrorList) {
-	// TODO(liorliberman) temporary until we decide to change ToIR and featureParsers
-	// to get a map of [types.NamespacedName]*networkingv1.Ingress instead of a list.
-	ingressList := storage.Ingresses.List()
+func (c *resourcesToIRConverter) convert(storage *storage) (providerir.ProviderIR, field.ErrorList) {
 
-	// Derive implementation (if any) from Ingress annotations.
-	opts := i2gw.ProviderImplementationSpecificOptions{
-		GatewayClassNameOverride: detectImplementation(ingressList),
-	}
+	// TODO(liorliberman) temporary until we decide to change ToIR and featureParsers to get a map of [types.NamespacedName]*networkingv1.Ingress instead of a list
+	ingressList := storage.Ingresses.List()
 
 	// Convert plain ingress resources to gateway resources, ignoring all
 	// provider-specific features.
-	ir, errs := common.ToIR(ingressList, storage.ServicePorts, opts)
+	ir, errs := common.ToIR(ingressList, storage.ServicePorts, i2gw.ProviderImplementationSpecificOptions{})
 	if len(errs) > 0 {
-		return intermediate.IR{}, errs
+		return providerir.ProviderIR{}, errs
 	}
 
 	for _, parseFeatureFunc := range c.featureParsers {
 		// Apply the feature parsing function to the gateway resources, one by one.
 		parseErrs := parseFeatureFunc(ingressList, storage.ServicePorts, &ir)
+		// Append the parsing errors to the error list.
 		errs = append(errs, parseErrs...)
 	}
 
-	// Cross-feature validation that depends on derived host-wide regex mode.
-	errs = append(errs, validateRegexCookiePath(&ir)...)
-
 	return ir, errs
-}
-
-func detectImplementation(ingresses []networkingv1.Ingress) string {
-	impl := ""
-	for _, ing := range ingresses {
-		if ing.Annotations == nil {
-			continue
-		}
-		if v, ok := ing.Annotations[implementationAnnotation]; ok && v != "" {
-			if impl == "" {
-				impl = v
-			}
-			// TODO [danehans]: log or collect a warning about conflicting
-			// implementation annotations.
-		}
-	}
-	return impl
 }

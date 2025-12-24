@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
@@ -36,9 +36,9 @@ import (
 //   - applyRegexPathMatchingForHost(...) has already run (if host-wide regex location mode is enabled),
 //     so rule path matches will already be RegularExpression where needed.
 func applyRewriteTargetPolicies(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	sourceIngressName, namespace string,
-	httpRouteCtx *intermediate.HTTPRouteContext,
+	httpRouteCtx *providerir.HTTPRouteContext,
 	tp map[string]*kgateway.TrafficPolicy,
 ) {
 	if pol.RewriteTarget == nil || *pol.RewriteTarget == "" {

@@ -19,7 +19,7 @@ package kgateway
 import (
 	"fmt"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -40,10 +40,10 @@ type backendProtoPatchKey struct {
 //   - We also skip backends that have been rewritten to a kgateway Backend (service-upstream case),
 //     because the generated Backend will carry appProtocol instead.
 func emitBackendProtocolPatchNotifications(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	sourceIngressName string,
 	httpRouteKey types.NamespacedName,
-	httpCtx intermediate.HTTPRouteContext,
+	httpCtx providerir.HTTPRouteContext,
 	seen map[backendProtoPatchKey]struct{},
 ) {
 	if pol.BackendProtocol == nil {
@@ -53,7 +53,7 @@ func emitBackendProtocolPatchNotifications(
 	// Map ingress-nginx backend-protocol → ServicePort.appProtocol
 	var appProto string
 	switch *pol.BackendProtocol {
-	case intermediate.BackendProtocolGRPC:
+	case providerir.BackendProtocolGRPC:
 		appProto = "grpc"
 	default:
 		// Nothing to do for unsupported/unknown mappings.
