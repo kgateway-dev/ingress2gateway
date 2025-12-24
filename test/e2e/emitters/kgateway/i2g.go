@@ -38,7 +38,7 @@ func runIngress2Gateway(ctx context.Context, root, inputFile string) ([]byte, er
 		"go", "run", ".",
 		"print",
 		"--providers=ingress-nginx",
-		"--implementations=kgateway",
+		"--emitter=kgateway",
 		"--input-file", inputFile,
 	)
 	cmd.Dir = root

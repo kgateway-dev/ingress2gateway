@@ -19,9 +19,8 @@ package ingressnginx
 import (
 	"strings"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
-
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -40,7 +39,7 @@ const nginxRewriteTargetAnnotation = "nginx.ingress.kubernetes.io/rewrite-target
 func rewriteTargetFeature(
 	ingresses []networkingv1.Ingress,
 	_ map[types.NamespacedName]map[string]int32,
-	ir *intermediate.IR,
+	ir *providerir.ProviderIR,
 ) field.ErrorList {
 	var errs field.ErrorList
 
@@ -82,12 +81,12 @@ func rewriteTargetFeature(
 		}
 
 		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx = &intermediate.IngressNginxHTTPRouteIR{
-				Policies: map[string]intermediate.Policy{},
+			httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
+				Policies: map[string]providerir.Policy{},
 			}
 		}
 		if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]intermediate.Policy{}
+			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
 		}
 
 		// host-scoped: any rewrite-target forces regex mode for host.
@@ -124,7 +123,7 @@ func rewriteTargetFeature(
 
 				p := httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name]
 				p.RewriteTarget = ptr.To(rt)
-				p = p.AddRuleBackendSources([]intermediate.PolicyIndex{{Rule: ruleIdx, Backend: backendIdx}})
+				p = p.AddRuleBackendSources([]providerir.PolicyIndex{{Rule: ruleIdx, Backend: backendIdx}})
 				httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name] = p
 			}
 		}

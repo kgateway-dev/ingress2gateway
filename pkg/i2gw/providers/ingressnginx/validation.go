@@ -17,7 +17,7 @@ limitations under the License.
 package ingressnginx
 
 import (
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
@@ -29,7 +29,7 @@ import (
 // **Note:** This validation should be in IR package but keeping separate to avoid
 //
 //	polluting core IR package with downstream logic.
-func validateRegexCookiePath(ir *intermediate.IR) field.ErrorList {
+func validateRegexCookiePath(ir *providerir.ProviderIR) field.ErrorList {
 	var errs field.ErrorList
 
 	for _, httpCtx := range ir.HTTPRoutes {

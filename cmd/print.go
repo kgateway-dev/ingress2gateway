@@ -36,11 +36,11 @@ import (
 	// Call init for notifications
 	_ "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 
-	// Call init function for the implementations
-	_ "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/implementations/kgateway"
+	// Call init for emitters
+	_ "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitters/kgateway"
+	_ "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitters/standard"
 )
 
-// PrintRunner holds the necessary information to perform the print action.
 type PrintRunner struct {
 	// outputFormat contains currently set output format. Value assigned via --output/-o flag.
 	// Defaults to YAML.
@@ -70,9 +70,9 @@ type PrintRunner struct {
 	// Provider specific flags --<provider>-<flag>.
 	providerSpecificFlags map[string]*string
 
-	// implementations indicates which implementations are used to generate
-	// implementation-specific (GEP-713 style) resources.
-	implementations []string
+	// emitter indicates which emitter is used to generate the Gateway API resources.
+	// Defaults to "standard".
+	emitter string
 }
 
 // PrintGatewayAPIObjects performs necessary steps to digest and print
@@ -82,21 +82,14 @@ type PrintRunner struct {
 func (pr *PrintRunner) PrintGatewayAPIObjects(cmd *cobra.Command, _ []string) error {
 	err := pr.initializeResourcePrinter()
 	if err != nil {
-		return fmt.Errorf("failed to initialize resource printer: %w", err)
+		return fmt.Errorf("failed to initialize resrouce printer: %w", err)
 	}
 	err = pr.initializeNamespaceFilter()
 	if err != nil {
 		return fmt.Errorf("failed to initialize namespace filter: %w", err)
 	}
 
-	gatewayResources, notificationTablesMap, err := i2gw.ToGatewayAPIResources(
-		cmd.Context(),
-		pr.namespaceFilter,
-		pr.inputFile,
-		pr.providers,
-		pr.getProviderSpecificFlags(),
-		pr.implementations,
-	)
+	gatewayResources, notificationTablesMap, err := i2gw.ToGatewayAPIResources(cmd.Context(), pr.namespaceFilter, pr.inputFile, pr.providers, pr.emitter, pr.getProviderSpecificFlags())
 	if err != nil {
 		return err
 	}
@@ -322,29 +315,21 @@ func newPrintCommand() *cobra.Command {
 		Use:   "print",
 		Short: "Prints Gateway API objects generated from ingress and provider-specific resources.",
 		RunE:  pr.PrintGatewayAPIObjects,
-		PreRunE: func(_ *cobra.Command, _ []string) error {
+		PreRunE: func(cmd *cobra.Command, _ []string) error {
 			openAPIExist := slices.Contains(pr.providers, "openapi3")
 			if openAPIExist && len(pr.providers) != 1 {
 				return fmt.Errorf("openapi3 must be the only provider when specified")
 			}
 
-			// Validate implementations (if any) against registered emitters.
-			if len(pr.implementations) > 0 {
-				// Build a list of supported implementations from the registry.
-				supported := make([]string, 0, len(i2gw.ImplementationEmitters))
-				for name := range i2gw.ImplementationEmitters {
-					supported = append(supported, name)
-				}
+			// Auto-set emitter for GCE provider
+			gceProviderUsed := slices.Contains(pr.providers, "gce")
+			emitterFlagChanged := cmd.Flags().Changed("emitter")
 
-				for _, impl := range pr.implementations {
-					if _, ok := i2gw.ImplementationEmitters[impl]; !ok {
-						return fmt.Errorf(
-							"unsupported implementation %q; supported implementations are: %s",
-							impl,
-							strings.Join(supported, ", "),
-						)
-					}
+			if gceProviderUsed {
+				if emitterFlagChanged && pr.emitter != "gce" {
+					return fmt.Errorf("when using the gce provider, the emitter must be 'gce' (got '%s')", pr.emitter)
 				}
+				pr.emitter = "gce"
 			}
 
 			return nil
@@ -364,15 +349,11 @@ func newPrintCommand() *cobra.Command {
 		`If present, list the requested object(s) across all namespaces. Namespace in current context is ignored even
 if specified with --namespace.`)
 
+	cmd.Flags().StringVar(&pr.emitter, "emitter", "standard",
+		fmt.Sprintf("If present, the tool will try to use the specified emitter to generate the Gateway API resources, supported values are %v. The `standard` emitter will only output Gateway API", i2gw.GetSupportedEmitters()))
+
 	cmd.Flags().StringSliceVar(&pr.providers, "providers", []string{},
 		fmt.Sprintf("If present, the tool will try to convert only resources related to the specified providers, supported values are %v.", i2gw.GetSupportedProviders()))
-
-	cmd.Flags().StringSliceVar(
-		&pr.implementations,
-		"implementations",
-		[]string{},
-		"Comma-separated list of implementations for which to generate implementation-specific resources.",
-	)
 
 	pr.providerSpecificFlags = make(map[string]*string)
 	for provider, flags := range i2gw.GetProviderSpecificFlagDefinitions() {
@@ -415,7 +396,6 @@ func (pr *PrintRunner) getProviderSpecificFlags() map[string]map[string]string {
 	return providerSpecificFlags
 }
 
-// PrintUnstructuredAsYaml prints an unstructured.Unstructured object as YAML to stdout.
 func PrintUnstructuredAsYaml(obj *unstructured.Unstructured) error {
 	// Create a YAML serializer
 	serializer := json.NewSerializerWithOptions(json.DefaultMetaFactory, nil, nil,

@@ -3,6 +3,7 @@ module github.com/kgateway-dev/ingress2gateway
 go 1.25.3
 
 require (
+	github.com/GoogleCloudPlatform/gke-gateway-api v1.4.0
 	github.com/google/go-cmp v0.7.0
 	github.com/kgateway-dev/kgateway/v2 v2.2.0-beta.3
 	github.com/olekukonko/tablewriter v0.0.5
