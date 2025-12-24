@@ -58,7 +58,7 @@ Gateway API and Kgateway-specific resources in a YAML/JSON format to stdout.  Th
 all ingresses from the ingress-nginx provider:
 
 ```shell
-./ingress2gateway print --providers=ingress-nginx --implementations=kgateway
+./ingress2gateway print --providers=ingress-nginx --emitter=kgateway
 ```
 
 The above command will:
@@ -79,7 +79,7 @@ The above command will:
 | namespace      |                         | No       | If present, the namespace scope for the invocation.           |
 | output         | yaml                    | No       | The output format, either yaml or json.                       |
 | providers      |  | Yes       | Comma-separated list of providers (only ingress-nginx is supported in this downstream). |
-| implementations      |  | Yes       | Comma-separated list of implementation emitters (only kgateway is supported in this downstream). |
+| emitter      | standard | No       | The emitter to use for generating Gateway API resources (supported values: standard, kgateway). |
 | kubeconfig     |                         | No       | The kubeconfig file to use when talking to the cluster. If the flag is not set, a set of standard locations can be searched for an existing kubeconfig file. |
 
 ## Conversion of Ingress resources to Gateway API

@@ -132,7 +132,7 @@ func runGoldenTest(t *testing.T, inputRel, goldenRel string) {
 		"go", "run", ".",
 		"print",
 		"--providers=ingress-nginx",
-		"--implementations=kgateway",
+		"--emitter=kgateway",
 		"--input-file", inputPath,
 	)
 	cmd.Dir = moduleRoot

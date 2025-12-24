@@ -30,7 +30,7 @@ Run the tool with the test input manifest:
 ```bash
 go run . print \
   --providers=ingress-nginx \
-  --implementations=kgateway \
+  --emitter=kgateway \
   --input-file ./pkg/i2gw/implementations/kgateway/testing/testdata/input.yaml
 ```
 

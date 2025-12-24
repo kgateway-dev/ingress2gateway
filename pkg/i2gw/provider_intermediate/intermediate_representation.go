@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Kubernetes Authors.
+Copyright 2025 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,10 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package intermediate
+package providerir
 
 import (
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate/gce"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -25,12 +26,11 @@ import (
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
 
-// IR holds specifications of Gateway Objects for supporting Ingress extensions,
+// ProviderIR holds specifications of Gateway Objects for supporting Ingress extensions,
 // annotations, and proprietary API features not supported as Gateway core
-// features. An IR field can be mapped to core Gateway-API fields,
+// features. An ProviderIR field can be mapped to core Gateway-API fields,
 // or provider-specific Gateway extensions.
-// This is maintained for backward compatibility with the kgateway implementation emitter.
-type IR struct {
+type ProviderIR struct {
 	Gateways   map[types.NamespacedName]GatewayContext
 	HTTPRoutes map[types.NamespacedName]HTTPRouteContext
 	Services   map[types.NamespacedName]ProviderSpecificServiceIR
@@ -48,21 +48,23 @@ type IR struct {
 // GatewayContext contains the Gateway-API Gateway object and GatewayIR, which
 // has a dedicated field for each provider to specify their extension features
 // on Gateways.
+// The IR will contain necessary information to construct the Gateway
+// extensions, but not the extensions themselves.
 type GatewayContext struct {
 	gatewayv1.Gateway
 	ProviderSpecificIR ProviderSpecificGatewayIR
 }
 
-// ProviderSpecificGatewayIR contains a dedicated field for each provider to
-// specify their extension features on Gateway.
 type ProviderSpecificGatewayIR struct {
 	Gce          *gce.GatewayIR
-	IngressNginx *IngressNginxGatewayIR
+	IngressNginx *intermediate.IngressNginxGatewayIR
 }
 
 // HTTPRouteContext contains the Gateway-API HTTPRoute object and HTTPRouteIR,
 // which has a dedicated field for each provider to specify their extension
 // features on HTTPRoutes.
+// The IR will contain necessary information to construct the HTTPRoute
+// extensions, but not the extensions themselves.
 type HTTPRouteContext struct {
 	gatewayv1.HTTPRoute
 	ProviderSpecificIR ProviderSpecificHTTPRouteIR
@@ -71,18 +73,16 @@ type HTTPRouteContext struct {
 	RuleBackendSources [][]BackendSource
 }
 
-// ProviderSpecificHTTPRouteIR contains a dedicated field for each provider to
-// specify their extension features on HTTPRoute.
 type ProviderSpecificHTTPRouteIR struct {
 	Gce          *gce.HTTPRouteIR
-	IngressNginx *IngressNginxHTTPRouteIR
+	IngressNginx *intermediate.IngressNginxHTTPRouteIR
 }
 
-// ProviderSpecificServiceIR contains a dedicated field for each provider to
-// specify their extension features on Service.
+// ProviderSpecificServiceIR contains a dedicated field for each provider to specify their
+// extension features on Service.
 type ProviderSpecificServiceIR struct {
 	Gce          *gce.ServiceIR
-	IngressNginx *IngressNginxServiceIR
+	IngressNginx *intermediate.IngressNginxServiceIR
 }
 
 // BackendSource tracks the source Ingress resource that contributed
@@ -98,6 +98,3 @@ type BackendSource struct {
 	// DefaultBackend points to the Ingress's spec.defaultBackend that contributed this backend.
 	DefaultBackend *networkingv1.IngressBackend
 }
-
-// NamespacedName is a type alias for types.NamespacedName.
-type NamespacedName = types.NamespacedName

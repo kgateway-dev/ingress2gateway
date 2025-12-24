@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
 
 	networkingv1 "k8s.io/api/networking/v1"
@@ -35,7 +36,7 @@ const enableAccessLogAnnotation = "nginx.ingress.kubernetes.io/enable-access-log
 func enableAccessLogFeature(
 	ingresses []networkingv1.Ingress,
 	_ map[types.NamespacedName]map[string]int32,
-	ir *intermediate.IR,
+	ir *providerir.ProviderIR,
 ) field.ErrorList {
 
 	var errs field.ErrorList
