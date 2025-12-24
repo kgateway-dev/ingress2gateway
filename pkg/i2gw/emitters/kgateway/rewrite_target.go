@@ -20,25 +20,17 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
-	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// applyRewriteTargetPolicies projects ingress-nginx rewrite-target into *per-rule* Kgateway TrafficPolicies
-// and attaches them via ExtensionRef filters to the covered backendRefs.
-//
-// Why per-rule?
-//   - The regex rewrite pattern must align with the rule's path regex so capture groups ($1, $2, ...)
-//     behave like ingress-nginx.
-//
-// Assumptions:
-//   - applyRegexPathMatchingForHost(...) has already run (if host-wide regex location mode is enabled),
-//     so rule path matches will already be RegularExpression where needed.
+// applyRewriteTargetPolicies projects ingress-nginx rewrite-target into *per-rule* Kgateway TrafficPolicies.
 func applyRewriteTargetPolicies(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	sourceIngressName, namespace string,
-	httpRouteCtx *intermediate.HTTPRouteContext,
+	httpRouteCtx *emitterir.HTTPRouteContext,
 	tp map[string]*kgateway.TrafficPolicy,
 ) {
 	if pol.RewriteTarget == nil || *pol.RewriteTarget == "" {
@@ -49,7 +41,6 @@ func applyRewriteTargetPolicies(
 	}
 
 	// Group covered backendRefs by rule index.
-	// ruleIdx -> set(backendIdx)
 	byRule := map[int]map[int]struct{}{}
 	for _, idx := range pol.RuleBackendSources {
 		if idx.Rule < 0 || idx.Backend < 0 {
@@ -100,12 +91,12 @@ func applyRewriteTargetPolicies(
 				}
 				httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs[backendIdx].Filters = append(
 					httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs[backendIdx].Filters,
-					gwv1.HTTPRouteFilter{
-						Type: gwv1.HTTPRouteFilterExtensionRef,
-						ExtensionRef: &gwv1.LocalObjectReference{
-							Group: gwv1.Group(TrafficPolicyGVK.Group),
-							Kind:  gwv1.Kind(TrafficPolicyGVK.Kind),
-							Name:  gwv1.ObjectName(t.Name),
+					gatewayv1.HTTPRouteFilter{
+						Type: gatewayv1.HTTPRouteFilterExtensionRef,
+						ExtensionRef: &gatewayv1.LocalObjectReference{
+							Group: gatewayv1.Group(TrafficPolicyGVK.Group),
+							Kind:  gatewayv1.Kind(TrafficPolicyGVK.Kind),
+							Name:  gatewayv1.ObjectName(t.Name),
 						},
 					},
 				)
@@ -119,13 +110,7 @@ func applyRewriteTargetPolicies(
 }
 
 // deriveRulePathRegexPattern returns a single regex pattern for the rule if possible.
-// If the rule has:
-//   - exactly one distinct RegularExpression path value -> return it
-//   - zero or multiple distinct regex values            -> fall back to "^(.*)"
-//
-// Note: If a rule has multiple *different* path regex matches, we can't represent
-// match-specific rewrites without splitting the rule, so we choose a safe fallback.
-func deriveRulePathRegexPattern(rule gwv1.HTTPRouteRule) string {
+func deriveRulePathRegexPattern(rule gatewayv1.HTTPRouteRule) string {
 	patterns := map[string]struct{}{}
 
 	for i := range rule.Matches {
@@ -133,7 +118,7 @@ func deriveRulePathRegexPattern(rule gwv1.HTTPRouteRule) string {
 		if m.Path == nil || m.Path.Type == nil || m.Path.Value == nil {
 			continue
 		}
-		if *m.Path.Type != gwv1.PathMatchRegularExpression {
+		if *m.Path.Type != gatewayv1.PathMatchRegularExpression {
 			continue
 		}
 		if v := *m.Path.Value; v != "" {
@@ -150,31 +135,30 @@ func deriveRulePathRegexPattern(rule gwv1.HTTPRouteRule) string {
 	return "^(.*)"
 }
 
-// ensureRuleURLRewriteReplaceFullPath ensures the given rule has a URLRewrite filter
-// that performs a ReplaceFullPath with the given value.
-func ensureRuleURLRewriteReplaceFullPath(rule *gwv1.HTTPRouteRule, replaceFullPath string) {
+// ensureRuleURLRewriteReplaceFullPath ensures the given rule has a URLRewrite filter.
+func ensureRuleURLRewriteReplaceFullPath(rule *gatewayv1.HTTPRouteRule, replaceFullPath string) {
 	// Update existing URLRewrite filter if present.
 	for i := range rule.Filters {
-		if rule.Filters[i].Type != gwv1.HTTPRouteFilterURLRewrite {
+		if rule.Filters[i].Type != gatewayv1.HTTPRouteFilterURLRewrite {
 			continue
 		}
 		if rule.Filters[i].URLRewrite == nil {
-			rule.Filters[i].URLRewrite = &gwv1.HTTPURLRewriteFilter{}
+			rule.Filters[i].URLRewrite = &gatewayv1.HTTPURLRewriteFilter{}
 		}
 		if rule.Filters[i].URLRewrite.Path == nil {
-			rule.Filters[i].URLRewrite.Path = &gwv1.HTTPPathModifier{}
+			rule.Filters[i].URLRewrite.Path = &gatewayv1.HTTPPathModifier{}
 		}
-		rule.Filters[i].URLRewrite.Path.Type = gwv1.FullPathHTTPPathModifier
+		rule.Filters[i].URLRewrite.Path.Type = gatewayv1.FullPathHTTPPathModifier
 		rule.Filters[i].URLRewrite.Path.ReplaceFullPath = &replaceFullPath
 		return
 	}
 
 	// Otherwise append a new URLRewrite filter.
-	rule.Filters = append(rule.Filters, gwv1.HTTPRouteFilter{
-		Type: gwv1.HTTPRouteFilterURLRewrite,
-		URLRewrite: &gwv1.HTTPURLRewriteFilter{
-			Path: &gwv1.HTTPPathModifier{
-				Type:            gwv1.FullPathHTTPPathModifier,
+	rule.Filters = append(rule.Filters, gatewayv1.HTTPRouteFilter{
+		Type: gatewayv1.HTTPRouteFilterURLRewrite,
+		URLRewrite: &gatewayv1.HTTPURLRewriteFilter{
+			Path: &gatewayv1.HTTPPathModifier{
+				Type:            gatewayv1.FullPathHTTPPathModifier,
 				ReplaceFullPath: &replaceFullPath,
 			},
 		},

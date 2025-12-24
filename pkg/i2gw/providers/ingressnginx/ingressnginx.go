@@ -22,7 +22,6 @@ import (
 
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
-	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
@@ -60,7 +59,7 @@ func NewProvider(conf *i2gw.ProviderConf) i2gw.Provider {
 // including the ingress-nginx specific features.
 func (p *Provider) ToIR() (emitterir.EmitterIR, field.ErrorList) {
 	ir, errs := p.resourcesToIRConverter.convert(p.storage)
-	return providerir.ToEmitterIR(ir), errs
+	return emitterir.ToEmitterIR(ir), errs
 }
 
 func (p *Provider) ReadResourcesFromCluster(ctx context.Context) error {

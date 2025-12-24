@@ -19,7 +19,6 @@ package ingressnginx
 import (
 	"time"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
 
@@ -89,7 +88,7 @@ func proxySendTimeoutFeature(
 
 		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
 			httpCtx.ProviderSpecificIR.IngressNginx =
-				&intermediate.IngressNginxHTTPRouteIR{Policies: map[string]intermediate.Policy{}}
+				&providerir.IngressNginxHTTPRouteIR{Policies: map[string]providerir.Policy{}}
 		}
 
 		for ruleIdx, backendSources := range httpCtx.RuleBackendSources {
@@ -115,7 +114,7 @@ func proxySendTimeoutFeature(
 
 				p.RuleBackendSources = append(
 					p.RuleBackendSources,
-					intermediate.PolicyIndex{Rule: ruleIdx, Backend: backendIdx},
+					providerir.PolicyIndex{Rule: ruleIdx, Backend: backendIdx},
 				)
 
 				httpCtx.ProviderSpecificIR.IngressNginx.Policies[key.Name] = p

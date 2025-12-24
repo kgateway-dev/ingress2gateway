@@ -17,32 +17,21 @@ limitations under the License.
 package kgateway
 
 import (
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
-	kgw "github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
-
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	"k8s.io/apimachinery/pkg/types"
-	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 // applyServiceUpstream projects provider-specific static backend mappings into typed
 // Kgateway Backend CRs and rewrites HTTPRoute backendRefs to reference those Backends.
-//
-// Semantics:
-//   - One Backend CR per (namespace, svcName-service-upstream).
-//   - Backend.Spec.Static.Hosts contains a single host+port from the IR Backend.
-//   - HTTPRoute backendRefs for those services are rewritten to:
-//     group: gateway.kgateway.dev
-//     kind:  Backend
-//     name:  <svc>-service-upstream
-//
-// This function is driven by the IR Policy.Backends and RuleBackendSources
-// populated by the ingress-nginx provider (service-upstream feature).
 func applyServiceUpstream(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	ingressName string,
 	httpRouteKey types.NamespacedName,
-	httpRouteCtx *intermediate.HTTPRouteContext,
-	backends map[types.NamespacedName]*kgw.Backend,
+	httpRouteCtx *emitterir.HTTPRouteContext,
+	backends map[types.NamespacedName]*kgateway.Backend,
 ) {
 	if len(pol.Backends) == 0 || len(pol.RuleBackendSources) == 0 {
 		return
@@ -105,12 +94,12 @@ func applyServiceUpstream(
 		)
 
 		// Rewrite BackendRef to point to this Backend.
-		group := gwv1.Group(BackendGVK.Group)
-		kind := gwv1.Kind(BackendGVK.Kind)
+		group := gatewayv1.Group(BackendGVK.Group)
+		kind := gatewayv1.Kind(BackendGVK.Kind)
 
 		br.BackendRef.Group = &group
 		br.BackendRef.Kind = &kind
-		br.BackendRef.Name = gwv1.ObjectName(kb.Name)
+		br.BackendRef.Name = gatewayv1.ObjectName(kb.Name)
 		// When using a static Backend, the Backend controls the port.
 		br.BackendRef.Port = nil
 	}

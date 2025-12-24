@@ -19,16 +19,14 @@ package kgateway
 import (
 	"strings"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
-
-	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// applyCorsPolicy projects the CORS policy IR into a Kgateway TrafficPolicy,
-// returning true if it modified/created a TrafficPolicy for the given ingress.
+// applyCorsPolicy projects the CORS policy IR into a Kgateway TrafficPolicy.
 func applyCorsPolicy(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	ingressName, namespace string,
 	tp map[string]*kgateway.TrafficPolicy,
 ) bool {
@@ -38,7 +36,7 @@ func applyCorsPolicy(
 
 	// AllowOrigins: dedupe while preserving order.
 	seenOrigins := make(map[string]struct{}, len(pol.Cors.AllowOrigin))
-	var origins []gwv1.CORSOrigin
+	var origins []gatewayv1.CORSOrigin
 	for _, o := range pol.Cors.AllowOrigin {
 		o = strings.TrimSpace(o)
 		if o == "" {
@@ -48,14 +46,14 @@ func applyCorsPolicy(
 			continue
 		}
 		seenOrigins[o] = struct{}{}
-		origins = append(origins, gwv1.CORSOrigin(o))
+		origins = append(origins, gatewayv1.CORSOrigin(o))
 	}
 	if len(origins) == 0 {
 		return false
 	}
 
 	// AllowHeaders: dedupe (case-insensitive) and map to HTTPHeaderName.
-	var allowHeaders []gwv1.HTTPHeaderName
+	var allowHeaders []gatewayv1.HTTPHeaderName
 	if len(pol.Cors.AllowHeaders) > 0 {
 		seenHeaders := make(map[string]struct{}, len(pol.Cors.AllowHeaders))
 		for _, h := range pol.Cors.AllowHeaders {
@@ -68,12 +66,12 @@ func applyCorsPolicy(
 				continue
 			}
 			seenHeaders[key] = struct{}{}
-			allowHeaders = append(allowHeaders, gwv1.HTTPHeaderName(h))
+			allowHeaders = append(allowHeaders, gatewayv1.HTTPHeaderName(h))
 		}
 	}
 
 	// ExposeHeaders: dedupe (case-insensitive) and map to HTTPHeaderName.
-	var exposeHeaders []gwv1.HTTPHeaderName
+	var exposeHeaders []gatewayv1.HTTPHeaderName
 	if len(pol.Cors.ExposeHeaders) > 0 {
 		seenHeaders := make(map[string]struct{}, len(pol.Cors.ExposeHeaders))
 		for _, h := range pol.Cors.ExposeHeaders {
@@ -86,12 +84,12 @@ func applyCorsPolicy(
 				continue
 			}
 			seenHeaders[key] = struct{}{}
-			exposeHeaders = append(exposeHeaders, gwv1.HTTPHeaderName(h))
+			exposeHeaders = append(exposeHeaders, gatewayv1.HTTPHeaderName(h))
 		}
 	}
 
 	// AllowMethods: normalize to upper-case, filter to Gateway API enum, dedupe.
-	var methods []gwv1.HTTPMethodWithWildcard
+	var methods []gatewayv1.HTTPMethodWithWildcard
 	if len(pol.Cors.AllowMethods) > 0 {
 		seenMethods := make(map[string]struct{}, len(pol.Cors.AllowMethods))
 		for _, m := range pol.Cors.AllowMethods {
@@ -106,16 +104,16 @@ func applyCorsPolicy(
 
 			switch upper {
 			case "*",
-				string(gwv1.HTTPMethodGet),
-				string(gwv1.HTTPMethodHead),
-				string(gwv1.HTTPMethodPost),
-				string(gwv1.HTTPMethodPut),
-				string(gwv1.HTTPMethodDelete),
-				string(gwv1.HTTPMethodConnect),
-				string(gwv1.HTTPMethodOptions),
-				string(gwv1.HTTPMethodTrace),
-				string(gwv1.HTTPMethodPatch):
-				methods = append(methods, gwv1.HTTPMethodWithWildcard(upper))
+				string(gatewayv1.HTTPMethodGet),
+				string(gatewayv1.HTTPMethodHead),
+				string(gatewayv1.HTTPMethodPost),
+				string(gatewayv1.HTTPMethodPut),
+				string(gatewayv1.HTTPMethodDelete),
+				string(gatewayv1.HTTPMethodConnect),
+				string(gatewayv1.HTTPMethodOptions),
+				string(gatewayv1.HTTPMethodTrace),
+				string(gatewayv1.HTTPMethodPatch):
+				methods = append(methods, gatewayv1.HTTPMethodWithWildcard(upper))
 				seenMethods[upper] = struct{}{}
 			default:
 				// Ignore unsupported method strings to avoid generating invalid objects.
@@ -129,7 +127,7 @@ func applyCorsPolicy(
 		t.Spec.Cors = &kgateway.CorsPolicy{}
 	}
 	if t.Spec.Cors.HTTPCORSFilter == nil {
-		t.Spec.Cors.HTTPCORSFilter = &gwv1.HTTPCORSFilter{}
+		t.Spec.Cors.HTTPCORSFilter = &gatewayv1.HTTPCORSFilter{}
 	}
 
 	f := t.Spec.Cors.HTTPCORSFilter

@@ -19,7 +19,6 @@ package ingressnginx
 import (
 	"strings"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
 
@@ -55,7 +54,7 @@ func backendTLSFeature(
 	var errs field.ErrorList
 
 	// Per-Ingress parsed backend TLS policy.
-	perIngress := map[types.NamespacedName]*intermediate.BackendTLSPolicy{}
+	perIngress := map[types.NamespacedName]*providerir.BackendTLSPolicy{}
 
 	for i := range ingresses {
 		ing := &ingresses[i]
@@ -86,7 +85,7 @@ func backendTLSFeature(
 			Name:      ing.Name,
 		}
 
-		policy := &intermediate.BackendTLSPolicy{
+		policy := &providerir.BackendTLSPolicy{
 			SecretName: secretName,
 			Verify:     false, // default: off
 		}
@@ -132,12 +131,12 @@ func backendTLSFeature(
 		}
 
 		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx = &intermediate.IngressNginxHTTPRouteIR{
-				Policies: map[string]intermediate.Policy{},
+			httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
+				Policies: map[string]providerir.Policy{},
 			}
 		}
 		if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]intermediate.Policy{}
+			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
 		}
 
 		for ruleIdx, backendSources := range httpCtx.RuleBackendSources {
@@ -164,7 +163,7 @@ func backendTLSFeature(
 				}
 
 				// Dedupe (rule, backend) pairs.
-				p = p.AddRuleBackendSources([]intermediate.PolicyIndex{
+				p = p.AddRuleBackendSources([]providerir.PolicyIndex{
 					{
 						Rule:    ruleIdx,
 						Backend: backendIdx,

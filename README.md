@@ -13,7 +13,7 @@ an issue and describe your use case.
 
 ## Supported emitters
 
-* [kgateway](pkg/i2gw/implementations/kgateway/README.md)
+* [kgateway](pkg/i2gw/emitters/kgateway/README.md)
 
 If your emitter, or a specific feature, is not currently supported, please open
 an issue and describe your use case.

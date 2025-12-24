@@ -17,34 +17,25 @@ limitations under the License.
 package kgateway
 
 import (
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 // applyLoadBalancingPolicy projects the LoadBalancing IR policy into one or more
 // Kgateway BackendConfigPolicies.
-//
-// Semantics:
-//   - We create at most one BackendConfigPolicy per Service.
-//   - If SessionAffinity is configured for a Service, it takes precedence and
-//     this function will not override the ring-hash configuration.
-//   - If there is no SessionAffinity for a Service and LoadBalancing.Strategy is
-//     "round_robin", we configure LoadBalancer.RoundRobin on the BackendConfigPolicy.
-//   - TargetRefs are populated with all core Service backends that this Policy covers
-//     (based on RuleBackendSources).
 func applyLoadBalancingPolicy(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	httpRouteKey types.NamespacedName,
-	httpRouteCtx intermediate.HTTPRouteContext,
+	httpRouteCtx emitterir.HTTPRouteContext,
 	backendCfg map[types.NamespacedName]*kgateway.BackendConfigPolicy,
 ) bool {
 	// Only care about explicit round_robin strategies.
-	if pol.LoadBalancing == nil || pol.LoadBalancing.Strategy != intermediate.LoadBalancingStrategyRoundRobin {
+	if pol.LoadBalancing == nil || pol.LoadBalancing.Strategy != providerir.LoadBalancingStrategyRoundRobin {
 		return false
 	}
 
@@ -93,7 +84,7 @@ func applyLoadBalancingPolicy(
 						{
 							Group: "",
 							Kind:  "Service",
-							Name:  gwv1.ObjectName(svcName),
+							Name:  gatewayv1.ObjectName(svcName),
 						},
 					},
 				},
@@ -105,7 +96,6 @@ func applyLoadBalancingPolicy(
 		// Respect session affinity precedence:
 		// If RingHash is already set (via applySessionAffinityPolicy), do not override.
 		if bcp.Spec.LoadBalancer != nil && bcp.Spec.LoadBalancer.RingHash != nil {
-			// TODO [danehans] add a notification that we are skipping due to session affinity.
 			continue
 		}
 

@@ -15,10 +15,10 @@ The typical development workflow for adding an Ingress NGINX feature to the Kgat
    current supported features before adding more.
 2. If any of the above features cannot map to an existing Kgateway API, create a Kgateway issue, label it with `kind/ingress-nginx`,
    `help wanted`, `priority/high`, etc. and describe what's needed.
-3. Extend the ingress-nginx IR (`pkg/i2gw/intermediate/provider_ingressnginx.go`) as needed. Most changes should fall within the Policy IR.
+3. Extend the ingress-nginx IR (`pkg/i2gw/emitter_intermediate/kgateway/provider_ingressnginx.go`) as needed. Most changes should fall within the Policy IR.
 4. Add a feature-specific function to the ingress-nginx provider (`pkg/i2gw/providers/ingressnginx`), e.g. `proxyReadTimeoutFeature()`
    that parses the Ingress NGINX annotation from source Ingresses and records them as generic Policies in the ingress-nginx provider-specific IR.
-5. Update the Kgateway Emitter (`pkg/i2gw/implementations/kgateway/emitter.go`) to consume the IR and return Kgateway-specific resources.
+5. Update the Kgateway Emitter (`pkg/i2gw/emitters/kgateway/emitter.go`) to consume the IR and return Kgateway-specific resources.
 6. Follow the **Testing** section to test your changes.
 7. Update the list of supported annotations with the feature you added.
 8. Submit a PR to merge your changes upstream. [This branch](https://github.com/danehans/ingress2gateway/tree/impl_emitter_nginx_feat) is the **current** upstream, but [k8s-sigs](https://github.com/kubernetes-sigs/ingress2gateway) or [solo](https://github.com/solo-io/ingress2gateway) repos should be used before releasing.
@@ -31,7 +31,7 @@ Run the tool with the test input manifest:
 go run . print \
   --providers=ingress-nginx \
   --emitter=kgateway \
-  --input-file ./pkg/i2gw/implementations/kgateway/testing/testdata/input.yaml
+  --input-file ./pkg/i2gw/emitters/kgateway/testing/testdata/input.yaml
 ```
 
 The command should generate Gateway API and Kgateway resources.

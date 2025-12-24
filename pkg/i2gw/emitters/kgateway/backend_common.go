@@ -17,16 +17,12 @@ limitations under the License.
 package kgateway
 
 import (
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
-	kgw "github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
-
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
-
-// sourceIngressAnnotation is used to label Backend CRs with the source Ingress name.
-const sourceIngressAnnotation = "ingress2gateway.kubernetes.io/source-ingress"
 
 func backendNameForService(svcName string) string {
 	return svcName + "-service-upstream"
@@ -40,34 +36,31 @@ func backendKeyForService(ns, svcName string) types.NamespacedName {
 }
 
 // ensureStaticBackendForService ensures there is a Static kgateway.Backend for the given
-// service in the provided map. If it already exists, it is reused and optionally
-// updated with the given protocol. If not, a new Backend is created.
-//
-// ingressName is only used for the source-ingress label.
+// service in the provided map.
 func ensureStaticBackendForService(
 	ingressName string,
 	httpRouteKey types.NamespacedName,
 	svcName string,
 	host string,
 	port int32,
-	protocol *intermediate.BackendProtocol,
-	backends map[types.NamespacedName]*kgw.Backend,
-) *kgw.Backend {
+	protocol *providerir.BackendProtocol,
+	backends map[types.NamespacedName]*kgateway.Backend,
+) *kgateway.Backend {
 	backendKey := backendKeyForService(httpRouteKey.Namespace, svcName)
 
 	// Reuse existing Backend CR if present.
 	if kb, ok := backends[backendKey]; ok {
 		if protocol != nil && kb.Spec.Static != nil && kb.Spec.Static.AppProtocol == nil {
 			switch *protocol {
-			case intermediate.BackendProtocolGRPC:
-				ap := kgw.AppProtocolGrpc
+			case providerir.BackendProtocolGRPC:
+				ap := kgateway.AppProtocolGrpc
 				kb.Spec.Static.AppProtocol = &ap
 			}
 		}
 		return kb
 	}
 
-	kb := &kgw.Backend{
+	kb := &kgateway.Backend{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       BackendGVK.Kind,
 			APIVersion: BackendGVK.GroupVersion().String(),
@@ -79,13 +72,13 @@ func ensureStaticBackendForService(
 				sourceIngressAnnotation: ingressName,
 			},
 		},
-		Spec: kgw.BackendSpec{
-			Type: kgw.BackendTypeStatic,
-			Static: &kgw.StaticBackend{
-				Hosts: []kgw.Host{
+		Spec: kgateway.BackendSpec{
+			Type: kgateway.BackendTypeStatic,
+			Static: &kgateway.StaticBackend{
+				Hosts: []kgateway.Host{
 					{
 						Host: host,
-						Port: gwv1.PortNumber(port),
+						Port: gatewayv1.PortNumber(port),
 					},
 				},
 			},
@@ -94,8 +87,8 @@ func ensureStaticBackendForService(
 
 	if protocol != nil {
 		switch *protocol {
-		case intermediate.BackendProtocolGRPC:
-			ap := kgw.AppProtocolGrpc
+		case providerir.BackendProtocolGRPC:
+			ap := kgateway.AppProtocolGrpc
 			kb.Spec.Static.AppProtocol = &ap
 		}
 	}

@@ -19,29 +19,23 @@ package kgateway
 import (
 	"strings"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
-	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 // applyBackendTLSPolicy projects the BackendTLS IR policy into one or more
 // Kgateway BackendConfigPolicies.
-//
-// Semantics:
-//   - We create at most one BackendConfigPolicy per Service.
-//   - That policy's Spec.TLS is configured with client certificates, CA certificates,
-//     SNI hostname, and verification settings from the Policy.BackendTLS.
-//   - TargetRefs are populated with all core Service backends that this Policy covers
-//     (based on RuleBackendSources).
 func applyBackendTLSPolicy(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	httpRouteKey types.NamespacedName,
-	httpRouteCtx intermediate.HTTPRouteContext,
+	httpRouteCtx emitterir.HTTPRouteContext,
 	backendCfg map[types.NamespacedName]*kgateway.BackendConfigPolicy,
 ) bool {
 	if pol.BackendTLS == nil {
@@ -51,12 +45,8 @@ func applyBackendTLSPolicy(
 	backendTLS := pol.BackendTLS
 
 	// Parse secret name (format: "namespace/secretName" or just "secretName")
-	// Note: LocalObjectReference doesn't support namespace, so the secret
-	// must be in the same namespace as the BackendConfigPolicy
 	secretName := backendTLS.SecretName
 	if parts := strings.SplitN(backendTLS.SecretName, "/", 2); len(parts) == 2 {
-		// If namespace is specified but different from policy namespace, use just the secret name
-		// and assume it's in the same namespace as the policy
 		secretName = parts[1]
 	}
 
@@ -91,7 +81,6 @@ func applyBackendTLSPolicy(
 		// Create or reuse BackendConfigPolicy per Service
 		bcp, exists := backendCfg[svcKey]
 		if !exists {
-			// Use a generic name that works for all backend config features
 			policyName := svcName + "-backend-config"
 			bcp = &kgateway.BackendConfigPolicy{
 				ObjectMeta: metav1.ObjectMeta{
@@ -103,7 +92,7 @@ func applyBackendTLSPolicy(
 						{
 							Group: "",
 							Kind:  "Service",
-							Name:  gwv1.ObjectName(svcName),
+							Name:  gatewayv1.ObjectName(svcName),
 						},
 					},
 				},
@@ -130,8 +119,6 @@ func applyBackendTLSPolicy(
 			bcp.Spec.TLS.SecretRef = &corev1.LocalObjectReference{
 				Name: secretName,
 			}
-			// Note: LocalObjectReference doesn't support namespace, so the secret
-			// must be in the same namespace as the BackendConfigPolicy
 		}
 	}
 

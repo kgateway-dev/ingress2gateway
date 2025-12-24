@@ -49,3 +49,5 @@ var (
 		Kind:    "Backend",
 	}
 )
+
+const sourceIngressAnnotation = "ingress2gateway.kubernetes.io/source-ingress"

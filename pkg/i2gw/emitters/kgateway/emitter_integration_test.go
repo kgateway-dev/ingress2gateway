@@ -192,145 +192,145 @@ func TestKgatewayIngressNginxIntegration_Golden(t *testing.T) {
 		{
 			name: "all_features",
 			inputRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "golden.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "input", "golden.yaml",
 			),
 			goldenRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "golden.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "golden.yaml",
 			),
 		},
 		{
 			name: "basic_features",
 			inputRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "basic.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "input", "basic.yaml",
 			),
 			goldenRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "basic.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "basic.yaml",
 			),
 		},
 		{
 			name: "cors",
 			inputRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "cors.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "input", "cors.yaml",
 			),
 			goldenRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "cors.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "cors.yaml",
 			),
 		},
 		{
 			name: "load_balance",
 			inputRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "load_balance.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "input", "load_balance.yaml",
 			),
 			goldenRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "load_balance.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "load_balance.yaml",
 			),
 		},
 		{
 			name: "backend_tls",
 			inputRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "backend_tls.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "input", "backend_tls.yaml",
 			),
 			goldenRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "backend_tls.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "backend_tls.yaml",
 			),
 		},
 		{
 			name: "external_auth",
 			inputRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "external_auth.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "input", "external_auth.yaml",
 			),
 			goldenRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "external_auth.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "external_auth.yaml",
 			),
 		},
 		{
 			name: "service_upstream",
 			inputRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "service_upstream.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "input", "service_upstream.yaml",
 			),
 			goldenRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "service_upstream.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "service_upstream.yaml",
 			),
 		},
 		{
 			name: "backend_protocol",
 			inputRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "backend_protocol.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "input", "backend_protocol.yaml",
 			),
 			goldenRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "backend_protocol.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "backend_protocol.yaml",
 			),
 		},
 		{
 			name: "ssl_redirect",
 			inputRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "ssl_redirect.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "input", "ssl_redirect.yaml",
 			),
 			goldenRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "ssl_redirect.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "ssl_redirect.yaml",
 			),
 		},
 		{
 			name: "basic_auth",
 			inputRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "basic_auth.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "input", "basic_auth.yaml",
 			),
 			goldenRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "basic_auth.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "basic_auth.yaml",
 			),
 		},
 		{
 			name: "ssl_passthrough",
 			inputRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "ssl_passthrough.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "input", "ssl_passthrough.yaml",
 			),
 			goldenRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "ssl_passthrough.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "ssl_passthrough.yaml",
 			),
 		},
 		{
 			name: "use_regex",
 			inputRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "use_regex.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "input", "use_regex.yaml",
 			),
 			goldenRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "use_regex.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "use_regex.yaml",
 			),
 		},
 		{
 			name: "use_regex_session_affinity",
 			inputRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "use_regex_session_affinity.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "input", "use_regex_session_affinity.yaml",
 			),
 			goldenRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "use_regex_session_affinity.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "use_regex_session_affinity.yaml",
 			),
 		},
 		{
 			name: "rewrite_target",
 			inputRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "rewrite_target.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "input", "rewrite_target.yaml",
 			),
 			goldenRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "rewrite_target.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "rewrite_target.yaml",
 			),
 		},
 		{
 			name: "rewrite_target_use_regex",
 			inputRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "rewrite_target_use_regex.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "input", "rewrite_target_use_regex.yaml",
 			),
 			goldenRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "rewrite_target_use_regex.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "rewrite_target_use_regex.yaml",
 			),
 		},
 		{
 			name: "session_affinity",
 			inputRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "input", "session_affinity.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "input", "session_affinity.yaml",
 			),
 			goldenRel: filepath.Join(
-				"pkg", "i2gw", "implementations", "kgateway", "testing", "testdata", "output", "session_affinity.yaml",
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "session_affinity.yaml",
 			),
 		},
 	}

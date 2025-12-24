@@ -19,8 +19,9 @@ package kgateway
 import (
 	"fmt"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -34,16 +35,11 @@ type backendProtoPatchKey struct {
 
 // emitBackendProtocolPatchNotifications emits an INFO notification with the correct kubectl patch
 // command to set ServicePort.appProtocol on an existing Service.
-//
-// IMPORTANT:
-//   - We intentionally do NOT emit a Service object to avoid overwriting user-managed Service config.
-//   - We also skip backends that have been rewritten to a kgateway Backend (service-upstream case),
-//     because the generated Backend will carry appProtocol instead.
 func emitBackendProtocolPatchNotifications(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	sourceIngressName string,
 	httpRouteKey types.NamespacedName,
-	httpCtx intermediate.HTTPRouteContext,
+	httpCtx emitterir.HTTPRouteContext,
 	seen map[backendProtoPatchKey]struct{},
 ) {
 	if pol.BackendProtocol == nil {
@@ -53,7 +49,7 @@ func emitBackendProtocolPatchNotifications(
 	// Map ingress-nginx backend-protocol → ServicePort.appProtocol
 	var appProto string
 	switch *pol.BackendProtocol {
-	case intermediate.BackendProtocolGRPC:
+	case providerir.BackendProtocolGRPC:
 		appProto = "grpc"
 	default:
 		// Nothing to do for unsupported/unknown mappings.
@@ -105,7 +101,6 @@ func emitBackendProtocolPatchNotifications(
 		seen[key] = struct{}{}
 
 		// Use strategic merge patch (safe for core types) so only the matching port entry is updated.
-		// This is far safer than emitting a Service manifest that users might blindly apply.
 		patch := fmt.Sprintf(`{"spec":{"ports":[{"port":%d,"appProtocol":"%s"}]}}`, port, appProto)
 		cmd := fmt.Sprintf(
 			"kubectl patch service %s -n %s --type=strategic -p '%s'",

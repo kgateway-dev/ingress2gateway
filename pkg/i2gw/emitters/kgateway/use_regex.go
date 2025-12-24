@@ -17,26 +17,17 @@ limitations under the License.
 package kgateway
 
 import (
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
-	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 // applyRegexPathMatchingForHost mutates the HTTPRouteContext in-place to use
 // Gateway API RegularExpression path matches when the provider indicates that
 // ingress-nginx "regex location modifier" semantics are enforced for the host.
-//
-// This is the emitter-side realization of host-wide regex enforcement driven by:
-//   - nginx.ingress.kubernetes.io/use-regex=true
-//
-// Behavior:
-//   - If RegexLocationForHost is true, convert any PathPrefix/Exact matches into RegularExpression matches.
-//   - The regex is anchored to mimic NGINX-ish location behavior:
-//   - PathPrefix "/foo"  -> "^/foo"
-//   - Exact "/foo"       -> "^/foo$"
-//   - Existing RegularExpression matches are preserved.
 func applyRegexPathMatchingForHost(
-	ingx *intermediate.IngressNginxHTTPRouteIR,
-	httpRouteCtx *intermediate.HTTPRouteContext,
+	ingx *providerir.IngressNginxHTTPRouteIR,
+	httpRouteCtx *emitterir.HTTPRouteContext,
 ) bool {
 	if ingx == nil || ingx.RegexLocationForHost == nil || !*ingx.RegexLocationForHost {
 		return false
@@ -74,12 +65,12 @@ func applyRegexPathMatchingForHost(
 			}
 
 			// Preserve explicitly-regex matches.
-			if m.Path.Type != nil && *m.Path.Type == gwv1.PathMatchRegularExpression {
+			if m.Path.Type != nil && *m.Path.Type == gatewayv1.PathMatchRegularExpression {
 				continue
 			}
 
 			// Default match type is PathPrefix if nil.
-			matchType := gwv1.PathMatchPathPrefix
+			matchType := gatewayv1.PathMatchPathPrefix
 			if m.Path.Type != nil {
 				matchType = *m.Path.Type
 			}
@@ -87,15 +78,15 @@ func applyRegexPathMatchingForHost(
 			val := *m.Path.Value
 			var re string
 			switch matchType {
-			case gwv1.PathMatchExact:
+			case gatewayv1.PathMatchExact:
 				re = "^" + val + "$"
-			case gwv1.PathMatchPathPrefix:
+			case gatewayv1.PathMatchPathPrefix:
 				re = "^" + val
 			default:
 				continue
 			}
 
-			t := gwv1.PathMatchRegularExpression
+			t := gatewayv1.PathMatchRegularExpression
 			m.Path.Type = &t
 			m.Path.Value = &re
 			mutated = true

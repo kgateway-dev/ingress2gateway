@@ -22,7 +22,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 
 	networkingv1 "k8s.io/api/networking/v1"
@@ -39,7 +38,7 @@ const nginxProxyReadTimeoutAnnotation = "nginx.ingress.kubernetes.io/proxy-read-
 // Semantics:
 //   - Accepts values like "30s", "1m", etc. (time.ParseDuration).
 //   - Also accepts bare numbers like "60", interpreted as seconds.
-//   - Stored on intermediate.Policy.ProxyReadTimeout.
+//   - Stored on providerir.Policy.ProxyReadTimeout.
 func proxyReadTimeoutFeature(
 	ingresses []networkingv1.Ingress,
 	_ map[types.NamespacedName]map[string]int32,
@@ -81,16 +80,16 @@ func proxyReadTimeoutFeature(
 	// Map to HTTPRoutes using RuleBackendSources.
 	for routeKey, httpCtx := range ir.HTTPRoutes {
 		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx = &intermediate.IngressNginxHTTPRouteIR{
-				Policies: map[string]intermediate.Policy{},
+			httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
+				Policies: map[string]providerir.Policy{},
 			}
 		}
 		if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]intermediate.Policy{}
+			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
 		}
 
 		// Group PolicyIndex by ingress name.
-		srcByIngress := map[string][]intermediate.PolicyIndex{}
+		srcByIngress := map[string][]providerir.PolicyIndex{}
 		for ruleIdx, perRule := range httpCtx.RuleBackendSources {
 			for backendIdx, src := range perRule {
 				if src.Ingress == nil {
@@ -98,7 +97,7 @@ func proxyReadTimeoutFeature(
 				}
 				name := src.Ingress.Name
 				srcByIngress[name] = append(srcByIngress[name],
-					intermediate.PolicyIndex{Rule: ruleIdx, Backend: backendIdx},
+					providerir.PolicyIndex{Rule: ruleIdx, Backend: backendIdx},
 				)
 			}
 		}

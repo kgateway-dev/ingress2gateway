@@ -22,13 +22,12 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
-	"k8s.io/utils/ptr"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
+	"k8s.io/utils/ptr"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 // parsedAuthURL contains the fields you can use to build a BackendObjectReference.
@@ -41,7 +40,6 @@ type parsedAuthURL struct {
 }
 
 // parseAuthURL parses an nginx.ingress.kubernetes.io/auth-url value into a ParsedAuthURL.
-// ingressNS = namespace of the Ingress (used when namespace is omitted).
 func parseAuthURL(raw string, ingressNS string) (*parsedAuthURL, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("auth-url is empty")
@@ -120,14 +118,8 @@ func parseAuthURL(raw string, ingressNS string) (*parsedAuthURL, error) {
 
 // applyExtAuthPolicy projects the ExtAuth IR policy into a GatewayExtension
 // and ExtAuthPolicy in TrafficPolicy.
-//
-// Semantics:
-//   - We create one GatewayExtension per unique auth-url.
-//   - That GatewayExtension's Spec.ExtAuth.HttpService references an existing Service
-//     (parsed from the auth URL).
-//   - An ExtAuthPolicy is added to TrafficPolicy that references the GatewayExtension.
 func applyExtAuthPolicy(
-	pol intermediate.Policy,
+	pol providerir.Policy,
 	ingressName, namespace string,
 	tp map[string]*kgateway.TrafficPolicy,
 	gatewayExtensions map[string]*kgateway.GatewayExtension,
@@ -152,11 +144,11 @@ func applyExtAuthPolicy(
 
 	// Create GatewayExtension with ExtAuth using HttpService.
 	extHttpService := &kgateway.ExtHttpService{
-		BackendRef: gwv1.BackendRef{
-			BackendObjectReference: gwv1.BackendObjectReference{
-				Name:      gwv1.ObjectName(parsed.service),
-				Namespace: ptr.To(gwv1.Namespace(parsed.namespace)), // TODO: confirm that different namespace works
-				Port:      ptr.To(gwv1.PortNumber(parsed.port)),
+		BackendRef: gatewayv1.BackendRef{
+			BackendObjectReference: gatewayv1.BackendObjectReference{
+				Name:      gatewayv1.ObjectName(parsed.service),
+				Namespace: ptr.To(gatewayv1.Namespace(parsed.namespace)),
+				Port:      ptr.To(gatewayv1.PortNumber(parsed.port)),
 			},
 		},
 	}
@@ -190,11 +182,35 @@ func applyExtAuthPolicy(
 
 	t.Spec.ExtAuth = &kgateway.ExtAuthPolicy{
 		ExtensionRef: &shared.NamespacedObjectReference{
-			Name:      gwv1.ObjectName(ge.Name),
-			Namespace: ptr.To(gwv1.Namespace(ge.Namespace)),
+			Name:      gatewayv1.ObjectName(ge.Name),
+			Namespace: ptr.To(gatewayv1.Namespace(ge.Namespace)),
 		},
 	}
 
 	gatewayExtensions[ingressName] = ge
+	return true
+}
+
+// applyBasicAuthPolicy projects the BasicAuth IR policy into a Kgateway TrafficPolicy.
+func applyBasicAuthPolicy(
+	pol providerir.Policy,
+	ingressName, namespace string,
+	tp map[string]*kgateway.TrafficPolicy,
+) bool {
+	if pol.BasicAuth == nil || pol.BasicAuth.SecretName == "" {
+		return false
+	}
+
+	t := ensureTrafficPolicy(tp, ingressName, namespace)
+	secretRef := &kgateway.SecretReference{
+		Name: gatewayv1.ObjectName(pol.BasicAuth.SecretName),
+	}
+	// Set Key field to "auth" when AuthType is "auth-file" (default format)
+	if pol.BasicAuth.AuthType == "auth-file" {
+		secretRef.Key = ptr.To("auth")
+	}
+	t.Spec.BasicAuth = &kgateway.BasicAuthPolicy{
+		SecretRef: secretRef,
+	}
 	return true
 }
