@@ -3,7 +3,6 @@ kind: Ingress
 metadata:
   annotations:
     nginx.ingress.kubernetes.io/client-body-buffer-size: 10m
-    ingress2gateway.kubernetes.io/implementation: kgateway
     nginx.ingress.kubernetes.io/limit-rpm: "600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "30s"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "45s"
@@ -30,7 +29,6 @@ kind: Ingress
 metadata:
   annotations:
     nginx.ingress.kubernetes.io/client-body-buffer-size: 20m
-    ingress2gateway.kubernetes.io/implementation: kgateway
     nginx.ingress.kubernetes.io/limit-rps: "10"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60" # No "s" suffix, should still be parsed correctly
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60" # No "s" suffix, should still be parsed correctly
@@ -56,7 +54,6 @@ kind: Ingress
 metadata:
   annotations:
     nginx.ingress.kubernetes.io/client-body-buffer-size: 40m
-    ingress2gateway.kubernetes.io/implementation: kgateway
     nginx.ingress.kubernetes.io/limit-rps: "50"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
@@ -83,7 +80,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
-    ingress2gateway.kubernetes.io/implementation: kgateway
     nginx.ingress.kubernetes.io/backend-protocol: HTTPS
     nginx.ingress.kubernetes.io/proxy-ssl-secret: default/base-certificate-tls
     nginx.ingress.kubernetes.io/proxy-ssl-server-name: "on"

@@ -3,7 +3,6 @@ kind: Ingress
 metadata:
   name: ingress-cors-b
   annotations:
-    ingress2gateway.kubernetes.io/implementation: kgateway
     nginx.ingress.kubernetes.io/enable-cors: "true"
     nginx.ingress.kubernetes.io/cors-allow-origin: "https://example.com, https://another.com"
     nginx.ingress.kubernetes.io/cors-expose-headers: "*, X-CustomResponseHeader"

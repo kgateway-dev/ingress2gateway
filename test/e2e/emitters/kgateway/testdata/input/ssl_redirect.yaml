@@ -12,7 +12,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
-    ingress2gateway.kubernetes.io/implementation: kgateway
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
   name: ssl-redirect-localhost
   namespace: default

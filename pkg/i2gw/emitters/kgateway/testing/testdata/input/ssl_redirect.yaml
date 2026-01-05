@@ -2,7 +2,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
-    ingress2gateway.kubernetes.io/implementation: kgateway
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
   name: ingress-ssl-redirect
   namespace: default
@@ -28,7 +27,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
-    ingress2gateway.kubernetes.io/implementation: kgateway
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
   name: ingress-ssl-redirect-multiple-paths
   namespace: default
@@ -61,7 +59,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
-    ingress2gateway.kubernetes.io/implementation: kgateway
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
   name: ingress-force-ssl-redirect
   namespace: default
