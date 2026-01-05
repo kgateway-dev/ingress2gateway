@@ -19,7 +19,7 @@ package ingressnginx
 import (
 	"time"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
 
 	networkingv1 "k8s.io/api/networking/v1"
@@ -35,7 +35,7 @@ const proxySendTimeoutAnnotation = "nginx.ingress.kubernetes.io/proxy-send-timeo
 func proxySendTimeoutFeature(
 	ingresses []networkingv1.Ingress,
 	_ map[types.NamespacedName]map[string]int32,
-	ir *intermediate.IR,
+	ir *providerir.ProviderIR,
 ) field.ErrorList {
 	var errs field.ErrorList
 
@@ -88,7 +88,7 @@ func proxySendTimeoutFeature(
 
 		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
 			httpCtx.ProviderSpecificIR.IngressNginx =
-				&intermediate.IngressNginxHTTPRouteIR{Policies: map[string]intermediate.Policy{}}
+				&providerir.IngressNginxHTTPRouteIR{Policies: map[string]providerir.Policy{}}
 		}
 
 		for ruleIdx, backendSources := range httpCtx.RuleBackendSources {
@@ -114,7 +114,7 @@ func proxySendTimeoutFeature(
 
 				p.RuleBackendSources = append(
 					p.RuleBackendSources,
-					intermediate.PolicyIndex{Rule: ruleIdx, Backend: backendIdx},
+					providerir.PolicyIndex{Rule: ruleIdx, Backend: backendIdx},
 				)
 
 				httpCtx.ProviderSpecificIR.IngressNginx.Policies[key.Name] = p

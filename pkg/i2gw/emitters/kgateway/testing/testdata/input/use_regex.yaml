@@ -1,0 +1,61 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+  name: ingress-myservicea1
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: myservicea.foo.org
+    http:
+      paths:
+      - backend:
+          service:
+            name: myservicea
+            port:
+              number: 80
+        path: /path/one
+        pathType: Prefix
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+  name: ingress-myservicea2
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: myservicea.foo.org
+    http:
+      paths:
+      - backend:
+          service:
+            name: myservicea
+            port:
+              number: 80
+        path: /path/two
+        pathType: Prefix
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "false" # should not produce a regex path matcher
+  name: ingress-myserviceb
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: myserviceb.foo.org
+    http:
+      paths:
+      - backend:
+          service:
+            name: myserviceb
+            port:
+              number: 80
+        path: /
+        pathType: Prefix

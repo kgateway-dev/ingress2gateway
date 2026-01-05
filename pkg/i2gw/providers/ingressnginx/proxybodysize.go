@@ -17,7 +17,7 @@ limitations under the License.
 package ingressnginx
 
 import (
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
 
 	networkingv1 "k8s.io/api/networking/v1"
@@ -33,11 +33,11 @@ const proxyBodySizeAnnotation = "nginx.ingress.kubernetes.io/proxy-body-size"
 func proxyBodySizeFeature(
 	ingresses []networkingv1.Ingress,
 	_ map[types.NamespacedName]map[string]int32,
-	ir *intermediate.IR,
+	ir *providerir.ProviderIR,
 ) field.ErrorList {
 
 	var errs field.ErrorList
-	ingressPolicies := map[types.NamespacedName]*intermediate.Policy{}
+	ingressPolicies := map[types.NamespacedName]*providerir.Policy{}
 
 	for i := range ingresses {
 		ing := &ingresses[i]
@@ -59,7 +59,7 @@ func proxyBodySizeFeature(
 		key := types.NamespacedName{Namespace: ing.Namespace, Name: ing.Name}
 		pol := ingressPolicies[key]
 		if pol == nil {
-			pol = &intermediate.Policy{}
+			pol = &providerir.Policy{}
 			ingressPolicies[key] = pol
 		}
 
@@ -103,11 +103,11 @@ func proxyBodySizeFeature(
 
 				// Ensure provider-specific IR exists
 				if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-					httpCtx.ProviderSpecificIR.IngressNginx = &intermediate.IngressNginxHTTPRouteIR{
-						Policies: map[string]intermediate.Policy{},
+					httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
+						Policies: map[string]providerir.Policy{},
 					}
 				} else if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-					httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]intermediate.Policy{}
+					httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
 				}
 
 				existing := httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name]
@@ -116,7 +116,7 @@ func proxyBodySizeFeature(
 				}
 
 				// Dedupe (rule, backend) pairs.
-				existing = existing.AddRuleBackendSources([]intermediate.PolicyIndex{
+				existing = existing.AddRuleBackendSources([]providerir.PolicyIndex{
 					{Rule: ruleIdx, Backend: backendIdx},
 				})
 

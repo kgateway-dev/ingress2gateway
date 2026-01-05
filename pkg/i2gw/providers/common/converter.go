@@ -23,7 +23,7 @@ import (
 	"strings"
 
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -34,9 +34,9 @@ import (
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
 
-// ToIR converts the received ingresses to intermediate.IR without taking into
+// ToIR converts the received ingresses to providerir.ProviderIR without taking into
 // consideration any provider specific logic.
-func ToIR(ingresses []networkingv1.Ingress, servicePorts map[types.NamespacedName]map[string]int32, options i2gw.ProviderImplementationSpecificOptions) (intermediate.IR, field.ErrorList) {
+func ToIR(ingresses []networkingv1.Ingress, servicePorts map[types.NamespacedName]map[string]int32, options i2gw.ProviderImplementationSpecificOptions) (providerir.ProviderIR, field.ErrorList) {
 	aggregator := ingressAggregator{
 		ruleGroups:   map[ruleGroupKey]*ingressRuleGroup{},
 		servicePorts: servicePorts,
@@ -47,33 +47,33 @@ func ToIR(ingresses []networkingv1.Ingress, servicePorts map[types.NamespacedNam
 		aggregator.addIngress(ingress)
 	}
 	if len(errs) > 0 {
-		return intermediate.IR{}, errs
+		return providerir.ProviderIR{}, errs
 	}
 
 	routes, gateways, errs := aggregator.toHTTPRoutesAndGateways(options)
 	if len(errs) > 0 {
-		return intermediate.IR{}, errs
+		return providerir.ProviderIR{}, errs
 	}
 
-	routeByKey := make(map[types.NamespacedName]intermediate.HTTPRouteContext)
+	routeByKey := make(map[types.NamespacedName]providerir.HTTPRouteContext)
 	for _, routeWithSources := range routes {
 		key := types.NamespacedName{Namespace: routeWithSources.route.Namespace, Name: routeWithSources.route.Name}
-		routeByKey[key] = intermediate.HTTPRouteContext{
+		routeByKey[key] = providerir.HTTPRouteContext{
 			HTTPRoute:          routeWithSources.route,
 			RuleBackendSources: routeWithSources.sources,
 		}
 	}
 
-	gatewayByKey := make(map[types.NamespacedName]intermediate.GatewayContext)
+	gatewayByKey := make(map[types.NamespacedName]providerir.GatewayContext)
 	for _, gateway := range gateways {
 		key := types.NamespacedName{Namespace: gateway.Namespace, Name: gateway.Name}
-		gatewayByKey[key] = intermediate.GatewayContext{Gateway: gateway}
+		gatewayByKey[key] = providerir.GatewayContext{Gateway: gateway}
 	}
 
-	return intermediate.IR{
+	return providerir.ProviderIR{
 		Gateways:           gatewayByKey,
 		HTTPRoutes:         routeByKey,
-		Services:           make(map[types.NamespacedName]intermediate.ProviderSpecificServiceIR),
+		Services:           make(map[types.NamespacedName]providerir.ProviderSpecificServiceIR),
 		GatewayClasses:     make(map[types.NamespacedName]gatewayv1.GatewayClass),
 		TLSRoutes:          make(map[types.NamespacedName]gatewayv1alpha2.TLSRoute),
 		TCPRoutes:          make(map[types.NamespacedName]gatewayv1alpha2.TCPRoute),
@@ -85,31 +85,30 @@ func ToIR(ingresses []networkingv1.Ingress, servicePorts map[types.NamespacedNam
 }
 
 var (
-	// GatewayGVK is the the GroupVersionKinds for the respective Gateway API resources.
 	GatewayGVK = schema.GroupVersionKind{
 		Group:   "gateway.networking.k8s.io",
 		Version: "v1",
 		Kind:    "Gateway",
 	}
-	// HTTPRouteGVK is the the GroupVersionKinds for the respective Gateway API resources.
+
 	HTTPRouteGVK = schema.GroupVersionKind{
 		Group:   "gateway.networking.k8s.io",
 		Version: "v1",
 		Kind:    "HTTPRoute",
 	}
-	// TLSRouteGVK is the the GroupVersionKinds for the respective Gateway API resources.
+
 	TLSRouteGVK = schema.GroupVersionKind{
 		Group:   "gateway.networking.k8s.io",
 		Version: "v1alpha2",
 		Kind:    "TLSRoute",
 	}
-	// TCPRouteGVK is the the GroupVersionKinds for the respective Gateway API resources.
+
 	TCPRouteGVK = schema.GroupVersionKind{
 		Group:   "gateway.networking.k8s.io",
 		Version: "v1alpha2",
 		Kind:    "TCPRoute",
 	}
-	// ReferenceGrantGVK is the the GroupVersionKinds for the respective Gateway API resources.
+
 	ReferenceGrantGVK = schema.GroupVersionKind{
 		Group:   "gateway.networking.k8s.io",
 		Version: "v1beta1",
@@ -199,7 +198,7 @@ func (a *ingressAggregator) addIngressRule(ingress networkingv1.Ingress, ingress
 
 type httpRouteWithSources struct {
 	route   gatewayv1.HTTPRoute
-	sources [][]intermediate.BackendSource
+	sources [][]providerir.BackendSource
 }
 
 func (a *ingressAggregator) toHTTPRoutesAndGateways(options i2gw.ProviderImplementationSpecificOptions) ([]httpRouteWithSources, []gatewayv1.Gateway, field.ErrorList) {
@@ -270,7 +269,7 @@ func (a *ingressAggregator) toHTTPRoutesAndGateways(options i2gw.ProviderImpleme
 			})
 		}
 		// Set the single source for this default backend.
-		sources := [][]intermediate.BackendSource{
+		sources := [][]providerir.BackendSource{
 			{
 				{
 					Ingress:        db.sourceIngress,
@@ -290,19 +289,13 @@ func (a *ingressAggregator) toHTTPRoutesAndGateways(options i2gw.ProviderImpleme
 		}
 		gateway := gatewaysByKey[gwKey]
 		if gateway == nil {
-			gwClass := parts[1]
-			if options.GatewayClassNameOverride != "" {
-				gwClass = options.GatewayClassNameOverride
-			}
 			gateway = &gatewayv1.Gateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: parts[0],
-					// TODO [danehans]: Should we have a better naming scheme for gateways
-					// or derive the name from the implementation-specific options (if defined)?
-					Name: parts[1],
+					Name:      parts[1],
 				},
 				Spec: gatewayv1.GatewaySpec{
-					GatewayClassName: gatewayv1.ObjectName(gwClass),
+					GatewayClassName: gatewayv1.ObjectName(parts[1]),
 				},
 			}
 			gateway.SetGroupVersionKind(GatewayGVK)
@@ -340,7 +333,7 @@ func (a *ingressAggregator) toHTTPRoutesAndGateways(options i2gw.ProviderImpleme
 	return httpRoutes, gateways, errors
 }
 
-func (rg *ingressRuleGroup) toHTTPRoute(servicePorts map[types.NamespacedName]map[string]int32, options i2gw.ProviderImplementationSpecificOptions) (gatewayv1.HTTPRoute, [][]intermediate.BackendSource, field.ErrorList) {
+func (rg *ingressRuleGroup) toHTTPRoute(servicePorts map[types.NamespacedName]map[string]int32, options i2gw.ProviderImplementationSpecificOptions) (gatewayv1.HTTPRoute, [][]providerir.BackendSource, field.ErrorList) {
 	ingressPathsByMatchKey := groupIngressPathsByMatchKey(rg.rules)
 	httpRoute := gatewayv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{
@@ -364,7 +357,7 @@ func (rg *ingressRuleGroup) toHTTPRoute(servicePorts map[types.NamespacedName]ma
 	}
 
 	var errors field.ErrorList
-	var allRuleBackendSources [][]intermediate.BackendSource
+	var allRuleBackendSources [][]providerir.BackendSource
 
 	for _, key := range ingressPathsByMatchKey.keys {
 		paths := ingressPathsByMatchKey.data[key]
@@ -390,10 +383,10 @@ func (rg *ingressRuleGroup) toHTTPRoute(servicePorts map[types.NamespacedName]ma
 	return httpRoute, allRuleBackendSources, errors
 }
 
-func (rg *ingressRuleGroup) configureBackendRef(servicePorts map[types.NamespacedName]map[string]int32, paths []ingressPath) ([]gatewayv1.HTTPBackendRef, []intermediate.BackendSource, field.ErrorList) {
+func (rg *ingressRuleGroup) configureBackendRef(servicePorts map[types.NamespacedName]map[string]int32, paths []ingressPath) ([]gatewayv1.HTTPBackendRef, []providerir.BackendSource, field.ErrorList) {
 	var errors field.ErrorList
 	var backendRefs []gatewayv1.HTTPBackendRef
-	var sources []intermediate.BackendSource
+	var sources []providerir.BackendSource
 
 	for i, path := range paths {
 		backendRef, err := ToBackendRef(rg.namespace, path.path.Backend, servicePorts, field.NewPath("paths", "backends").Index(i))
@@ -404,7 +397,7 @@ func (rg *ingressRuleGroup) configureBackendRef(servicePorts map[types.Namespace
 		backendRefs = append(backendRefs, gatewayv1.HTTPBackendRef{BackendRef: *backendRef})
 
 		// Track source for this backend
-		sources = append(sources, intermediate.BackendSource{
+		sources = append(sources, providerir.BackendSource{
 			Ingress: path.sourceIngress,
 			Path:    &path.path,
 		})

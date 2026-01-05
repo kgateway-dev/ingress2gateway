@@ -19,8 +19,7 @@ package ingressnginx
 import (
 	"strconv"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/intermediate"
-
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -37,12 +36,12 @@ const (
 func rateLimitPolicyFeature(
 	ingresses []networkingv1.Ingress,
 	_ map[types.NamespacedName]map[string]int32,
-	ir *intermediate.IR,
+	ir *providerir.ProviderIR,
 ) field.ErrorList {
 	var errs field.ErrorList
 
 	// Build a map of raw per-Ingress RateLimitPolicy
-	perIngress := map[string]*intermediate.RateLimitPolicy{}
+	perIngress := map[string]*providerir.RateLimitPolicy{}
 
 	for _, ing := range ingresses {
 		anns := ing.GetAnnotations()
@@ -52,7 +51,7 @@ func rateLimitPolicyFeature(
 
 		var (
 			limit     int32
-			unit      intermediate.RateLimitUnit
+			unit      providerir.RateLimitUnit
 			hasLimit  bool
 			burstMult int32 = 1
 		)
@@ -61,7 +60,7 @@ func rateLimitPolicyFeature(
 		if v, ok := anns[nginxLimitRPS]; ok && v != "" {
 			if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
 				limit = int32(parsed)
-				unit = intermediate.RateLimitUnitRPS
+				unit = providerir.RateLimitUnitRPS
 				hasLimit = true
 			}
 		}
@@ -69,7 +68,7 @@ func rateLimitPolicyFeature(
 			if v, ok := anns[nginxLimitRPM]; ok && v != "" {
 				if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
 					limit = int32(parsed)
-					unit = intermediate.RateLimitUnitRPM
+					unit = providerir.RateLimitUnitRPM
 					hasLimit = true
 				}
 			}
@@ -85,7 +84,7 @@ func rateLimitPolicyFeature(
 			}
 		}
 
-		perIngress[ing.Name] = &intermediate.RateLimitPolicy{
+		perIngress[ing.Name] = &providerir.RateLimitPolicy{
 			Limit:           limit,
 			Unit:            unit,
 			BurstMultiplier: burstMult,
@@ -101,14 +100,14 @@ func rateLimitPolicyFeature(
 		// Ensure provider IR exists
 		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
 			httpCtx.ProviderSpecificIR.IngressNginx =
-				&intermediate.IngressNginxHTTPRouteIR{Policies: map[string]intermediate.Policy{}}
+				&providerir.IngressNginxHTTPRouteIR{Policies: map[string]providerir.Policy{}}
 		}
 		if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]intermediate.Policy{}
+			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
 		}
 
 		// Group PolicyIndex entries by ingress name
-		sourceIndexes := map[string][]intermediate.PolicyIndex{}
+		sourceIndexes := map[string][]providerir.PolicyIndex{}
 		for ruleIdx, perRule := range httpCtx.RuleBackendSources {
 			for backIdx, src := range perRule {
 				if src.Ingress == nil {
@@ -117,7 +116,7 @@ func rateLimitPolicyFeature(
 				name := src.Ingress.Name
 				sourceIndexes[name] = append(
 					sourceIndexes[name],
-					intermediate.PolicyIndex{Rule: ruleIdx, Backend: backIdx},
+					providerir.PolicyIndex{Rule: ruleIdx, Backend: backIdx},
 				)
 			}
 		}
