@@ -32,6 +32,13 @@ import (
 
 // applyBackendTLSPolicy projects the BackendTLS IR policy into one or more
 // Kgateway BackendConfigPolicies.
+//
+// Semantics:
+//   - We create at most one BackendConfigPolicy per Service.
+//   - That policy's Spec.TLS is configured with client certificates, CA certificates,
+//     SNI hostname, and verification settings from the Policy.BackendTLS.
+//   - TargetRefs are populated with all core Service backends that this Policy covers
+//     (based on RuleBackendSources).
 func applyBackendTLSPolicy(
 	pol providerir.Policy,
 	httpRouteKey types.NamespacedName,

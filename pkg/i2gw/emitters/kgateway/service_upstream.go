@@ -26,6 +26,17 @@ import (
 
 // applyServiceUpstream projects provider-specific static backend mappings into typed
 // Kgateway Backend CRs and rewrites HTTPRoute backendRefs to reference those Backends.
+//
+// Semantics:
+//   - One Backend CR per (namespace, svcName-service-upstream).
+//   - Backend.Spec.Static.Hosts contains a single host+port from the IR Backend.
+//   - HTTPRoute backendRefs for those services are rewritten to:
+//     group: gateway.kgateway.dev
+//     kind:  Backend
+//     name:  <svc>-service-upstream
+//
+// This function is driven by the IR Policy.Backends and RuleBackendSources
+// populated by the ingress-nginx provider (service-upstream feature).
 func applyServiceUpstream(
 	pol providerir.Policy,
 	ingressName string,

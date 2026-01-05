@@ -113,6 +113,13 @@ func applyProxyConnectTimeoutPolicy(
 
 // applySessionAffinityPolicy projects the SessionAffinity IR policy into one or more
 // Kgateway BackendConfigPolicies.
+//
+// Semantics:
+//   - We create at most one BackendConfigPolicy per Service.
+//   - That policy's Spec.LoadBalancer.RingHash.HashPolicies is configured with cookie-based
+//     session affinity settings from the Policy.SessionAffinity.
+//   - TargetRefs are populated with all core Service backends that this Policy covers
+//     (based on RuleBackendSources).
 func applySessionAffinityPolicy(
 	pol providerir.Policy,
 	httpRouteKey types.NamespacedName,
@@ -220,6 +227,11 @@ func applySessionAffinityPolicy(
 
 // applyAccessLogPolicy projects the EnableAccessLog IR policy into one or more
 // Kgateway HTTPListenerPolicies.
+//
+// Semantics:
+//   - We create at most one HTTPListenerPolicy per Gateway (identified by ParentRefs).
+//   - That policy's Spec.AccessLog is configured with FileSink when EnableAccessLog is true.
+//   - TargetRefs are populated with the Gateway reference from HTTPRoute's ParentRefs.
 func applyAccessLogPolicy(
 	pol providerir.Policy,
 	httpRouteKey types.NamespacedName,

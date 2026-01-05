@@ -27,6 +27,17 @@ import (
 
 // applyBufferPolicy projects the buffer-related policy IR into a Kgateway TrafficPolicy,
 // returning true if it modified/created a TrafficPolicy for this ingress.
+//
+// Semantics are as follows:
+//   - If the "nginx.ingress.kubernetes.io/proxy-body-size" annotation is present, that value
+//     is used as the effective max request size.
+//   - Otherwise, if the "nginx.ingress.kubernetes.io/client-body-buffer-size" annotation is present,
+//     that value is used.
+//   - If neither is set, no Kgateway Buffer policy is emitted.
+//
+// Note: Kgateway's Buffer.MaxRequestSize has "max body size" semantics (413 on exceed),
+// which matches NGINX's proxy-body-size more directly. client-body-buffer-size is
+// treated as a fallback when proxy-body-size is not configured.
 func applyBufferPolicy(
 	pol providerir.Policy,
 	ingressName, namespace string,
@@ -116,7 +127,12 @@ func applyRateLimitPolicy(
 	return true
 }
 
-// applyTimeoutPolicy projects the timeout-related policy IR into a Kgateway TrafficPolicy.
+// applyTimeoutPolicy projects the timeout-related policy IR into a Kgateway TrafficPolicy,
+// returning true if it modified/created a TrafficPolicy for this ingress.
+//
+// Semantics:
+//   - If ProxySendTimeout is set, it is mapped to the Request timeout in Kgateway.
+//   - If ProxyReadTimeout is set, it is mapped to the StreamIdle timeout in Kgateway.
 func applyTimeoutPolicy(
 	pol providerir.Policy,
 	ingressName, namespace string,

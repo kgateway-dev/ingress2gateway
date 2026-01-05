@@ -27,6 +27,17 @@ import (
 // applyBackendProtocol projects backend protocol metadata on IR Backends into
 // typed Kgateway Backend CRs and rewrites HTTPRoute backendRefs to reference
 // those Backends.
+//
+// Semantics:
+//   - For each Policy.Backends entry produced by the ingress-nginx provider,
+//     we ensure there is a Static Backend CR with the correct host / port and
+//     (if set) appProtocol (currently only gRPC).
+//   - HTTPRoute backendRefs that were originally core Services and are covered
+//     by this Policy are rewritten to:
+//     group: gateway.kgateway.dev
+//     kind:  Backend
+//     name:  <svc>-service-upstream
+//   - This works regardless of whether service-upstream was also used.
 func applyBackendProtocol(
 	pol providerir.Policy,
 	ingressName string,

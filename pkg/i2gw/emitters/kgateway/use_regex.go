@@ -25,6 +25,16 @@ import (
 // applyRegexPathMatchingForHost mutates the HTTPRouteContext in-place to use
 // Gateway API RegularExpression path matches when the provider indicates that
 // ingress-nginx "regex location modifier" semantics are enforced for the host.
+//
+// This is the emitter-side realization of host-wide regex enforcement driven by:
+//   - nginx.ingress.kubernetes.io/use-regex=true
+//
+// Behavior:
+//   - If RegexLocationForHost is true, convert any PathPrefix/Exact matches into RegularExpression matches.
+//   - The regex is anchored to mimic NGINX-ish location behavior:
+//   - PathPrefix "/foo"  -> "^/foo"
+//   - Exact "/foo"       -> "^/foo$"
+//   - Existing RegularExpression matches are preserved.
 func applyRegexPathMatchingForHost(
 	ingx *providerir.IngressNginxHTTPRouteIR,
 	httpRouteCtx *emitterir.HTTPRouteContext,

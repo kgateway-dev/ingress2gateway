@@ -35,6 +35,11 @@ type backendProtoPatchKey struct {
 
 // emitBackendProtocolPatchNotifications emits an INFO notification with the correct kubectl patch
 // command to set ServicePort.appProtocol on an existing Service.
+//
+// IMPORTANT:
+//   - We intentionally do NOT emit a Service object to avoid overwriting user-managed Service config.
+//   - We also skip backends that have been rewritten to a kgateway Backend (service-upstream case),
+//     because the generated Backend will carry appProtocol instead.
 func emitBackendProtocolPatchNotifications(
 	pol providerir.Policy,
 	sourceIngressName string,
@@ -101,6 +106,7 @@ func emitBackendProtocolPatchNotifications(
 		seen[key] = struct{}{}
 
 		// Use strategic merge patch (safe for core types) so only the matching port entry is updated.
+		// This is far safer than emitting a Service manifest that users might blindly apply.
 		patch := fmt.Sprintf(`{"spec":{"ports":[{"port":%d,"appProtocol":"%s"}]}}`, port, appProto)
 		cmd := fmt.Sprintf(
 			"kubectl patch service %s -n %s --type=strategic -p '%s'",

@@ -26,7 +26,16 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// applyRewriteTargetPolicies projects ingress-nginx rewrite-target into *per-rule* Kgateway TrafficPolicies.
+// applyRewriteTargetPolicies projects ingress-nginx rewrite-target into *per-rule* Kgateway TrafficPolicies
+// and attaches them via ExtensionRef filters to the covered backendRefs.
+//
+// Why per-rule?
+//   - The regex rewrite pattern must align with the rule's path regex so capture groups ($1, $2, ...)
+//     behave like ingress-nginx.
+//
+// Assumptions:
+//   - applyRegexPathMatchingForHost(...) has already run (if host-wide regex location mode is enabled),
+//     so rule path matches will already be RegularExpression where needed.
 func applyRewriteTargetPolicies(
 	pol providerir.Policy,
 	sourceIngressName, namespace string,
@@ -110,6 +119,12 @@ func applyRewriteTargetPolicies(
 }
 
 // deriveRulePathRegexPattern returns a single regex pattern for the rule if possible.
+// If the rule has:
+//   - exactly one distinct RegularExpression path value -> return it
+//   - zero or multiple distinct regex values            -> fall back to "^(.*)"
+//
+// Note: If a rule has multiple *different* path regex matches, we can't represent
+// match-specific rewrites without splitting the rule, so we choose a safe fallback.
 func deriveRulePathRegexPattern(rule gatewayv1.HTTPRouteRule) string {
 	patterns := map[string]struct{}{}
 
@@ -135,7 +150,8 @@ func deriveRulePathRegexPattern(rule gatewayv1.HTTPRouteRule) string {
 	return "^(.*)"
 }
 
-// ensureRuleURLRewriteReplaceFullPath ensures the given rule has a URLRewrite filter.
+// ensureRuleURLRewriteReplaceFullPath ensures the given rule has a URLRewrite filter
+// that performs a ReplaceFullPath with the given value.
 func ensureRuleURLRewriteReplaceFullPath(rule *gatewayv1.HTTPRouteRule, replaceFullPath string) {
 	// Update existing URLRewrite filter if present.
 	for i := range rule.Filters {

@@ -27,6 +27,11 @@ import (
 )
 
 // applySSLRedirectPolicy marks rules that need SSL redirect handling.
+// The actual route splitting happens later in the emitter.
+//
+// Semantics:
+//   - If SSLRedirect is enabled, mark the HTTPRoute for later splitting
+//   - Returns true if SSL redirect is enabled for this policy
 func applySSLRedirectPolicy(
 	pol providerir.Policy,
 	httpRouteKey types.NamespacedName,
@@ -40,7 +45,11 @@ func applySSLRedirectPolicy(
 	return true
 }
 
-// splitHTTPRouteForSSLRedirect splits an HTTPRoute into two routes when SSL redirect is enabled.
+// splitHTTPRouteForSSLRedirect splits an HTTPRoute into two routes when SSL redirect is enabled:
+// 1. HTTP redirect route: bound to HTTP listener, has RequestRedirect filter, no backendRefs
+// 2. HTTPS backend route: bound to HTTPS listener, has backendRefs, no redirect filter
+//
+// Returns the HTTP redirect route, HTTPS backend route, and whether splitting was successful.
 func splitHTTPRouteForSSLRedirect(
 	httpRouteContext emitterir.HTTPRouteContext,
 	httpRouteKey types.NamespacedName,

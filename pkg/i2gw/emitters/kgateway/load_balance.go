@@ -28,6 +28,15 @@ import (
 
 // applyLoadBalancingPolicy projects the LoadBalancing IR policy into one or more
 // Kgateway BackendConfigPolicies.
+//
+// Semantics:
+//   - We create at most one BackendConfigPolicy per Service.
+//   - If SessionAffinity is configured for a Service, it takes precedence and
+//     this function will not override the ring-hash configuration.
+//   - If there is no SessionAffinity for a Service and LoadBalancing.Strategy is
+//     "round_robin", we configure LoadBalancer.RoundRobin on the BackendConfigPolicy.
+//   - TargetRefs are populated with all core Service backends that this Policy covers
+//     (based on RuleBackendSources).
 func applyLoadBalancingPolicy(
 	pol providerir.Policy,
 	httpRouteKey types.NamespacedName,

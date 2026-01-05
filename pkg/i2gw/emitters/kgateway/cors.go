@@ -24,7 +24,8 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// applyCorsPolicy projects the CORS policy IR into a Kgateway TrafficPolicy.
+// applyCorsPolicy projects the CORS policy IR into a Kgateway TrafficPolicy,
+// returning true if it modified/created a TrafficPolicy for the given ingress.
 func applyCorsPolicy(
 	pol providerir.Policy,
 	ingressName, namespace string,

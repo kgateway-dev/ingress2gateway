@@ -118,6 +118,12 @@ func parseAuthURL(raw string, ingressNS string) (*parsedAuthURL, error) {
 
 // applyExtAuthPolicy projects the ExtAuth IR policy into a GatewayExtension
 // and ExtAuthPolicy in TrafficPolicy.
+//
+// Semantics:
+//   - We create one GatewayExtension per unique auth-url.
+//   - That GatewayExtension's Spec.ExtAuth.HttpService references an existing Service
+//     (parsed from the auth URL).
+//   - An ExtAuthPolicy is added to TrafficPolicy that references the GatewayExtension.
 func applyExtAuthPolicy(
 	pol providerir.Policy,
 	ingressName, namespace string,
@@ -191,7 +197,12 @@ func applyExtAuthPolicy(
 	return true
 }
 
-// applyBasicAuthPolicy projects the BasicAuth IR policy into a Kgateway TrafficPolicy.
+// applyBasicAuthPolicy projects the BasicAuth IR policy into a Kgateway TrafficPolicy,
+// returning true if it modified/created a TrafficPolicy for this ingress.
+//
+// Semantics:
+//   - If BasicAuth is configured, set spec.basicAuth.secretRef.name in TrafficPolicy.
+//   - If AuthType is "auth-file" (default), also set spec.basicAuth.secretRef.key to "auth".
 func applyBasicAuthPolicy(
 	pol providerir.Policy,
 	ingressName, namespace string,
