@@ -2,7 +2,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
-    ingress2gateway.kubernetes.io/implementation: kgateway
     # Full FQDN with default path
     nginx.ingress.kubernetes.io/auth-url: "http://auth.default.svc.cluster.local"
     nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Token, X-User-ID"
@@ -26,7 +25,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
-    ingress2gateway.kubernetes.io/implementation: kgateway
     # Service in same namespace, short form
     nginx.ingress.kubernetes.io/auth-url: "http://auth.svc"
   name: ingress-auth-same-ns
@@ -49,7 +47,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
-    ingress2gateway.kubernetes.io/implementation: kgateway
     # Service in different namespace
     nginx.ingress.kubernetes.io/auth-url: "https://auth.production.svc.cluster.local:8080/authz"
   name: ingress-auth-different-ns

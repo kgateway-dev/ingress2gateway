@@ -2,7 +2,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
-    ingress2gateway.kubernetes.io/implementation: kgateway
     nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$1
   name: ingress-myservicea1
@@ -25,7 +24,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
-    ingress2gateway.kubernetes.io/implementation: kgateway
   name: ingress-myservicea2
   namespace: default
 spec:
@@ -46,7 +44,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
-    ingress2gateway.kubernetes.io/implementation: kgateway
     nginx.ingress.kubernetes.io/rewrite-target: /rewritten
   name: ingress-myserviceb
   namespace: default
