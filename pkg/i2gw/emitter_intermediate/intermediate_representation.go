@@ -18,7 +18,8 @@ package emitterir
 
 import (
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate/gce"
-	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
+
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -55,9 +56,8 @@ type GatewayContext struct {
 
 type HTTPRouteContext struct {
 	gatewayv1.HTTPRoute
-	// IngressNginx contains ingress-nginx-specific IR data for kgateway emitter
-	// This uses provider-specific types directly (emitters can import provider types)
-	IngressNginx *providerir.IngressNginxHTTPRouteIR
+	// IngressNginx contains optional Ingress NGINX provider-specific IR data.
+	IngressNginx *ingressnginx.HTTPRouteIR
 	// RuleBackendSources tracks the source Ingress resources for each backend
 	RuleBackendSources [][]BackendSource
 }

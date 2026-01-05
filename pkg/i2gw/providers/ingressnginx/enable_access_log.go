@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
 
 	networkingv1 "k8s.io/api/networking/v1"
@@ -39,7 +40,7 @@ func enableAccessLogFeature(
 ) field.ErrorList {
 
 	var errs field.ErrorList
-	ingressPolicies := map[types.NamespacedName]*providerir.Policy{}
+	ingressPolicies := map[types.NamespacedName]*ingressnginx.Policy{}
 
 	for i := range ingresses {
 		ing := &ingresses[i]
@@ -54,7 +55,7 @@ func enableAccessLogFeature(
 		key := types.NamespacedName{Namespace: ing.Namespace, Name: ing.Name}
 		pol := ingressPolicies[key]
 		if pol == nil {
-			pol = &providerir.Policy{}
+			pol = &ingressnginx.Policy{}
 			ingressPolicies[key] = pol
 		}
 
@@ -97,11 +98,11 @@ func enableAccessLogFeature(
 
 				// Ensure provider-specific IR exists
 				if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-					httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
-						Policies: map[string]providerir.Policy{},
+					httpCtx.ProviderSpecificIR.IngressNginx = &ingressnginx.HTTPRouteIR{
+						Policies: map[string]ingressnginx.Policy{},
 					}
 				} else if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-					httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
+					httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]ingressnginx.Policy{}
 				}
 
 				existing := httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name]
@@ -110,7 +111,7 @@ func enableAccessLogFeature(
 				}
 
 				// Dedupe (rule, backend) pairs.
-				existing = existing.AddRuleBackendSources([]providerir.PolicyIndex{
+				existing = existing.AddRuleBackendSources([]ingressnginx.PolicyIndex{
 					{Rule: ruleIdx, Backend: backendIdx},
 				})
 

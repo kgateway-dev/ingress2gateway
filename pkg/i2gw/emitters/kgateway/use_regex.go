@@ -18,7 +18,8 @@ package kgateway
 
 import (
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
-	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
+
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
@@ -36,7 +37,7 @@ import (
 //   - Exact "/foo"       -> "^/foo$"
 //   - Existing RegularExpression matches are preserved.
 func applyRegexPathMatchingForHost(
-	ingx *providerir.IngressNginxHTTPRouteIR,
+	ingx *ingressnginx.HTTPRouteIR,
 	httpRouteCtx *emitterir.HTTPRouteContext,
 ) bool {
 	if ingx == nil || ingx.RegexLocationForHost == nil || !*ingx.RegexLocationForHost {

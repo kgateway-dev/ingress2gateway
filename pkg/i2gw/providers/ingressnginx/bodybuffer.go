@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -39,7 +40,7 @@ func bufferPolicyFeature(
 	var errList field.ErrorList
 
 	// Build per-Ingress policies based on the annotation.
-	ingressPolicies := map[types.NamespacedName]*providerir.Policy{}
+	ingressPolicies := map[types.NamespacedName]*ingressnginx.Policy{}
 
 	for i := range ingresses {
 		ing := &ingresses[i]
@@ -63,7 +64,7 @@ func bufferPolicyFeature(
 			Namespace: ing.Namespace,
 			Name:      ing.Name,
 		}
-		ingressPolicies[key] = &providerir.Policy{
+		ingressPolicies[key] = &ingressnginx.Policy{
 			ClientBodyBufferSize: &qCopy,
 		}
 	}
@@ -114,12 +115,12 @@ func bufferPolicyFeature(
 
 				// Ensure provider-specific IR for ingress-nginx exists.
 				if httpRouteContext.ProviderSpecificIR.IngressNginx == nil {
-					httpRouteContext.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
-						Policies: map[string]providerir.Policy{},
+					httpRouteContext.ProviderSpecificIR.IngressNginx = &ingressnginx.HTTPRouteIR{
+						Policies: map[string]ingressnginx.Policy{},
 					}
 				}
 				if httpRouteContext.ProviderSpecificIR.IngressNginx.Policies == nil {
-					httpRouteContext.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
+					httpRouteContext.ProviderSpecificIR.IngressNginx.Policies = map[string]ingressnginx.Policy{}
 				}
 
 				// Get or initialize the Policy for this ingress name.
@@ -130,7 +131,7 @@ func bufferPolicyFeature(
 				}
 
 				// Dedupe (rule, backend) pairs.
-				p = p.AddRuleBackendSources([]providerir.PolicyIndex{
+				p = p.AddRuleBackendSources([]ingressnginx.PolicyIndex{
 					{
 						Rule:    ruleIdx,
 						Backend: backendIdx,

@@ -23,6 +23,7 @@ import (
 
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
 
 	networkingv1 "k8s.io/api/networking/v1"
@@ -127,12 +128,12 @@ func useRegexFeature(
 
 		// Initialize ProviderSpecificIR.IngressNginx (if needed).
 		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
-				Policies: map[string]providerir.Policy{},
+			httpCtx.ProviderSpecificIR.IngressNginx = &ingressnginx.HTTPRouteIR{
+				Policies: map[string]ingressnginx.Policy{},
 			}
 		}
 		if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
+			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]ingressnginx.Policy{}
 		}
 
 		// Host-wide: mark RegexForcedByUseRegex = true
@@ -193,7 +194,7 @@ func useRegexFeature(
 
 				p := httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name]
 				p.UseRegexPaths = ptr.To(true)
-				p = p.AddRuleBackendSources([]providerir.PolicyIndex{{Rule: ruleIdx, Backend: backendIdx}})
+				p = p.AddRuleBackendSources([]ingressnginx.PolicyIndex{{Rule: ruleIdx, Backend: backendIdx}})
 				httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name] = p
 			}
 		}

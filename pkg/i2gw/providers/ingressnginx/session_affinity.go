@@ -22,6 +22,7 @@ import (
 	"time"
 
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
 
 	networkingv1 "k8s.io/api/networking/v1"
@@ -56,7 +57,7 @@ func sessionAffinityFeature(
 	var errs field.ErrorList
 
 	// Per-Ingress parsed session affinity policy.
-	perIngress := map[types.NamespacedName]*providerir.SessionAffinityPolicy{}
+	perIngress := map[types.NamespacedName]*ingressnginx.SessionAffinityPolicy{}
 
 	for i := range ingresses {
 		ing := &ingresses[i]
@@ -77,7 +78,7 @@ func sessionAffinityFeature(
 			Name:      ing.Name,
 		}
 
-		policy := &providerir.SessionAffinityPolicy{
+		policy := &ingressnginx.SessionAffinityPolicy{
 			CookieName: "INGRESSCOOKIE", // Default cookie name used by NGINX
 		}
 
@@ -183,12 +184,12 @@ func sessionAffinityFeature(
 		}
 
 		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
-				Policies: map[string]providerir.Policy{},
+			httpCtx.ProviderSpecificIR.IngressNginx = &ingressnginx.HTTPRouteIR{
+				Policies: map[string]ingressnginx.Policy{},
 			}
 		}
 		if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
+			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]ingressnginx.Policy{}
 		}
 
 		for ruleIdx, backendSources := range httpCtx.RuleBackendSources {
@@ -215,7 +216,7 @@ func sessionAffinityFeature(
 				}
 
 				// Dedupe (rule, backend) pairs.
-				p = p.AddRuleBackendSources([]providerir.PolicyIndex{
+				p = p.AddRuleBackendSources([]ingressnginx.PolicyIndex{
 					{
 						Rule:    ruleIdx,
 						Backend: backendIdx,
