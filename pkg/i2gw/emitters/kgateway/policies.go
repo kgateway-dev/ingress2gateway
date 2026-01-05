@@ -64,6 +64,7 @@ func applyBufferPolicy(
 }
 
 // applyRateLimitPolicy projects the rate limit policy IR into a Kgateway TrafficPolicy.
+// returning true if it modified/created a TrafficPolicy for this ingress.
 func applyRateLimitPolicy(
 	pol providerir.Policy,
 	ingressName, namespace string,

@@ -105,6 +105,7 @@ func applyLoadBalancingPolicy(
 		// Respect session affinity precedence:
 		// If RingHash is already set (via applySessionAffinityPolicy), do not override.
 		if bcp.Spec.LoadBalancer != nil && bcp.Spec.LoadBalancer.RingHash != nil {
+			// TODO [danehans] add a notification that we are skipping due to session affinity.
 			continue
 		}
 
