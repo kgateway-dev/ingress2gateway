@@ -38,11 +38,6 @@ The command should generate Gateway API and Kgateway resources.
 
 ## Supported Annotations
 
-### Implementation Selection
-
-- `ingress2gateway.kubernetes.io/implementation: kgateway`: Tells the ingress-nginx provider to target the Kgateway implementation.
-  This overrides the default GatewayClass name used by the provider.
-
 ### Traffic Behavior
 
 - `nginx.ingress.kubernetes.io/client-body-buffer-size`
