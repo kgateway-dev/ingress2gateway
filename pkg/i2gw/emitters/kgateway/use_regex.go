@@ -18,17 +18,14 @@ package kgateway
 
 import (
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
+	kgtwir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate/kgateway"
 
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 // applyRegexPathMatchingForHost mutates the HTTPRouteContext in-place to use
-// Gateway API RegularExpression path matches when the provider indicates that
-// ingress-nginx "regex location modifier" semantics are enforced for the host.
-//
-// This is the emitter-side realization of host-wide regex enforcement driven by:
-//   - nginx.ingress.kubernetes.io/use-regex=true
+// Gateway API RegularExpression path matches when the IR indicates that
+// "regex location modifier" semantics are enforced for the host.
 //
 // Behavior:
 //   - If RegexLocationForHost is true, convert any PathPrefix/Exact matches into RegularExpression matches.
@@ -37,7 +34,7 @@ import (
 //   - Exact "/foo"       -> "^/foo$"
 //   - Existing RegularExpression matches are preserved.
 func applyRegexPathMatchingForHost(
-	ingx *ingressnginx.HTTPRouteIR,
+	ingx *kgtwir.HTTPRouteIR,
 	httpRouteCtx *emitterir.HTTPRouteContext,
 ) bool {
 	if ingx == nil || ingx.RegexLocationForHost == nil || !*ingx.RegexLocationForHost {

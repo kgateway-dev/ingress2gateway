@@ -22,7 +22,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
+	kgtwir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate/kgateway"
 
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
@@ -126,7 +126,7 @@ func parseAuthURL(raw string, ingressNS string) (*parsedAuthURL, error) {
 //     (parsed from the auth URL).
 //   - An ExtAuthPolicy is added to TrafficPolicy that references the GatewayExtension.
 func applyExtAuthPolicy(
-	pol ingressnginx.Policy,
+	pol kgtwir.Policy,
 	ingressName, namespace string,
 	tp map[string]*kgateway.TrafficPolicy,
 	gatewayExtensions map[string]*kgateway.GatewayExtension,
@@ -205,7 +205,7 @@ func applyExtAuthPolicy(
 //   - If BasicAuth is configured, set spec.basicAuth.secretRef.name in TrafficPolicy.
 //   - If AuthType is "auth-file" (default), also set spec.basicAuth.secretRef.key to "auth".
 func applyBasicAuthPolicy(
-	pol ingressnginx.Policy,
+	pol kgtwir.Policy,
 	ingressName, namespace string,
 	tp map[string]*kgateway.TrafficPolicy,
 ) bool {

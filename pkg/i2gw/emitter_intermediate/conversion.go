@@ -17,7 +17,10 @@ limitations under the License.
 package emitterir
 
 import (
+	kgtwir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate/kgateway"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	ingressnginx "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
+
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -51,12 +54,20 @@ func ToEmitterIR(pIR providerir.ProviderIR) EmitterIR {
 				}
 			}
 		}
+
+		// Convert provider-specific IR to emitter-specific IR
+		var kgw *kgtwir.HTTPRouteIR
+		if v.ProviderSpecificIR.IngressNginx != nil {
+			kgw = toKgatewayHTTPRouteIR(v.ProviderSpecificIR.IngressNginx)
+		}
+
 		eIR.HTTPRoutes[k] = HTTPRouteContext{
 			HTTPRoute:          v.HTTPRoute,
-			IngressNginx:       v.ProviderSpecificIR.IngressNginx,
+			Kgateway:           kgw,
 			RuleBackendSources: ruleBackendSources,
 		}
 	}
+
 	for k, v := range pIR.GatewayClasses {
 		eIR.GatewayClasses[k] = GatewayClassContext{GatewayClass: v}
 	}
@@ -80,4 +91,121 @@ func ToEmitterIR(pIR providerir.ProviderIR) EmitterIR {
 	}
 
 	return eIR
+}
+
+func toKgatewayHTTPRouteIR(src *ingressnginx.HTTPRouteIR) *kgtwir.HTTPRouteIR {
+	if src == nil {
+		return nil
+	}
+	out := &kgtwir.HTTPRouteIR{
+		Policies:              make(map[string]kgtwir.Policy, len(src.Policies)),
+		RegexLocationForHost:  src.RegexLocationForHost,
+		RegexForcedByUseRegex: src.RegexForcedByUseRegex,
+		RegexForcedByRewrite:  src.RegexForcedByRewrite,
+	}
+	for name, pol := range src.Policies {
+		out.Policies[name] = toKgatewayPolicy(pol)
+	}
+	return out
+}
+
+func toKgatewayPolicy(src ingressnginx.Policy) kgtwir.Policy {
+	out := kgtwir.Policy{
+		ClientBodyBufferSize: src.ClientBodyBufferSize,
+		ProxyBodySize:        src.ProxyBodySize,
+		ProxySendTimeout:     src.ProxySendTimeout,
+		ProxyReadTimeout:     src.ProxyReadTimeout,
+		ProxyConnectTimeout:  src.ProxyConnectTimeout,
+		EnableAccessLog:      src.EnableAccessLog,
+		SSLRedirect:          src.SSLRedirect,
+		RewriteTarget:        src.RewriteTarget,
+		UseRegexPaths:        src.UseRegexPaths,
+	}
+
+	if src.Cors != nil {
+		c := *src.Cors
+		c.AllowOrigin = append([]string(nil), src.Cors.AllowOrigin...)
+		c.AllowHeaders = append([]string(nil), src.Cors.AllowHeaders...)
+		c.ExposeHeaders = append([]string(nil), src.Cors.ExposeHeaders...)
+		c.AllowMethods = append([]string(nil), src.Cors.AllowMethods...)
+		out.Cors = (*kgtwir.CorsPolicy)(&c)
+	}
+	if src.ExtAuth != nil {
+		ea := *src.ExtAuth
+		ea.ResponseHeaders = append([]string(nil), src.ExtAuth.ResponseHeaders...)
+		out.ExtAuth = (*kgtwir.ExtAuthPolicy)(&ea)
+	}
+	if src.BasicAuth != nil {
+		ba := *src.BasicAuth
+		out.BasicAuth = (*kgtwir.BasicAuthPolicy)(&ba)
+	}
+	if src.SessionAffinity != nil {
+		sa := *src.SessionAffinity
+		out.SessionAffinity = (*kgtwir.SessionAffinityPolicy)(&sa)
+	}
+	if src.RateLimit != nil {
+		out.RateLimit = toKgatewayRateLimitPolicy(src.RateLimit)
+	}
+	if src.LoadBalancing != nil {
+		out.LoadBalancing = toKgatewayLoadBalancingPolicy(src.LoadBalancing)
+	}
+	if src.BackendTLS != nil {
+		bt := *src.BackendTLS
+		out.BackendTLS = (*kgtwir.BackendTLSPolicy)(&bt)
+	}
+	if src.BackendProtocol != nil {
+		bp := kgtwir.BackendProtocol(*src.BackendProtocol)
+		out.BackendProtocol = &bp
+	}
+
+	// RuleBackendSources
+	if len(src.RuleBackendSources) > 0 {
+		out.RuleBackendSources = make([]kgtwir.PolicyIndex, 0, len(src.RuleBackendSources))
+		for _, idx := range src.RuleBackendSources {
+			out.RuleBackendSources = append(out.RuleBackendSources, kgtwir.PolicyIndex{
+				Rule:    idx.Rule,
+				Backend: idx.Backend,
+			})
+		}
+	}
+
+	// Backends
+	if len(src.Backends) > 0 {
+		out.Backends = make(map[types.NamespacedName]kgtwir.Backend, len(src.Backends))
+		for k, b := range src.Backends {
+			outB := kgtwir.Backend{
+				Namespace: b.Namespace,
+				Name:      b.Name,
+				Port:      b.Port,
+				Host:      b.Host,
+			}
+			if b.Protocol != nil {
+				p := kgtwir.BackendProtocol(*b.Protocol)
+				outB.Protocol = &p
+			}
+			out.Backends[k] = outB
+		}
+	}
+
+	return out
+}
+
+func toKgatewayRateLimitPolicy(src *ingressnginx.RateLimitPolicy) *kgtwir.RateLimitPolicy {
+	if src == nil {
+		return nil
+	}
+	return &kgtwir.RateLimitPolicy{
+		Limit:           src.Limit,
+		Unit:            kgtwir.RateLimitUnit(src.Unit), // string-based named-type conversion
+		BurstMultiplier: src.BurstMultiplier,
+	}
+}
+
+func toKgatewayLoadBalancingPolicy(src *ingressnginx.LoadBalancingPolicy) *kgtwir.LoadBalancingPolicy {
+	if src == nil {
+		return nil
+	}
+	return &kgtwir.LoadBalancingPolicy{
+		Strategy: kgtwir.LoadBalancingStrategy(src.Strategy), // string-based conversion
+	}
 }

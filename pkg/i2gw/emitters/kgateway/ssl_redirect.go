@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
+	kgtwir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate/kgateway"
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
@@ -34,10 +34,10 @@ import (
 //   - If SSLRedirect is enabled, mark the HTTPRoute for later splitting
 //   - Returns true if SSL redirect is enabled for this policy
 func applySSLRedirectPolicy(
-	pol ingressnginx.Policy,
+	pol kgtwir.Policy,
 	httpRouteKey types.NamespacedName,
 	httpRouteContext *emitterir.HTTPRouteContext,
-	coverage []ingressnginx.PolicyIndex,
+	coverage []kgtwir.PolicyIndex,
 ) bool {
 	if pol.SSLRedirect == nil || !*pol.SSLRedirect {
 		return false
@@ -91,7 +91,7 @@ func splitHTTPRouteForSSLRedirect(
 	// Create HTTP redirect route
 	httpRedirectRoute := emitterir.HTTPRouteContext{
 		HTTPRoute:          *httpRouteContext.HTTPRoute.DeepCopy(),
-		IngressNginx:       httpRouteContext.IngressNginx,
+		Kgateway:           httpRouteContext.Kgateway,
 		RuleBackendSources: httpRouteContext.RuleBackendSources,
 	}
 	httpRedirectRoute.ObjectMeta.Name = fmt.Sprintf("%s-http-redirect", httpRouteKey.Name)
@@ -133,7 +133,7 @@ func splitHTTPRouteForSSLRedirect(
 	if httpsListenerName != nil {
 		route := emitterir.HTTPRouteContext{
 			HTTPRoute:          *httpRouteContext.HTTPRoute.DeepCopy(),
-			IngressNginx:       httpRouteContext.IngressNginx,
+			Kgateway:           httpRouteContext.Kgateway,
 			RuleBackendSources: httpRouteContext.RuleBackendSources,
 		}
 		route.ObjectMeta.Name = fmt.Sprintf("%s-https", httpRouteKey.Name)

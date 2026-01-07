@@ -17,7 +17,7 @@ limitations under the License.
 package kgateway
 
 import (
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
+	kgtwir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate/kgateway"
 
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,13 +28,13 @@ import (
 
 // uniquePolicyIndices returns a slice of PolicyIndex values with duplicates
 // removed. Uniqueness is defined by the (Rule, Backend) pair.
-func uniquePolicyIndices(indices []ingressnginx.PolicyIndex) []ingressnginx.PolicyIndex {
+func uniquePolicyIndices(indices []kgtwir.PolicyIndex) []kgtwir.PolicyIndex {
 	if len(indices) == 0 {
 		return indices
 	}
 
-	seen := make(map[ingressnginx.PolicyIndex]struct{}, len(indices))
-	out := make([]ingressnginx.PolicyIndex, 0, len(indices))
+	seen := make(map[kgtwir.PolicyIndex]struct{}, len(indices))
+	out := make([]kgtwir.PolicyIndex, 0, len(indices))
 
 	for _, idx := range indices {
 		if _, ok := seen[idx]; ok {

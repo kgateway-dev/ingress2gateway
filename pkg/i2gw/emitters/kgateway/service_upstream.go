@@ -18,7 +18,7 @@ package kgateway
 
 import (
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
+	kgtwir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate/kgateway"
 
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	"k8s.io/apimachinery/pkg/types"
@@ -39,7 +39,7 @@ import (
 // This function is driven by the IR Policy.Backends and RuleBackendSources
 // populated by the ingress-nginx provider (service-upstream feature).
 func applyServiceUpstream(
-	pol ingressnginx.Policy,
+	pol kgtwir.Policy,
 	ingressName string,
 	httpRouteKey types.NamespacedName,
 	httpRouteCtx *emitterir.HTTPRouteContext,

@@ -18,7 +18,7 @@ package kgateway
 
 import (
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
+	kgtwir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate/kgateway"
 
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	"k8s.io/apimachinery/pkg/types"
@@ -40,7 +40,7 @@ import (
 //     name:  <svc>-service-upstream
 //   - This works regardless of whether service-upstream was also used.
 func applyBackendProtocol(
-	pol ingressnginx.Policy,
+	pol kgtwir.Policy,
 	ingressName string,
 	httpRouteKey types.NamespacedName,
 	httpRouteCtx *emitterir.HTTPRouteContext,
