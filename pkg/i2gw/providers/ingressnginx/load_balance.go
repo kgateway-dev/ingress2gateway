@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
 
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -38,7 +39,7 @@ func loadBalancingFeature(
 	var errs field.ErrorList
 
 	// Build per-Ingress policy from the load-balance annotation.
-	ing2pol := make(map[string]providerir.Policy, len(ingresses))
+	ing2pol := make(map[string]ingressnginx.Policy, len(ingresses))
 
 	for _, ing := range ingresses {
 		if ing.Annotations == nil {
@@ -60,9 +61,9 @@ func loadBalancingFeature(
 		case "round_robin":
 			pol := ing2pol[ing.Name]
 			if pol.LoadBalancing == nil {
-				pol.LoadBalancing = &providerir.BackendLoadBalancingPolicy{}
+				pol.LoadBalancing = &ingressnginx.LoadBalancingPolicy{}
 			}
-			pol.LoadBalancing.Strategy = providerir.LoadBalancingStrategyRoundRobin
+			pol.LoadBalancing.Strategy = ingressnginx.LoadBalancingStrategyRoundRobin
 			ing2pol[ing.Name] = pol
 		default:
 			// Unsupported modes (ewma, ip_hash, etc.).
@@ -81,7 +82,7 @@ func loadBalancingFeature(
 	// Map policies onto HTTPRoute rules/backends using BackendSource.
 	for key, httpCtx := range ir.HTTPRoutes {
 		// Group BackendSources by source Ingress name.
-		srcByIngress := map[string][]providerir.PolicyIndex{}
+		srcByIngress := map[string][]ingressnginx.PolicyIndex{}
 
 		for ruleIdx, perRule := range httpCtx.RuleBackendSources {
 			for backendIdx, src := range perRule {
@@ -91,17 +92,17 @@ func loadBalancingFeature(
 				ingressName := src.Ingress.Name
 				srcByIngress[ingressName] = append(
 					srcByIngress[ingressName],
-					providerir.PolicyIndex{Rule: ruleIdx, Backend: backendIdx},
+					ingressnginx.PolicyIndex{Rule: ruleIdx, Backend: backendIdx},
 				)
 			}
 		}
 
 		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
-				Policies: map[string]providerir.Policy{},
+			httpCtx.ProviderSpecificIR.IngressNginx = &ingressnginx.HTTPRouteIR{
+				Policies: map[string]ingressnginx.Policy{},
 			}
 		} else if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
+			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]ingressnginx.Policy{}
 		}
 
 		for ingressName, idxs := range srcByIngress {

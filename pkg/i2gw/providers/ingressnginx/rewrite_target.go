@@ -20,7 +20,9 @@ import (
 	"strings"
 
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
+
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -81,12 +83,12 @@ func rewriteTargetFeature(
 		}
 
 		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
-				Policies: map[string]providerir.Policy{},
+			httpCtx.ProviderSpecificIR.IngressNginx = &ingressnginx.HTTPRouteIR{
+				Policies: map[string]ingressnginx.Policy{},
 			}
 		}
 		if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
+			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]ingressnginx.Policy{}
 		}
 
 		// host-scoped: any rewrite-target forces regex mode for host.
@@ -123,7 +125,7 @@ func rewriteTargetFeature(
 
 				p := httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name]
 				p.RewriteTarget = ptr.To(rt)
-				p = p.AddRuleBackendSources([]providerir.PolicyIndex{{Rule: ruleIdx, Backend: backendIdx}})
+				p = p.AddRuleBackendSources([]ingressnginx.PolicyIndex{{Rule: ruleIdx, Backend: backendIdx}})
 				httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name] = p
 			}
 		}
