@@ -99,12 +99,16 @@ CLI tool that helps translate Ingress and provider related resources to
     git push ${REMOTE} v${MAJOR}.${MINOR}.${PATCH}
     ```
 
-9. Verify the release has been published to the [releases page](https://github.com/kgateway-dev/ingress2gateway/releases).
+9. Wait for the versioned [deployment](https://github.com/kgateway-dev/ingress2gateway/deployments) to complete.
 
-10. Download and verify the binary version, e.g. `ingress2gateway version`.
+10. Edit the release from the [Releases](https://github.com/kgateway-dev/ingress2gateway/releases) page:
+    1. Remove the `Release-` prefix from the release title.
+    2. Click "Update release" at the bottom of the page.
+
+11. Download and verify the binary version, e.g. `ingress2gateway version`.
 
     ```bash
     ingress2gateway version
     ```
 
-11. If you find any bugs in this process, create an [issue](https://github.com/kgateway-dev/ingress2gateway/issues).
+12. If you find any bugs in this process, create an [issue](https://github.com/kgateway-dev/ingress2gateway/issues).
