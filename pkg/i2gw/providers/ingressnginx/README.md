@@ -113,6 +113,24 @@ The ingress-nginx provider currently supports translating the following annotati
 
 ---
 
+### Service Upstream
+
+- `nginx.ingress.kubernetes.io/service-upstream`: When set to `"true"`, configures the provider to treat a Service as a single
+  upstream (Service IP/port semantics) rather than per-Endpoint Pod IPs.
+  - The provider **does not** directly mutate the generated `HTTPRoute`.
+  - Instead, it records a provider-specific policy with:
+    - derived static Backends (one per covered Service backendRef), and
+    - `(rule, backend)` index pairs indicating which `HTTPRoute` backendRefs the policy applies to.
+  - An implementation-specific emitter (e.g., Kgateway) can then use this policy to:
+    1. Emit implementation-specific `Backend` CRs, and
+    2. Rewrite affected `HTTPRoute.spec.rules[].backendRefs[]` entries to reference those emitted Backend CRs.
+  - Backend host is derived as in-cluster DNS (`<service>.<namespace>.svc.cluster.local`) and the Backend name is derived as
+    `<service>-service-upstream`.
+  - Only applies to core Service `backendRefs` (empty group and kind `Service` / unset kind).
+  - Requires an explicit backendRef port (if port cannot be determined, the backendRef is skipped).
+
+---
+
 ### Backend TLS
 
 - `nginx.ingress.kubernetes.io/proxy-ssl-secret`: Specifies a Secret containing client certificate (`tls.crt`), client key (`tls.key`), and optionally CA certificate (`ca.crt`) in PEM format. The secret name can be specified as `secretName` (same namespace) or `namespace/secretName`. For the Kgateway implementation, this maps to `BackendConfigPolicy.spec.tls.secretRef`. **Note:** The secret must be in the same namespace as the BackendConfigPolicy.
@@ -124,6 +142,17 @@ The ingress-nginx provider currently supports translating the following annotati
 - `nginx.ingress.kubernetes.io/proxy-ssl-server-name`: **Note:** This annotation is not handled separately. In Kgateway, SNI is automatically enabled when `proxy-ssl-name` is set.
 
 **Note:** For the Kgateway implementation, backend TLS configuration is applied via `BackendConfigPolicy` resources. If multiple Ingress resources reference the same Service with different backend TLS settings, ingress2gateway will create a single `BackendConfigPolicy` per Service, and conflicting settings may result in warnings.
+
+---
+
+### Access Logging
+
+- `nginx.ingress.kubernetes.io/enable-access-log`: Enables or disables access logging.
+  - In ingress-nginx, access logging is enabled by default when the annotation is not present.
+  - When the annotation is present, the provider records an explicit boolean:
+    - `"true"` enables access logging
+    - any other value is treated as `false`
+  - For the Kgateway implementation, when access logging is enabled, the Kgateway emitter will create an `HTTPListenerPolicy` that configures a basic Envoy access log policy via `HTTPListenerPolicy.spec.accessLog[].fileSink`. This can be further customized as needed; see the Kgateway access logging docs.
 
 ---
 
@@ -154,6 +183,36 @@ The ingress-nginx provider currently supports translating the following annotati
 - `nginx.ingress.kubernetes.io/force-ssl-redirect`: When set to `"true"`, enables SSL redirect for HTTP requests. This annotation is treated exactly the same as `ssl-redirect`. For the Kgateway implementation, this maps to a `RequestRedirect` filter on HTTPRoute rules that redirects HTTP to HTTPS with a 301 status code. Note that ingress-nginx redirects with code 308, but that isn't supported by gateway API. 
 
 **Note:** Both annotations are supported and treated identically. If either annotation is set to `"true"` (case-insensitive), SSL redirect will be enabled. The redirect filter is added at the rule level in the HTTPRoute, redirecting all HTTP traffic to HTTPS.
+
+---
+
+### SSL Passthrough (TLS Passthrough)
+
+- `nginx.ingress.kubernetes.io/ssl-passthrough`: When set to `"true"` (case-insensitive), enables TLS passthrough.
+  When enabled, TLS termination happens at the backend service rather than at the ingress controller, so the provider converts
+  the affected `HTTPRoute` into a `TLSRoute` and configures a TLS passthrough `Gateway` listener.
+
+Provider behavior:
+
+- Converts the generated `HTTPRoute` for the affected host/group into a `TLSRoute` (same name/namespace), preserving:
+  - `spec.parentRefs` (copied from the HTTPRoute)
+  - `spec.hostnames` (if present)
+- Rewrites per-rule backends:
+  - Each HTTPRoute rule becomes a TLSRoute rule with `backendRefs`
+  - BackendRef `port` is copied when present; otherwise it defaults to `443`
+  - BackendRef `weight` and `namespace` are preserved when set
+- Removes the original `HTTPRoute` from the IR and adds the new `TLSRoute`.
+
+Gateway listener behavior:
+
+- Adds a TLS passthrough listener (`protocol: TLS`, `tls.mode: Passthrough`) to the referenced parent `Gateway`.
+- Listener naming/port:
+  - Default: `name: tls-passthrough`, `port: 8443`
+  - If a hostname is present: `name: <hostname>-tls-passthrough`, `port: 443`, and `hostname:` is set on the listener
+- Removes any generated HTTP listener on the Gateway that matches the TLSRoute hostname (so only the passthrough TLS listener remains for that hostname).
+- Updates the `TLSRoute.spec.parentRefs[].sectionName` to bind the route to the created passthrough listener.
+
+**Note:** With TLS passthrough enabled, backends must be prepared to accept and terminate TLS themselves.
 
 ---
 

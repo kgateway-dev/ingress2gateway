@@ -55,7 +55,7 @@ The command should generate Gateway API and Kgateway resources.
 - `nginx.ingress.kubernetes.io/proxy-send-timeout`
 - `nginx.ingress.kubernetes.io/proxy-read-timeout`
 - `nginx.ingress.kubernetes.io/ssl-redirect`: When set to `"true"`, adds a `RequestRedirect` filter to HTTPRoute rules that redirects HTTP to HTTPS with a 301 status code. Note that ingress-nginx redirects with code 308, but that isn't supported by gateway API. 
-- `nginx.ingress.kubernetes.io/force-ssl-redirect`: When set to `"true"`, adds a `RequestRedirect` filter to HTTPRoute rules that redirects HTTP to HTTPS with a 301 status code. Treated identically to `ssl-redirect`. Note that ingress-nginx redirects with code 308, but that isn't supported by gateway API. 
+- `nginx.ingress.kubernetes.io/force-ssl-redirect`: When set to `"true"`, adds a `RequestRedirect` filter to HTTPRoute rules that redirects HTTP to HTTPS with a 301 status code. Treated identically to `ssl-redirect`. Note that ingress-nginx redirects with code 308, but that isn't supported by gateway API.
 - `nginx.ingress.kubernetes.io/ssl-passthrough`: When set to `"true"`, enables TLS passthrough mode. Converts the Ingress to a `TLSRoute` with a Gateway listener using `protocol: TLS` and `tls.mode: Passthrough`. The HTTPRoute that would normally be created is removed.
 - `nginx.ingress.kubernetes.io/use-regex`: When set to `"true"`, indicates that the paths defined on an Ingress should be treated as regular expressions.
   Uses host-group semantics: if any Ingress contributing rules for a given host has `use-regex: "true"`, regex-style path matching is enforced on **all**
