@@ -36,7 +36,7 @@ const GeneratorAnnotationKey = "gateway.networking.k8s.io/generator"
 // Version holds the version string (injected by ldflags during build).
 // It will be populated by `git describe --tags --always --dirty`.
 // Examples: "v0.4.0", "v0.4.0-5-gabcdef", "v0.4.0-5-gabcdef-dirty"
-var Version = "dev" // Default value if not built with linker flags
+var Version = "v0.3.0"
 
 func ToGatewayAPIResources(ctx context.Context, namespace string, inputFile string, providers []string, emitterName string, providerSpecificFlags map[string]map[string]string) ([]GatewayResources, map[string]string, error) {
 	var clusterClient client.Client
