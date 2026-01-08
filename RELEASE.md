@@ -2,9 +2,9 @@
 
 ## Overview
 
-This downstream of the [Ingress2Gateway](https://github.com/kgateway-dev/ingress2gateway) Project is a CLI project
-that helps translate Ingress and provider related resources to [Gateway API](https://github.com/kubernetes-sigs/gateway-api)
-and Kgateway-specific resources.
+This is a downstream of the [Ingress2Gateway](https://github.com/kgateway-dev/ingress2gateway) project. Ingress2Gateway is a
+CLI tool that helps translate Ingress and provider related resources to
+[Gateway API](https://github.com/kubernetes-sigs/gateway-api) and Kgateway-specific resources.
 
 ## Releasing a new version
 
@@ -40,23 +40,38 @@ and Kgateway-specific resources.
      A release branch should already exist and contain backported commits since the previous relates tag. In this case, check out the existing branch:
 
      ```shell
-     git checkout -b release-${MAJOR}.${MINOR}
+     git checkout -b release-${MAJOR}.${MINOR} ${REMOTE}/release-${MAJOR}.${MINOR}
      ```
 
    - __For a Major, Minor or Patch Release:__
      Create a new release branch from the `main` branch. The branch should be named `release-${MAJOR}.${MINOR}`, for example, `release-0.1`:
 
      ```shell
-     git checkout -b release-${MAJOR}.${MINOR} ${REMOTE}/release-${MAJOR}.${MINOR}
+     git checkout -b release-${MAJOR}.${MINOR}
      ```
 
-4. Push your release branch to the `kgateway-dev/ingress2gateway` repo.
+4. Set the version of the binary by updating `CurrentVersion` in [pkg/i2gw/ingress2gateway.go](pkg/i2gw/ingress2gateway.go) to
+   match the version set in the above environment variables. This will allow the ingress2Gateway binary to print the correct version. For example:
+
+    ```bash
+    $ ingress2gateway version
+    ingress2gateway version: v0.1.0
+    Built with Go version: go1.25.3
+    ```
+
+5. Commit your changes
+
+    ```bash
+    git add pkg/i2gw/ingress2gateway.go && git commit -s -m "Sets version of ingress2gateway binary"
+    ```
+
+6. Push your release branch to the `kgateway-dev/ingress2gateway` repo.
 
     ```shell
     git push ${REMOTE} release-${MAJOR}.${MINOR}
     ```
 
-5. Tag the head of your release branch with the release version.
+7. Tag the head of your release branch with the release version.
 
    For a release candidate:
 
@@ -70,7 +85,7 @@ and Kgateway-specific resources.
     git tag -s -a v${MAJOR}.${MINOR}.${PATCH} -m 'Ingress2Gateway v${MAJOR}.${MINOR}.${PATCH} Release'
     ```
 
-6. Push the tag to the `kgateway-dev/ingress2gateway` repo.
+8. Push the tag to the `kgateway-dev/ingress2gateway` repo.
 
    __For a release candidate:__
 
@@ -84,8 +99,12 @@ and Kgateway-specific resources.
     git push ${REMOTE} v${MAJOR}.${MINOR}.${PATCH}
     ```
 
-7. Verify the release has been published to the [releases page](https://github.com/kgateway-dev/ingress2gateway/releases).
+9. Verify the release has been published to the [releases page](https://github.com/kgateway-dev/ingress2gateway/releases).
 
-8. Download and verify the binary version, e.g. `ingress2gateway version`.
+10. Download and verify the binary version, e.g. `ingress2gateway version`.
 
-9. If you find any bugs in this process, create an [issue](https://github.com/kgateway-dev/ingress2gateway/issues).
+    ```bash
+    ingress2gateway version
+    ```
+
+11. If you find any bugs in this process, create an [issue](https://github.com/kgateway-dev/ingress2gateway/issues).
