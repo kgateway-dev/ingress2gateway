@@ -52,6 +52,7 @@ func newResourcesToIRConverter() *resourcesToIRConverter {
 			sslPassthroughFeature,
 			rewriteTargetFeature,
 			useRegexFeature,
+			headerModifierFeature,
 		},
 	}
 }
