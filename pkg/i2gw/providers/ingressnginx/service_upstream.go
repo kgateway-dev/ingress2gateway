@@ -20,8 +20,6 @@ import (
 	"strings"
 
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
-
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -75,7 +73,7 @@ func serviceUpstreamFeature(
 	// into provider-specific policies.
 	for key, httpCtx := range ir.HTTPRoutes {
 		// Group BackendSources by source Ingress name.
-		srcByIng := map[string][]ingressnginx.PolicyIndex{}
+		srcByIng := map[string][]providerir.PolicyIndex{}
 
 		for ruleIdx, perRule := range httpCtx.RuleBackendSources {
 			for backendIdx, src := range perRule {
@@ -85,7 +83,7 @@ func serviceUpstreamFeature(
 				ingName := src.Ingress.Name
 				srcByIng[ingName] = append(
 					srcByIng[ingName],
-					ingressnginx.PolicyIndex{Rule: ruleIdx, Backend: backendIdx},
+					providerir.PolicyIndex{Rule: ruleIdx, Backend: backendIdx},
 				)
 			}
 		}
@@ -96,11 +94,11 @@ func serviceUpstreamFeature(
 
 		// Ensure provider-specific IR is initialized.
 		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx = &ingressnginx.HTTPRouteIR{
-				Policies: map[string]ingressnginx.Policy{},
+			httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
+				Policies: map[string]providerir.Policy{},
 			}
 		} else if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]ingressnginx.Policy{}
+			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
 		}
 
 		ingPolicies := httpCtx.ProviderSpecificIR.IngressNginx.Policies
@@ -113,7 +111,7 @@ func serviceUpstreamFeature(
 
 			pol := ingPolicies[ingName]
 			if pol.Backends == nil {
-				pol.Backends = map[types.NamespacedName]ingressnginx.Backend{}
+				pol.Backends = map[types.NamespacedName]providerir.Backend{}
 			}
 
 			for _, idx := range idxs {
@@ -166,7 +164,7 @@ func serviceUpstreamFeature(
 				// to that value instead. For now we use in-cluster DNS.
 				host := svcKey.Name + "." + svcKey.Namespace + ".svc.cluster.local"
 
-				pol.Backends[backendKey] = ingressnginx.Backend{
+				pol.Backends[backendKey] = providerir.Backend{
 					Namespace: backendKey.Namespace,
 					Name:      backendKey.Name,
 					Port:      port,

@@ -18,8 +18,7 @@ package kgateway
 
 import (
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
-	kgtwir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate/kgateway"
-
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,13 +38,13 @@ import (
 //   - TargetRefs are populated with all core Service backends that this Policy covers
 //     (based on RuleBackendSources).
 func applyLoadBalancingPolicy(
-	pol kgtwir.Policy,
+	pol providerir.Policy,
 	httpRouteKey types.NamespacedName,
 	httpRouteCtx emitterir.HTTPRouteContext,
 	backendCfg map[types.NamespacedName]*kgateway.BackendConfigPolicy,
 ) bool {
 	// Only care about explicit round_robin strategies.
-	if pol.LoadBalancing == nil || pol.LoadBalancing.Strategy != kgtwir.LoadBalancingStrategyRoundRobin {
+	if pol.LoadBalancing == nil || pol.LoadBalancing.Strategy != providerir.LoadBalancingStrategyRoundRobin {
 		return false
 	}
 

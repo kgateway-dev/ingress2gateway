@@ -23,7 +23,6 @@ import (
 	"time"
 
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
 
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -81,16 +80,16 @@ func proxyReadTimeoutFeature(
 	// Map to HTTPRoutes using RuleBackendSources.
 	for routeKey, httpCtx := range ir.HTTPRoutes {
 		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx = &ingressnginx.HTTPRouteIR{
-				Policies: map[string]ingressnginx.Policy{},
+			httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
+				Policies: map[string]providerir.Policy{},
 			}
 		}
 		if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]ingressnginx.Policy{}
+			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
 		}
 
 		// Group PolicyIndex by ingress name.
-		srcByIngress := map[string][]ingressnginx.PolicyIndex{}
+		srcByIngress := map[string][]providerir.PolicyIndex{}
 		for ruleIdx, perRule := range httpCtx.RuleBackendSources {
 			for backendIdx, src := range perRule {
 				if src.Ingress == nil {
@@ -98,7 +97,7 @@ func proxyReadTimeoutFeature(
 				}
 				name := src.Ingress.Name
 				srcByIngress[name] = append(srcByIngress[name],
-					ingressnginx.PolicyIndex{Rule: ruleIdx, Backend: backendIdx},
+					providerir.PolicyIndex{Rule: ruleIdx, Backend: backendIdx},
 				)
 			}
 		}

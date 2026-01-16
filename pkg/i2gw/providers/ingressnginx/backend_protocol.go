@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
 
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -46,7 +45,7 @@ func backendProtocolFeature(
 	var errs field.ErrorList
 
 	// Per-Ingress backend protocol derived from backend-protocol.
-	ingressProtocols := make(map[types.NamespacedName]ingressnginx.BackendProtocol, len(ingresses))
+	ingressProtocols := make(map[types.NamespacedName]providerir.BackendProtocol, len(ingresses))
 
 	for i := range ingresses {
 		ing := &ingresses[i]
@@ -68,7 +67,7 @@ func backendProtocolFeature(
 
 		switch value {
 		case "GRPC", "GRPCS":
-			ingressProtocols[ingKey] = ingressnginx.BackendProtocolGRPC
+			ingressProtocols[ingKey] = providerir.BackendProtocolGRPC
 		case "HTTP", "HTTPS", "AUTO_HTTP":
 			// Default HTTP/1.x behavior; nothing to emit into IR here.
 			continue
@@ -90,7 +89,7 @@ func backendProtocolFeature(
 	// Map per-Ingress protocol onto HTTPRoute IR using RuleBackendSources.
 	for httpKey, httpCtx := range ir.HTTPRoutes {
 		// Group backend indices by source Ingress (namespace/name).
-		srcByIngress := map[types.NamespacedName][]ingressnginx.PolicyIndex{}
+		srcByIngress := map[types.NamespacedName][]providerir.PolicyIndex{}
 
 		for ruleIdx, perRule := range httpCtx.RuleBackendSources {
 			for backendIdx, src := range perRule {
@@ -103,7 +102,7 @@ func backendProtocolFeature(
 				}
 				srcByIngress[ingressKey] = append(
 					srcByIngress[ingressKey],
-					ingressnginx.PolicyIndex{Rule: ruleIdx, Backend: backendIdx},
+					providerir.PolicyIndex{Rule: ruleIdx, Backend: backendIdx},
 				)
 			}
 		}
@@ -114,11 +113,11 @@ func backendProtocolFeature(
 
 		// Ensure provider-specific IR is initialized.
 		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx = &ingressnginx.HTTPRouteIR{
-				Policies: map[string]ingressnginx.Policy{},
+			httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
+				Policies: map[string]providerir.Policy{},
 			}
 		} else if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]ingressnginx.Policy{}
+			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
 		}
 
 		for ingressKey, idxs := range srcByIngress {

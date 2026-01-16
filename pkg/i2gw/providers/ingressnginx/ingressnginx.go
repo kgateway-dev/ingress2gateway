@@ -20,9 +20,8 @@ import (
 	"context"
 	"fmt"
 
-	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
-
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
@@ -56,10 +55,11 @@ func NewProvider(conf *i2gw.ProviderConf) i2gw.Provider {
 	}
 }
 
-// ToIR converts stored Ingress-Nginx API entities to the provider IR
+// ToIR converts stored Ingress-Nginx API entities to emitterir.IR
 // including the ingress-nginx specific features.
-func (p *Provider) ToIR() (providerir.ProviderIR, field.ErrorList) {
-	return p.resourcesToIRConverter.convert(p.storage)
+func (p *Provider) ToIR() (emitterir.EmitterIR, field.ErrorList) {
+	ir, errs := p.resourcesToIRConverter.convert(p.storage)
+	return emitterir.ToEmitterIR(ir), errs
 }
 
 func (p *Provider) ReadResourcesFromCluster(ctx context.Context) error {

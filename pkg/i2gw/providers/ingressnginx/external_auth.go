@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate/ingressnginx"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
 
 	networkingv1 "k8s.io/api/networking/v1"
@@ -45,7 +44,7 @@ func extAuthFeature(
 ) field.ErrorList {
 
 	var errs field.ErrorList
-	ingressPolicies := map[types.NamespacedName]*ingressnginx.Policy{}
+	ingressPolicies := map[types.NamespacedName]*providerir.Policy{}
 
 	for i := range ingresses {
 		ing := &ingresses[i]
@@ -60,12 +59,12 @@ func extAuthFeature(
 		key := types.NamespacedName{Namespace: ing.Namespace, Name: ing.Name}
 		pol := ingressPolicies[key]
 		if pol == nil {
-			pol = &ingressnginx.Policy{}
+			pol = &providerir.Policy{}
 			ingressPolicies[key] = pol
 		}
 
 		if pol.ExtAuth == nil {
-			pol.ExtAuth = &ingressnginx.ExtAuthPolicy{}
+			pol.ExtAuth = &providerir.ExtAuthPolicy{}
 		}
 
 		if authURLRaw != "" {
@@ -120,11 +119,11 @@ func extAuthFeature(
 
 				// Ensure provider-specific IR exists
 				if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-					httpCtx.ProviderSpecificIR.IngressNginx = &ingressnginx.HTTPRouteIR{
-						Policies: map[string]ingressnginx.Policy{},
+					httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
+						Policies: map[string]providerir.Policy{},
 					}
 				} else if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-					httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]ingressnginx.Policy{}
+					httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
 				}
 
 				existing := httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name]
@@ -141,7 +140,7 @@ func extAuthFeature(
 				}
 
 				// Dedupe (rule, backend) pairs.
-				existing = existing.AddRuleBackendSources([]ingressnginx.PolicyIndex{
+				existing = existing.AddRuleBackendSources([]providerir.PolicyIndex{
 					{Rule: ruleIdx, Backend: backendIdx},
 				})
 
@@ -163,7 +162,7 @@ func basicAuthFeature(
 	ir *providerir.ProviderIR,
 ) field.ErrorList {
 	var errs field.ErrorList
-	ingressPolicies := map[types.NamespacedName]*ingressnginx.Policy{}
+	ingressPolicies := map[types.NamespacedName]*providerir.Policy{}
 
 	for i := range ingresses {
 		ing := &ingresses[i]
@@ -179,7 +178,7 @@ func basicAuthFeature(
 		key := types.NamespacedName{Namespace: ing.Namespace, Name: ing.Name}
 		pol := ingressPolicies[key]
 		if pol == nil {
-			pol = &ingressnginx.Policy{}
+			pol = &providerir.Policy{}
 			ingressPolicies[key] = pol
 		}
 
@@ -202,7 +201,7 @@ func basicAuthFeature(
 			authType = "auth-file" // default
 		}
 
-		pol.BasicAuth = &ingressnginx.BasicAuthPolicy{
+		pol.BasicAuth = &providerir.BasicAuthPolicy{
 			SecretName: secretName,
 			AuthType:   authType,
 		}
@@ -244,11 +243,11 @@ func basicAuthFeature(
 
 				// Ensure provider-specific IR exists
 				if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-					httpCtx.ProviderSpecificIR.IngressNginx = &ingressnginx.HTTPRouteIR{
-						Policies: map[string]ingressnginx.Policy{},
+					httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
+						Policies: map[string]providerir.Policy{},
 					}
 				} else if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-					httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]ingressnginx.Policy{}
+					httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
 				}
 
 				existing := httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name]
@@ -257,7 +256,7 @@ func basicAuthFeature(
 				}
 
 				// Dedupe (rule, backend) pairs.
-				existing = existing.AddRuleBackendSources([]ingressnginx.PolicyIndex{
+				existing = existing.AddRuleBackendSources([]providerir.PolicyIndex{
 					{Rule: ruleIdx, Backend: backendIdx},
 				})
 

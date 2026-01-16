@@ -19,8 +19,7 @@ package kgateway
 import (
 	"time"
 
-	kgtwir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate/kgateway"
-
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,14 +29,17 @@ import (
 // returning true if it modified/created a TrafficPolicy for this ingress.
 //
 // Semantics are as follows:
-//   - If ProxyBodySize is present, that value is used as the effective max request size.
-//   - Otherwise, if ClientBodyBufferSize is present, that value is used.
-//   - If neither is set, no kgateway Buffer policy is emitted.
+//   - If the "nginx.ingress.kubernetes.io/proxy-body-size" annotation is present, that value
+//     is used as the effective max request size.
+//   - Otherwise, if the "nginx.ingress.kubernetes.io/client-body-buffer-size" annotation is present,
+//     that value is used.
+//   - If neither is set, no Kgateway Buffer policy is emitted.
 //
-// Note: Kgateway's Buffer.MaxRequestSize has "max body size" semantics (413 on exceed).
-// client-body-buffer-size is treated as a fallback when proxy-body-size is not configured.
+// Note: Kgateway's Buffer.MaxRequestSize has "max body size" semantics (413 on exceed),
+// which matches NGINX's proxy-body-size more directly. client-body-buffer-size is
+// treated as a fallback when proxy-body-size is not configured.
 func applyBufferPolicy(
-	pol kgtwir.Policy,
+	pol providerir.Policy,
 	ingressName, namespace string,
 	tp map[string]*kgateway.TrafficPolicy,
 ) bool {
@@ -64,7 +66,7 @@ func applyBufferPolicy(
 // applyRateLimitPolicy projects the rate limit policy IR into a Kgateway TrafficPolicy.
 // returning true if it modified/created a TrafficPolicy for this ingress.
 func applyRateLimitPolicy(
-	pol kgtwir.Policy,
+	pol providerir.Policy,
 	ingressName, namespace string,
 	tp map[string]*kgateway.TrafficPolicy,
 ) bool {
@@ -90,12 +92,12 @@ func applyRateLimitPolicy(
 	)
 
 	switch rl.Unit {
-	case kgtwir.RateLimitUnitRPS:
+	case providerir.RateLimitUnitRPS:
 		// Requests per second.
 		tokensPerFill = rl.Limit
 		maxTokens = rl.Limit * burstMult
 		fillInterval = metav1.Duration{Duration: time.Second}
-	case kgtwir.RateLimitUnitRPM:
+	case providerir.RateLimitUnitRPM:
 		// Requests per minute.
 		tokensPerFill = rl.Limit
 		maxTokens = rl.Limit * burstMult
@@ -133,7 +135,7 @@ func applyRateLimitPolicy(
 //   - If ProxySendTimeout is set, it is mapped to the Request timeout in Kgateway.
 //   - If ProxyReadTimeout is set, it is mapped to the StreamIdle timeout in Kgateway.
 func applyTimeoutPolicy(
-	pol kgtwir.Policy,
+	pol providerir.Policy,
 	ingressName, namespace string,
 	tp map[string]*kgateway.TrafficPolicy,
 ) bool {

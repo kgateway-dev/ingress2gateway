@@ -20,8 +20,8 @@ import (
 	"context"
 	"sync"
 
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
-
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -69,10 +69,10 @@ type CustomResourceReader interface {
 }
 
 // The ResourcesToIRConverter interface specifies conversion functions from Ingress
-// and extensions into the provider IR.
+// and extensions into IR.
 type ResourcesToIRConverter interface {
 	// ToIR converts stored API entities associated with the Provider into IR.
-	ToIR() (providerir.ProviderIR, field.ErrorList)
+	ToIR() (emitterir.EmitterIR, field.ErrorList)
 }
 
 // ImplementationSpecificHTTPPathTypeMatchConverter is an option to customize the ingress implementationSpecific
