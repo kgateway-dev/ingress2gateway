@@ -21,6 +21,7 @@ import (
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
@@ -73,7 +74,7 @@ func ensureStaticBackendForService(
 			},
 		},
 		Spec: kgateway.BackendSpec{
-			Type: kgateway.BackendTypeStatic,
+			Type: ptr.To(kgateway.BackendTypeStatic),
 			Static: &kgateway.StaticBackend{
 				Hosts: []kgateway.Host{
 					{
