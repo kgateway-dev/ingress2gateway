@@ -37,6 +37,7 @@ import (
 	_ "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 
 	// Call init for emitters
+	_ "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitters/agentgateway"
 	_ "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitters/kgateway"
 	_ "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitters/standard"
 )
