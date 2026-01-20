@@ -32,6 +32,3 @@ var (
 		Kind:    "AgentgatewayBackend",
 	}
 )
-
-const sourceIngressAnnotation = "ingress2gateway.kubernetes.io/source-ingress"
-
