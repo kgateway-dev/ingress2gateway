@@ -86,13 +86,26 @@ Policies are created **per source Ingress name**:
 If a policy covers all backends of the generated HTTPRoute, the policy is attached using `spec.targetRefs`
 to the HTTPRoute.
 
-If a policy only covers some (rule, backendRef) pairs, the emitter attaches the policy using **per-backend**
-`ExtensionRef` filters on the covered `backendRefs`.
+If a policy only covers some (rule, backendRef) pairs, the emitter **returns an error** and does not emit
++agentgateway resources for that Ingress.
 
 Conceptually:
 
 - **Full coverage** → `AgentgatewayPolicy.spec.targetRefs[]` references the HTTPRoute
-- **Partial coverage** → `HTTPRoute.rules[].backendRefs[].filters[]` contains `type: ExtensionRef` pointing at the policy
+- **Partial coverage** → **error** (agentgateway does not support attaching `AgentgatewayPolicy` via per-backend
+  `HTTPRoute` `ExtensionRef` filters)
+
+#### Why?
+
+Agentgateway does not support `HTTPRoute` `backendRefs[].filters[].type: ExtensionRef` for attaching policies.
+Attempting to generate per-backend `ExtensionRef` filters results in `HTTPRoute` status failures (e.g.
+`ResolvedRefs=False` with an `IncompatibleFilters` error). To avoid emitting manifests that will be rejected or
+non-functional at runtime, the emitter fails fast during generation when only partial attachment is possible.
+
+#### Workarounds
+
+- Split the source Ingress into separate Ingress resources so each generated HTTPRoute can be fully covered by a policy.
+- Adjust annotations so the policy applies uniformly to all paths/backends of the resulting HTTPRoute.
 
 ## Deterministic Output
 

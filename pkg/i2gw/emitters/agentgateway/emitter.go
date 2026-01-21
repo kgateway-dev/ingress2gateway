@@ -17,11 +17,13 @@ limitations under the License.
 package agentgateway
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitters/utils"
+
 	agentgatewayv1alpha1 "github.com/kgateway-dev/kgateway/v2/api/v1alpha1/agentgateway"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -76,7 +78,9 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 		}
 		sort.Strings(policyNames)
 
-		for polSourceIngressName, pol := range ingx.Policies {
+		for _, polSourceIngressName := range policyNames {
+			pol := ingx.Policies[polSourceIngressName]
+
 			// Normalize (rule, backend) coverage to unique pairs to avoid
 			// generating duplicate filters on the same backendRef.
 			coverage := uniquePolicyIndices(pol.RuleBackendSources)
@@ -86,8 +90,10 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 				// Set targetRefs for the policy
 				agp := agentgatewayPolicies[polSourceIngressName]
 				if agp != nil {
-					// If this policy covers all route backends, attach via targetRefs.
-					// Otherwise, attach via ExtensionRef filters on the covered backendRefs.
+					// AgentgatewayPolicy is attached via policy attachment (targetRefs/targetSelectors).
+					// Agentgateway does *not* support attaching a policy to individual backendRefs using
+					// HTTPRouteFilter{Type: ExtensionRef}. If we can't apply the policy to the full route,
+					// we must surface a conversion error.
 					if len(coverage) == numRules(httpRouteContext.HTTPRoute) {
 						// Full coverage via targetRefs.
 						agp.Spec.TargetRefs = []shared.LocalPolicyTargetReferenceWithSectionName{{
@@ -98,28 +104,21 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 							},
 						}}
 					} else {
-						// Partial coverage via ExtensionRef filters on backendRefs.
-						for _, idx := range coverage {
-							if idx.Rule >= len(httpRouteContext.Spec.Rules) {
-								continue
-							}
-							rule := &httpRouteContext.Spec.Rules[idx.Rule]
-							if idx.Backend >= len(rule.BackendRefs) {
-								continue
-							}
-
-							rule.BackendRefs[idx.Backend].Filters = append(
-								rule.BackendRefs[idx.Backend].Filters,
-								gatewayv1.HTTPRouteFilter{
-									Type: gatewayv1.HTTPRouteFilterExtensionRef,
-									ExtensionRef: &gatewayv1.LocalObjectReference{
-										Group: gatewayv1.Group(AgentgatewayPolicyGVK.Group),
-										Kind:  gatewayv1.Kind(AgentgatewayPolicyGVK.Kind),
-										Name:  gatewayv1.ObjectName(agp.Name),
-									},
-								},
-							)
-						}
+						total := numRules(httpRouteContext.HTTPRoute)
+						errs = append(errs, field.Invalid(
+							field.NewPath("HTTPRoute").
+								Key(fmt.Sprintf("%s/%s", httpRouteKey.Namespace, httpRouteKey.Name)).
+								Child("spec", "rules"),
+							agp.Name,
+							fmt.Sprintf(
+								"agentgateway does not support HTTPRoute backendRef ExtensionRef filters; "+
+									"policy %q only applies to a subset of backendRefs (%d/%d). Split the Ingress "+
+									"into separate resources or make the policy apply to all paths/backends.",
+								agp.Name, len(coverage), total,
+							),
+						))
+						// Avoid emitting an invalid policy (ExactlyOneOf targetRefs/targetSelectors).
+						delete(agentgatewayPolicies, polSourceIngressName)
 					}
 				}
 			}
