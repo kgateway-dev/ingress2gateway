@@ -1,0 +1,243 @@
+/*
+Copyright 2023 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package agentgateway
+
+import (
+	"context"
+	"log"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	common "github.com/kgateway-dev/ingress2gateway/test/e2e/emitters/common"
+	testutils "github.com/kgateway-dev/ingress2gateway/test/e2e/utils"
+)
+
+var (
+	e2eSetupComplete bool
+	kubeContext      = common.KubeContext
+)
+
+func TestMain(m *testing.M) {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+
+	common.MustHaveE2EBinaries()
+
+	ctx := context.Background()
+	kubeContext = common.KubeContext
+
+	kindClusterName := common.KindClusterName
+
+	common.EnsureKindCluster(ctx, kindClusterName)
+	common.ExportKubeconfig(ctx, kindClusterName)
+	common.InstallPrereqs(ctx, kubeContext, common.PrereqConfig{
+		MetalLBVersion:      common.DefaultMetalLBVersion,
+		GatewayAPIVersion:   common.DefaultGatewayAPIVersion,
+		IngressNginxVersion: common.DefaultIngressNginxVersion,
+	})
+
+	// Install agentgateway (chart version defaults to the module version in go.mod).
+	installAgentgateway(ctx, kubeContext)
+
+	// Shared backend test servers (kept across subtests).
+	common.InstallSharedBackends(ctx, kubeContext, common.DefaultEchoImage)
+
+	e2eSetupComplete = true
+
+	// Run tests
+	code := m.Run()
+
+	// Give stdout/stderr a moment to flush in some CI environments.
+	time.Sleep(100 * time.Millisecond)
+
+	// Cleanup kind cluster if needed.
+	common.CleanupKindCluster(ctx, kindClusterName, common.KeepCluster)
+
+	os.Exit(code)
+}
+
+// e2eTestSetup handles common setup for e2e tests and returns the context, gateway address, host, and ingress address.
+// The caller is responsible for cleanup and test-specific validation.
+func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, string, string, string, string) {
+	if !e2eSetupComplete {
+		t.Fatalf("e2e setup did not complete")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	t.Cleanup(cancel)
+
+	root, err := testutils.ModuleRoot(ctx)
+	if err != nil {
+		t.Fatalf("moduleRoot: %v", err)
+	}
+
+	inputDir := filepath.Join(root, "test/e2e/emitters/agentgateway/testdata/input")
+	outputDir := filepath.Join(root, "test/e2e/emitters/agentgateway/testdata/output")
+
+	inPath := filepath.Join(inputDir, inputFile)
+	outPath := filepath.Join(outputDir, outputFile)
+
+	// Apply input Ingress YAML.
+	testutils.MustKubectl(ctx, kubeContext, "apply", "-f", inPath)
+
+	// Ensure cleanup of per-test resources (but keep curl + echo).
+	// Note: generatedOutPath cleanup is handled separately after it's created.
+	t.Cleanup(func() {
+		if _, delErr := testutils.Kubectl(ctx, kubeContext, "delete", "-f", inPath, "--ignore-not-found=true", "--wait=true", "--timeout=2m"); delErr != nil {
+			t.Logf("failed to delete input: %v", delErr)
+		}
+	})
+
+	ingObjs, err := testutils.DecodeObjects(inPath)
+	if err != nil {
+		t.Fatalf("decode input objects: %v", err)
+	}
+	ingresses := testutils.FilterKind(ingObjs, "Ingress")
+	if len(ingresses) == 0 {
+		t.Fatalf("input %s had no Ingress objects", inPath)
+	}
+
+	// Get ingress-nginx-controller Service IP
+	ingressIP, err := testutils.GetIngressNginxControllerAddress(ctx, kubeContext)
+	if err != nil {
+		t.Fatalf("get ingress-nginx-controller service address: %v", err)
+	}
+
+	// Extract host header from Ingress resources.
+	var hostHeader string
+	for _, ing := range ingresses {
+		if h, _ := testutils.FirstIngressHost(ing); h != "" {
+			hostHeader = h
+			break
+		}
+	}
+	if hostHeader == "" {
+		hostHeader = "demo.localdev.me"
+	}
+
+	// Verify expected output file exists for comparison.
+	if _, err := os.Stat(outPath); err != nil {
+		t.Fatalf("expected output file missing: %s (%v)", outPath, err)
+	}
+
+	// Run ingress2gateway to generate output from input, compare with expected output,
+	// and get the path to the generated output file.
+	generatedOutPath, err := testutils.CompareAndGenerateOutput(ctx, t, "agentgateway", root, inPath, outPath)
+	if err != nil {
+		t.Fatalf("failed to generate and compare output: %v", err)
+	}
+
+	// Cleanup: delete generated resources, then remove the temp file.
+	// Cleanup functions run in reverse order, so this will run after resource deletion.
+	t.Cleanup(func() {
+		if _, delErr := testutils.Kubectl(ctx, kubeContext, "delete", "-f", generatedOutPath, "--ignore-not-found=true", "--wait=true", "--timeout=2m"); delErr != nil {
+			t.Logf("failed to delete generated output resources: %v", delErr)
+		}
+		if err := os.Remove(generatedOutPath); err != nil {
+			t.Logf("failed to remove generated output temp file %q: %v", generatedOutPath, err)
+		}
+	})
+
+	// Apply the generated ingress2gateway output YAML.
+	testutils.MustKubectl(ctx, kubeContext, "apply", "-f", generatedOutPath)
+
+	outObjs, err := testutils.DecodeObjects(generatedOutPath)
+	if err != nil {
+		t.Fatalf("decode output objects: %v", err)
+	}
+
+	// Check expected status conditions (GatewayClass, Gateway, HTTPRoute, etc.).
+	testutils.WaitForOutputReadiness(t, ctx, kubeContext, outObjs, 1*time.Minute)
+
+	// Get Gateway address.
+	gws := testutils.FilterKind(outObjs, "Gateway")
+	if len(gws) == 0 {
+		t.Fatalf("generated output had no Gateway objects")
+	}
+	gw := gws[0]
+	gwNS := gw.GetNamespace()
+	if gwNS == "" {
+		gwNS = "default"
+	}
+	gwName := gw.GetName()
+
+	gwAddr, err := testutils.WaitForGatewayAddress(ctx, kubeContext, gwNS, gwName, 1*time.Minute)
+	if err != nil {
+		t.Fatalf("gateway address: %v", err)
+	}
+
+	// Prefer HTTPRoute or TLSRoute hostnames if present.
+	host := hostHeader
+	if hr := testutils.FirstRouteHost(outObjs); hr != "" {
+		host = hr
+	}
+
+	return ctx, gwAddr, host, hostHeader, ingressIP
+}
+
+func TestBasic(t *testing.T) {
+	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "basic.yaml", "basic.yaml")
+
+	// Test HTTP connectivity via Ingress
+	testutils.MakeHTTPRequestEventually(t, kubeContext, testutils.HTTPRequestConfig{
+		HostHeader:         ingressHostHeader,
+		Scheme:             "http",
+		Address:            ingressIP,
+		Port:               "",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+	})
+
+	// Test HTTP connectivity via Gateway
+	testutils.MakeHTTPRequestEventually(t, kubeContext, testutils.HTTPRequestConfig{
+		HostHeader:         host,
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+	})
+}
+
+func TestRateLimit(t *testing.T) {
+	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "rate_limit.yaml", "rate_limit.yaml")
+
+	// Test HTTP connectivity via Ingress
+	testutils.MakeHTTPRequestEventually(t, kubeContext, testutils.HTTPRequestConfig{
+		HostHeader:         ingressHostHeader,
+		Scheme:             "http",
+		Address:            ingressIP,
+		Port:               "",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+	})
+
+	// Test HTTP connectivity via Gateway
+	testutils.MakeHTTPRequestEventually(t, kubeContext, testutils.HTTPRequestConfig{
+		HostHeader:         host,
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+	})
+}

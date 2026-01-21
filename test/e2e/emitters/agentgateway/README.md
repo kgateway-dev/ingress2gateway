@@ -1,7 +1,7 @@
-# Kgateway emitter E2E test suite
+# Agentgateway emitter E2E test suite
 
 This package contains an end-to-end (E2E) test suite that validates **Ingress → ingress-nginx routing** and
-**Ingress2Gateway-generated Gateway API routing via kgateway** against real workloads in a **kind** cluster.
+**Ingress2Gateway-generated Gateway API routing via agentgateway** against real workloads in a **kind** cluster.
 
 It is designed to be easy to extend by adding more test case YAMLs.
 
@@ -15,7 +15,7 @@ Once per test run:
 2. Installs **MetalLB** so `Service type=LoadBalancer` gets an external IP in kind.
 3. Installs **Gateway API CRDs**.
 4. Installs **ingress-nginx**.
-5. Installs **kgateway** (version inferred from `go.mod` unless overridden).
+5. Installs **kgateway eith the agentgateway data plane** (version inferred from `go.mod` unless overridden).
 6. Deploys a shared **echo backend** (`echo-basic`).
 
 **Note:** HTTP requests are made directly from test code using Gateway API conformance utilities (`sigs.k8s.io/gateway-api/conformance/utils/http` and `sigs.k8s.io/gateway-api/conformance/utils/tls`), not from an in-cluster pod.
@@ -34,7 +34,7 @@ For each test case (each input YAML under `testdata/input/`):
 ## Directory layout
 
 ```text
-test/e2e/emitters/kgateway
+test/e2e/emitters/agentgateway
 ├── e2e_test.go
 ...
 └── testdata
@@ -84,13 +84,13 @@ make test-e2e
 From the repo root using `go test`:
 
 ```bash
-go test -v ./test/e2e/emitters/kgateway/...
+go test -v ./test/e2e/emitters/agentgateway/...
 ```
 
 To run a single test case (subtest name matches the input filename):
 
 ```bash
-go test -v ./test/e2e/emitters/kgateway -run 'TestBasic'
+go test -v ./test/e2e/emitters/agentgateway -run 'TestBasic'
 ```
 
 ---
@@ -106,7 +106,7 @@ go test -v ./test/e2e/emitters/kgateway -run 'TestBasic'
 Example:
 
 ```bash
-KEEP_KIND_CLUSTER=false go test ./test/e2e/emitters/kgateway -v -run TestIngress2GatewayE2E
+KEEP_KIND_CLUSTER=false go test ./test/e2e/emitters/agentgateway -v -run TestIngress2GatewayE2E
 ```
 
 ### Component versions
@@ -116,7 +116,7 @@ KEEP_KIND_CLUSTER=false go test ./test/e2e/emitters/kgateway -v -run TestIngress
 | `INGRESS_NGINX_VERSION` | `v1.14.1` | used in URL `controller-${VERSION}` |
 | `GATEWAY_API_VERSION` | `v1.4.0` | applies `experimental-install.yaml` |
 | `METALLB_VERSION` | `v0.15.3` | applies `metallb-native.yaml` |
-| `KGATEWAY_VERSION` | (derived) | overrides Helm chart version. If unset, version is derived from `go.mod` and normalized for kgateway release naming |
+| `AGENTGATEWAY_VERSION` | (derived) | overrides Helm chart version. If unset, version is derived from `go.mod` and normalized for agentgateway release naming |
 
 ### Images
 
@@ -129,21 +129,21 @@ KEEP_KIND_CLUSTER=false go test ./test/e2e/emitters/kgateway -v -run TestIngress
 Example override:
 
 ```bash
-KGATEWAY_VERSION=v2.2.0-beta.1 \
-  go test ./test/e2e/emitters/kgateway -v -run TestIngress2GatewayE2E
+AGENTGATEWAY_VERSION=v2.2.0-beta.1 \
+  go test ./test/e2e/emitters/agentgateway -v -run TestIngress2GatewayE2E
 ```
 
 ---
 
-## How kgateway version selection works
+## How agentgateway version selection works
 
-If `KGATEWAY_VERSION` is **set**, the suite uses it directly for Helm `--version`.
+If `AGENTGATEWAY_VERSION` is **set**, the suite uses it directly for Helm `--version`.
 
 If it is **unset**, the suite:
 
-1. Reads `github.com/kgateway-dev/kgateway/v2 <version>` from `go.mod`
+1. Reads `github.com/agentgateway-dev/agentgateway/v2 <version>` from `go.mod`
 2. Strips the Go pseudo-version suffix like `.<timestamp>-<sha>` (e.g. `.20251203210329-f0eb663ac5bd`)
-3. For kgateway beta tags, also strips the trailing `.0` (e.g. `v2.2.0-beta.1.0` → `v2.2.0-beta.1`)
+3. For agentgateway beta tags, also strips the trailing `.0` (e.g. `v2.2.0-beta.1.0` → `v2.2.0-beta.1`)
 
 This ensures Helm can pull valid chart tags from the OCI registry even when `go.mod` contains a pseudo-version.
 
@@ -154,19 +154,19 @@ This ensures Helm can pull valid chart tags from the OCI registry even when `go.
 1. Create a new input YAML in:
 
     ```text
-    test/e2e/emitters/kgateway/testdata/input/<case>.yaml
+    test/e2e/emitters/agentgateway/testdata/input/<case>.yaml
     ```
 
 2. Create the matching output YAML in:
 
     ```text
-    test/e2e/emitters/kgateway/testdata/output/<case>.yaml
+    test/e2e/emitters/agentgateway/testdata/output/<case>.yaml
     ```
 
 3. Run:
 
     ```bash
-    go test ./test/e2e/emitters/kgateway -v -run TestIngress2GatewayE2E/<case>
+    go test ./test/e2e/emitters/agentgateway -v -run TestIngress2GatewayE2E/<case>
     ```
 
 ### Guidelines for input YAML
@@ -189,11 +189,11 @@ Your **output** file should include the Gateway API resources produced by `ingre
 
 - `Gateway`
 - `HTTPRoute`
-- Any kgateway CRDs required for the translation (TrafficPolicy, etc.)
+- Any agentgateway CRDs required for the translation (TrafficPolicy, etc.)
 
 The test suite will:
 
-- wait for `GatewayClass Accepted=True` (for the `GatewayClass/kgateway` object present)
+- wait for `GatewayClass Accepted=True` (for the `GatewayClass/agentgateway` object present)
 - wait for `Gateway Accepted=True` and `Programmed=True`
 - wait for `HTTPRoute` parent conditions `Accepted=True` and `ResolvedRefs=True`
 - make an HTTP request to the Gateway external address using the first `HTTPRoute.spec.hostnames[]` it finds (fallback: the Ingress host)
@@ -202,18 +202,12 @@ The test suite will:
 
 ## Debugging failures
 
-### Keep the cluster
-
-```bash
-KEEP_KIND_CLUSTER=true go test ./test/e2e/emitters/kgateway -v -run TestIngress2GatewayE2E
-```
-
-Then inspect:
+Inspect:
 
 ```bash
 kubectl --context kind-i2g-e2e get pods -A
 kubectl --context kind-i2g-e2e -n ingress-nginx get svc,deploy,pods
-kubectl --context kind-i2g-e2e -n kgateway-system get all
+kubectl --context kind-i2g-e2e -n agentgateway-system get all
 kubectl --context kind-i2g-e2e get gatewayclass,gateway,httproute -A
 ```
 
@@ -225,7 +219,7 @@ If connectivity never reaches HTTP 200, the suite logs detailed HTTP request/res
 
 - **503 from ingress-nginx** right after apply: expected transient behavior; suite retries (`requireHTTP200Eventually`).
 - **No external IP on Ingress/Gateway**: MetalLB not ready or IP pool misconfigured.
-- **Gateway not programmed**: kgateway pods not ready, bad config, or missing/invalid refs in output YAML.
+- **Gateway not programmed**: agentgateway pods not ready, bad config, or missing/invalid refs in output YAML.
 
 ---
 
@@ -242,5 +236,5 @@ If connectivity never reaches HTTP 200, the suite logs detailed HTTP request/res
 1. Start with a new input Ingress YAML.
 2. Confirm ingress-nginx connectivity passes.
 3. Generate output YAML using ingress2gateway.
-4. Confirm Gateway API kgateway connectivity passes.
+4. Confirm Gateway API agentgateway connectivity passes.
 5. Commit both input and output files together.

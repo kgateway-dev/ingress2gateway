@@ -18,6 +18,7 @@ package common_emitter
 
 import (
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
+
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 

@@ -19,6 +19,7 @@ package kgateway
 import (
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 

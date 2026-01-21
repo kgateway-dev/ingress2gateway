@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package kgateway
+package utils
 
 import (
 	"context"
@@ -28,7 +28,7 @@ import (
 	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
 )
 
-func decodeObjects(path string) ([]unstructured.Unstructured, error) {
+func DecodeObjects(path string) ([]unstructured.Unstructured, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -67,7 +67,7 @@ func decodeObjects(path string) ([]unstructured.Unstructured, error) {
 	return objs, nil
 }
 
-func filterKind(objs []unstructured.Unstructured, kind string) []unstructured.Unstructured {
+func FilterKind(objs []unstructured.Unstructured, kind string) []unstructured.Unstructured {
 	var out []unstructured.Unstructured
 	for _, o := range objs {
 		if o.GetKind() == kind {
@@ -77,7 +77,7 @@ func filterKind(objs []unstructured.Unstructured, kind string) []unstructured.Un
 	return out
 }
 
-func firstIngressHost(ing unstructured.Unstructured) (string, bool) {
+func FirstIngressHost(ing unstructured.Unstructured) (string, bool) {
 	rules, found, _ := unstructured.NestedSlice(ing.Object, "spec", "rules")
 	if !found || len(rules) == 0 {
 		return "", false
@@ -90,7 +90,7 @@ func firstIngressHost(ing unstructured.Unstructured) (string, bool) {
 	return h, h != ""
 }
 
-func firstRouteHost(objs []unstructured.Unstructured) string {
+func FirstRouteHost(objs []unstructured.Unstructured) string {
 	for _, o := range objs {
 		if o.GetKind() != "HTTPRoute" && o.GetKind() != "TLSRoute" {
 			continue
@@ -103,9 +103,9 @@ func firstRouteHost(objs []unstructured.Unstructured) string {
 	return ""
 }
 
-// getIngressNginxControllerAddress gets the IP address of the ingress-nginx-controller Service.
-func getIngressNginxControllerAddress(ctx context.Context) (string, error) {
-	u, err := getUnstructured(ctx, "service", "ingress-nginx", "ingress-nginx-controller")
+// GetIngressNginxControllerAddress gets the IP address of the ingress-nginx-controller Service.
+func GetIngressNginxControllerAddress(ctx context.Context, kubeContext string) (string, error) {
+	u, err := getUnstructured(ctx, kubeContext, "service", "ingress-nginx", "ingress-nginx-controller")
 	if err != nil {
 		return "", fmt.Errorf("failed to get ingress-nginx-controller service: %w", err)
 	}
@@ -183,12 +183,12 @@ func getGatewayStatusAddress(u unstructured.Unstructured) string {
 	return v
 }
 
-func getUnstructured(ctx context.Context, resource, ns, name string) (unstructured.Unstructured, error) {
+func getUnstructured(ctx context.Context, kubeContext, resource, ns, name string) (unstructured.Unstructured, error) {
 	args := []string{"get", resource, name, "-o", "json"}
 	if ns != "" {
 		args = append([]string{"-n", ns}, args...)
 	}
-	out, err := kubectl(ctx, args...)
+	out, err := Kubectl(ctx, kubeContext, args...)
 	if err != nil {
 		return unstructured.Unstructured{}, err
 	}

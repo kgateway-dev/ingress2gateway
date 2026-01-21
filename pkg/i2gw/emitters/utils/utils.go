@@ -36,7 +36,6 @@ type uniqueBackendRefsKey struct {
 
 // RemoveBackendRefsDuplicates removes duplicate backendRefs from a list of backendRefs.
 func RemoveBackendRefsDuplicates(backendRefs []gatewayv1.HTTPBackendRef) []gatewayv1.HTTPBackendRef {
-
 	uniqueBackendRefs := map[uniqueBackendRefsKey]*gatewayv1.HTTPBackendRef{}
 
 	for _, backendRef := range backendRefs {

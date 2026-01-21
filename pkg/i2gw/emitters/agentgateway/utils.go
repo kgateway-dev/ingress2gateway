@@ -19,6 +19,7 @@ package agentgateway
 import (
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	agentgatewayv1alpha1 "github.com/kgateway-dev/kgateway/v2/api/v1alpha1/agentgateway"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -84,4 +85,3 @@ func toUnstructured(obj runtime.Object) (*unstructured.Unstructured, error) {
 	}
 	return &unstructured.Unstructured{Object: unstructuredObj}, nil
 }
-

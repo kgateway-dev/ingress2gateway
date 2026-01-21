@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package kgateway
+package utils
 
 import (
 	"bytes"
@@ -24,34 +24,32 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"go.yaml.in/yaml/v4"
 )
 
-// runIngress2Gateway runs ingress2gateway against the input file and returns the generated YAML output.
-func runIngress2Gateway(ctx context.Context, root, inputFile string) ([]byte, error) {
-	cmd := exec.CommandContext(
-		ctx,
-		"go", "run", ".",
-		"print",
-		"--providers=ingress-nginx",
-		"--emitter=kgateway",
-		"--input-file", inputFile,
-	)
-	cmd.Dir = root
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("ingress2gateway command failed: %w\nstderr:\n%s", err, stderr.String())
+func EnvOrDefault(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
 	}
+	return def
+}
 
-	return stdout.Bytes(), nil
+func ModuleRoot(ctx context.Context) (string, error) {
+	out, err := exec.CommandContext(ctx, "go", "env", "GOMOD").CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("go env GOMOD: %w: %s", err, string(out))
+	}
+	goMod := strings.TrimSpace(string(out))
+	if goMod == "" || goMod == os.DevNull {
+		return "", fmt.Errorf("GOMOD not set")
+	}
+	return filepath.Dir(goMod), nil
 }
 
 // canonicalizeMultiDocYAML normalizes YAML by sorting documents by kind, namespace, and name.
@@ -126,13 +124,13 @@ func canonicalizeMultiDocYAML(in []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// compareAndGenerateOutput runs ingress2gateway, compares the output with expected output,
+// CompareAndGenerateOutput runs ingress2gateway, compares the output with expected output,
 // and writes the generated output to a temporary file. Returns the path to the generated output file.
-func compareAndGenerateOutput(ctx context.Context, t *testing.T, root, inputFile, expectedOutputFile string) (string, error) {
+func CompareAndGenerateOutput(ctx context.Context, t *testing.T, emitter, root, inputFile, expectedOutputFile string) (string, error) {
 	t.Helper()
 
 	// Run ingress2gateway to generate output
-	generatedYAML, err := runIngress2Gateway(ctx, root, inputFile)
+	generatedYAML, err := RunIngress2Gateway(ctx, emitter, root, inputFile)
 	if err != nil {
 		return "", fmt.Errorf("failed to run ingress2gateway: %w", err)
 	}

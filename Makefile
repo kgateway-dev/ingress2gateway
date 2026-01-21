@@ -55,10 +55,19 @@ vet: ;$(info $(M)...Begin to run go vet against code.)  @ ## Run go vet against 
 test: vet;$(info $(M)...Begin to run integration tests.)  @ ## Run integration tests.
 	go test -race -cover ./pkg/... ./cmd/...
 
-# Run e2e tests
+# Run kgateway emitter e2e tests
+.PHONY: test-e2e-kgtw
+test-e2e-kgtw: vet;$(info $(M)...Begin to run kgateway emitter e2e tests.) @
+	go test -v -count=1 ./test/e2e/emitters/kgateway/...
+
+# Run agentgateway emitter e2e tests
+.PHONY: test-e2e-agtw
+test-e2e-agtw: vet;$(info $(M)...Begin to run agentgateway emitter e2e tests.) @
+	go test -v -count=1 ./test/e2e/emitters/agentgateway/...
+
+# Run all e2e tests
 .PHONY: test-e2e
-test-e2e: vet;$(info $(M)...Begin to run e2e tests.) @ ## Run e2e tests.
-	go test -v -count=1 ./test/e2e/...
+test-e2e: vet test-e2e-kgtw test-e2e-agtw;$(info $(M)...Begin to run all e2e tests.) @
 
 # Run integration and e2e tests
 .PHONY: test-all
