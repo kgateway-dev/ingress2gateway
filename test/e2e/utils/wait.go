@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package kgateway
+package utils
 
 import (
 	"context"
@@ -37,25 +37,25 @@ import (
 	gwtls "sigs.k8s.io/gateway-api/conformance/utils/tls"
 )
 
-func waitForOutputReadiness(t *testing.T, ctx context.Context, objs []unstructured.Unstructured, timeout time.Duration) {
+func WaitForOutputReadiness(t *testing.T, ctx context.Context, kubeContext string, objs []unstructured.Unstructured, timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
 
-	for _, gc := range filterKind(objs, "GatewayClass") {
+	for _, gc := range FilterKind(objs, "GatewayClass") {
 		name := gc.GetName()
 		for time.Now().Before(deadline) {
-			u, err := getUnstructured(ctx, "gatewayclass", "", name)
+			u, err := getUnstructured(ctx, kubeContext, "gatewayclass", "", name)
 			if err == nil && hasTopLevelCondition(u, "Accepted", "True") {
 				break
 			}
 			time.Sleep(2 * time.Second)
 		}
-		u, err := getUnstructured(ctx, "gatewayclass", "", name)
+		u, err := getUnstructured(ctx, kubeContext, "gatewayclass", "", name)
 		if err != nil || !hasTopLevelCondition(u, "Accepted", "True") {
 			t.Fatalf("GatewayClass/%s not Accepted=True (err=%v)", name, err)
 		}
 	}
 
-	for _, gw := range filterKind(objs, "Gateway") {
+	for _, gw := range FilterKind(objs, "Gateway") {
 		ns := gw.GetNamespace()
 		if ns == "" {
 			ns = "default"
@@ -63,13 +63,13 @@ func waitForOutputReadiness(t *testing.T, ctx context.Context, objs []unstructur
 		name := gw.GetName()
 
 		for time.Now().Before(deadline) {
-			u, err := getUnstructured(ctx, "gateway", ns, name)
+			u, err := getUnstructured(ctx, kubeContext, "gateway", ns, name)
 			if err == nil && hasTopLevelCondition(u, "Accepted", "True") && hasTopLevelCondition(u, "Programmed", "True") {
 				break
 			}
 			time.Sleep(2 * time.Second)
 		}
-		u, err := getUnstructured(ctx, "gateway", ns, name)
+		u, err := getUnstructured(ctx, kubeContext, "gateway", ns, name)
 		if err != nil {
 			t.Fatalf("Gateway/%s get: %v", name, err)
 		}
@@ -78,7 +78,7 @@ func waitForOutputReadiness(t *testing.T, ctx context.Context, objs []unstructur
 		}
 	}
 
-	for _, hr := range filterKind(objs, "HTTPRoute") {
+	for _, hr := range FilterKind(objs, "HTTPRoute") {
 		ns := hr.GetNamespace()
 		if ns == "" {
 			ns = "default"
@@ -86,13 +86,13 @@ func waitForOutputReadiness(t *testing.T, ctx context.Context, objs []unstructur
 		name := hr.GetName()
 
 		for time.Now().Before(deadline) {
-			u, err := getUnstructured(ctx, "httproute", ns, name)
+			u, err := getUnstructured(ctx, kubeContext, "httproute", ns, name)
 			if err == nil && hasRouteParentCondition(u, "Accepted", "True") && hasRouteParentCondition(u, "ResolvedRefs", "True") {
 				break
 			}
 			time.Sleep(2 * time.Second)
 		}
-		u, err := getUnstructured(ctx, "httproute", ns, name)
+		u, err := getUnstructured(ctx, kubeContext, "httproute", ns, name)
 		if err != nil {
 			t.Fatalf("HTTPRoute/%s get: %v", name, err)
 		}
@@ -101,7 +101,7 @@ func waitForOutputReadiness(t *testing.T, ctx context.Context, objs []unstructur
 		}
 	}
 
-	for _, tr := range filterKind(objs, "TLSRoute") {
+	for _, tr := range FilterKind(objs, "TLSRoute") {
 		ns := tr.GetNamespace()
 		if ns == "" {
 			ns = "default"
@@ -109,13 +109,13 @@ func waitForOutputReadiness(t *testing.T, ctx context.Context, objs []unstructur
 		name := tr.GetName()
 
 		for time.Now().Before(deadline) {
-			u, err := getUnstructured(ctx, "tlsroute", ns, name)
+			u, err := getUnstructured(ctx, kubeContext, "tlsroute", ns, name)
 			if err == nil && hasRouteParentCondition(u, "Accepted", "True") && hasRouteParentCondition(u, "ResolvedRefs", "True") {
 				break
 			}
 			time.Sleep(2 * time.Second)
 		}
-		u, err := getUnstructured(ctx, "tlsroute", ns, name)
+		u, err := getUnstructured(ctx, kubeContext, "tlsroute", ns, name)
 		if err != nil {
 			t.Fatalf("TLSRoute/%s get: %v", name, err)
 		}
@@ -172,7 +172,7 @@ func getRoundTripper() roundtripper.RoundTripper {
 	}
 }
 
-func requireStickySessionEventually(
+func RequireStickySessionEventually(
 	t *testing.T,
 	hostHeader, scheme, address, port, path string,
 	cookieName, cookieValue string,
@@ -218,7 +218,7 @@ func requireStickySessionEventually(
 	t.Fatalf("timed out waiting for sticky session routing with cookie %s=%s", cookieName, cookieValue)
 }
 
-func requireDifferentSessionUsuallyDifferentPod(
+func RequireDifferentSessionUsuallyDifferentPod(
 	t *testing.T,
 	hostHeader, scheme, address, port, path string,
 	cookieName string,
@@ -324,8 +324,8 @@ func podAndCodeFromClientWithCookie(
 	return pod, code, out, nil
 }
 
-// getKubernetesClient creates a Kubernetes client using the kubeconfig context.
-func getKubernetesClient() (client.Client, error) {
+// GetKubernetesClient creates a Kubernetes client using the kubeconfig context.
+func GetKubernetesClient(kubeContext string) (client.Client, error) {
 	cfg, err := ctrlconfig.GetConfigWithContext(kubeContext)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get kubeconfig: %w", err)
@@ -339,14 +339,14 @@ func getKubernetesClient() (client.Client, error) {
 	return cl, nil
 }
 
-// makeHTTPRequestEventually makes an HTTP request based on the provided configuration.
+// MakeHTTPRequestEventually makes an HTTP request based on the provided configuration.
 // It handles regular HTTP/HTTPS requests, TLS passthrough, Basic auth, and redirects.
-func makeHTTPRequestEventually(t *testing.T, cfg HTTPRequestConfig) {
+func MakeHTTPRequestEventually(t *testing.T, kubeContext string, cfg HTTPRequestConfig) {
 	t.Helper()
 
 	// Load TLS certificates from secret if SecretName is specified
 	if cfg.SecretName != "" {
-		cl, err := getKubernetesClient()
+		cl, err := GetKubernetesClient(kubeContext)
 		if err != nil {
 			t.Fatalf("failed to create Kubernetes client: %v", err)
 		}
@@ -424,10 +424,10 @@ func makeHTTPRequestEventually(t *testing.T, cfg HTTPRequestConfig) {
 	}
 }
 
-func waitForGatewayAddress(ctx context.Context, ns, gwName string, timeout time.Duration) (string, error) {
+func WaitForGatewayAddress(ctx context.Context, kubeContext, ns, gwName string, timeout time.Duration) (string, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		u, err := getUnstructured(ctx, "gateway", ns, gwName)
+		u, err := getUnstructured(ctx, kubeContext, "gateway", ns, gwName)
 		if err == nil {
 			if addr := getGatewayStatusAddress(u); addr != "" {
 				return addr, nil
@@ -436,16 +436,16 @@ func waitForGatewayAddress(ctx context.Context, ns, gwName string, timeout time.
 		time.Sleep(2 * time.Second)
 	}
 
-	if _, err := getUnstructured(ctx, "gateway", ns, gwName); err != nil {
+	if _, err := getUnstructured(ctx, kubeContext, "gateway", ns, gwName); err != nil {
 		return "", err
 	}
 	return "", fmt.Errorf("no Gateway.status.addresses found for %s/%s", ns, gwName)
 }
 
-func waitForServiceAddress(ctx context.Context, ns, name string, timeout time.Duration) (string, error) {
+func WaitForServiceAddress(ctx context.Context, kubeContext, ns, name string, timeout time.Duration) (string, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		u, err := getUnstructured(ctx, "service", ns, name)
+		u, err := getUnstructured(ctx, kubeContext, "service", ns, name)
 		if err == nil {
 			ings, found, _ := unstructured.NestedSlice(u.Object, "status", "loadBalancer", "ingress")
 			if found && len(ings) > 0 {
@@ -565,7 +565,7 @@ func pathAndCodeFromClient(t *testing.T, hostHeader, scheme, address, port, path
 	return echoPath, code, out, nil
 }
 
-func requireEchoedPathEventually(
+func RequireEchoedPathEventually(
 	t *testing.T,
 	hostHeader, scheme, address, port, requestPath, expectedEchoPath string,
 	timeout time.Duration,
@@ -599,7 +599,7 @@ func requireEchoedPathEventually(
 		expectedEchoPath, requestPath, lastEchoPath, strings.TrimSpace(lastCode), lastErr, lastOut)
 }
 
-func requireLoadBalancedAcrossPodsEventually(
+func RequireLoadBalancedAcrossPodsEventually(
 	t *testing.T,
 	hostHeader, scheme, address, port, path string,
 	wantDistinctPods int,

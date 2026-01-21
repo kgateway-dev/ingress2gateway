@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -55,23 +54,4 @@ func kgatewayVersionFromGoMod(ctx context.Context) (string, error) {
 	modVer = regexp.MustCompile(`(v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+)\.0$`).ReplaceAllString(modVer, `$1`)
 
 	return modVer, nil
-}
-
-func envOrDefault(k, def string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return def
-}
-
-func moduleRoot(ctx context.Context) (string, error) {
-	out, err := exec.CommandContext(ctx, "go", "env", "GOMOD").CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("go env GOMOD: %w: %s", err, string(out))
-	}
-	goMod := strings.TrimSpace(string(out))
-	if goMod == "" || goMod == os.DevNull {
-		return "", fmt.Errorf("GOMOD not set")
-	}
-	return filepath.Dir(goMod), nil
 }

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package kgateway
+package utils
 
 import (
 	"bytes"
@@ -26,19 +26,19 @@ import (
 	"strings"
 )
 
-func mustHaveBin(name string) {
+func MustHaveBin(name string) {
 	if _, err := exec.LookPath(name); err != nil {
 		panic(fmt.Errorf("required binary %q not found in PATH", name))
 	}
 }
 
-func mustRun(ctx context.Context, bin string, args ...string) {
-	if err := run(ctx, bin, args...); err != nil {
+func MustRun(ctx context.Context, bin string, args ...string) {
+	if err := Run(ctx, bin, args...); err != nil {
 		panic(err)
 	}
 }
 
-func run(ctx context.Context, bin string, args ...string) error {
+func Run(ctx context.Context, bin string, args ...string) error {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -46,7 +46,7 @@ func run(ctx context.Context, bin string, args ...string) error {
 	return cmd.Run()
 }
 
-func kubectl(ctx context.Context, args ...string) (string, error) {
+func Kubectl(ctx context.Context, kubeContext string, args ...string) (string, error) {
 	base := []string{"--context", kubeContext}
 	base = append(base, args...)
 	cmd := exec.CommandContext(ctx, "kubectl", base...)
@@ -65,14 +65,14 @@ func kubectl(ctx context.Context, args ...string) (string, error) {
 	return out, nil
 }
 
-func mustKubectl(ctx context.Context, args ...string) {
-	out, err := kubectl(ctx, args...)
+func MustKubectl(ctx context.Context, kubeContext string, args ...string) {
+	out, err := Kubectl(ctx, kubeContext, args...)
 	if err != nil {
 		panic(fmt.Errorf("kubectl failed: %v\n%s", err, out))
 	}
 }
 
-func mustKubectlApplyStdin(ctx context.Context, yaml string) {
+func MustKubectlApplyStdin(ctx context.Context, kubeContext, yaml string) {
 	cmd := exec.CommandContext(ctx, "kubectl", "--context", kubeContext, "apply", "-f", "-")
 	cmd.Stdin = strings.NewReader(yaml)
 	cmd.Stdout = os.Stdout

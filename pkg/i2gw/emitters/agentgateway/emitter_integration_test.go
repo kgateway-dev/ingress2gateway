@@ -206,4 +206,3 @@ func TestAgentgatewayIngressNginxIntegration_RateLimit(t *testing.T) {
 		})
 	}
 }
-

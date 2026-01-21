@@ -84,4 +84,3 @@ func toUnstructured(obj runtime.Object) (*unstructured.Unstructured, error) {
 	}
 	return &unstructured.Unstructured{Object: unstructuredObj}, nil
 }
-
