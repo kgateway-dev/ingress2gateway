@@ -25,6 +25,7 @@ import (
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitters/utils"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
+
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
