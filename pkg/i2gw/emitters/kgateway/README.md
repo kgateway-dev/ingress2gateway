@@ -11,7 +11,7 @@ The Kgateway Emitter supports generating **Gateway API** and **Kgateway** resour
 The typical development workflow for adding an Ingress NGINX feature to the Kgateway emitter is:
 
 1. Use [this issue](https://github.com/kubernetes-sigs/ingress2gateway/issues/232) to prioritize the list of Ingress NGINX features unless
-   the business provides requirements. When this list is complete, refer to [this doc](https://docs.google.com/document/d/12ejNTb45hASGYvUjd3t9mfNwuMTX3KBM68ALM4jRFBY/edit?usp=sharing) for additional features. **Note:** Several of the festures from the above list have already been implemented, so review the
+   the business provides requirements. When this list is complete, refer to [this doc](https://docs.google.com/document/d/12ejNTb45hASGYvUjd3t9mfNwuMTX3KBM68ALM4jRFBY/edit?usp=sharing) for additional features. **Note:** Several of the features from the above list have already been implemented, so review the
    current supported features before adding more.
 2. If any of the above features cannot map to an existing Kgateway API, create a Kgateway issue, label it with `kind/ingress-nginx`,
    `help wanted`, `priority/high`, etc. and describe what's needed.
@@ -212,7 +212,7 @@ Currently supported:
 - Regex-mode is implemented by converting HTTPRoute path matches to `RegularExpression`. Some ingress-nginx details (such as case-insensitive `~*` behavior)
   may not be reproduced exactly depending on the underlying Gateway API/Envoy behavior and the patterns provided.
 
-## Supported but not tranlated Annotations
+## Supported but not translated Annotations
 
 The following annotations have equivalents in kgateway but are not (as of yet) translated by this tool.
 
