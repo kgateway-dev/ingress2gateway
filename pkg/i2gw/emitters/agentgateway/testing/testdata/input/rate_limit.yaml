@@ -2,13 +2,13 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
-    nginx.ingress.kubernetes.io/limit-rpm: "600"
-  name: ingress-ratelimit-rpm
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+  name: ingress-ratelimit-rps
   namespace: default
 spec:
   ingressClassName: nginx
   rules:
-  - host: ratelimit.example.org
+  - host: ratelimit-rps.example.org
     http:
       paths:
       - backend:
@@ -18,6 +18,20 @@ spec:
               number: 80
         path: /
         pathType: Prefix
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/limit-rpm: "600"
+  name: ingress-ratelimit-rpm
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: ratelimit-rpm.example.org
+    http:
+      paths:
       - backend:
           service:
             name: myservice
@@ -47,4 +61,3 @@ spec:
               number: 80
         path: /
         pathType: Prefix
-

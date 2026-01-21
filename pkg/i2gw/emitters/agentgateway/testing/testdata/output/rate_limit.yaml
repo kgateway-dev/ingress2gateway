@@ -12,11 +12,38 @@ spec:
     name: ratelimit-burst-example-org-http
     port: 80
     protocol: HTTP
-  - hostname: ratelimit.example.org
-    name: ratelimit-example-org-http
+  - hostname: ratelimit-rpm.example.org
+    name: ratelimit-rpm-example-org-http
+    port: 80
+    protocol: HTTP
+  - hostname: ratelimit-rps.example.org
+    name: ratelimit-rps-example-org-http
     port: 80
     protocol: HTTP
 status: {}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: ingress-ratelimit-rps-ratelimit-rps-example-org
+  namespace: default
+spec:
+  hostnames:
+  - ratelimit-rps.example.org
+  parentRefs:
+  - name: nginx
+  rules:
+  - backendRefs:
+    - name: myservice
+      port: 80
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+status:
+  parents: []
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -46,21 +73,14 @@ kind: HTTPRoute
 metadata:
   annotations:
     gateway.networking.k8s.io/generator: ingress2gateway-dev
-  name: ingress-ratelimit-rpm-ratelimit-example-org
+  name: ingress-ratelimit-rpm-ratelimit-rpm-example-org
   namespace: default
 spec:
   hostnames:
-  - ratelimit.example.org
+  - ratelimit-rpm.example.org
   parentRefs:
   - name: nginx
   rules:
-  - backendRefs:
-    - name: myservice
-      port: 80
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
   - backendRefs:
     - name: myservice
       port: 80
@@ -99,11 +119,29 @@ spec:
   targetRefs:
   - group: gateway.networking.k8s.io
     kind: HTTPRoute
-    name: ingress-ratelimit-rpm-ratelimit-example-org
+    name: ingress-ratelimit-rpm-ratelimit-rpm-example-org
   traffic:
     rateLimit:
       local:
       - requests: 600
         unit: Minutes
+status:
+  ancestors: null
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: ingress-ratelimit-rps
+  namespace: default
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: ingress-ratelimit-rps-ratelimit-rps-example-org
+  traffic:
+    rateLimit:
+      local:
+      - requests: 10
+        unit: Seconds
 status:
   ancestors: null
