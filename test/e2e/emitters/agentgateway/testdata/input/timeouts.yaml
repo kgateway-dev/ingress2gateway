@@ -1,0 +1,63 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "30s"
+  name: ingress-timeout-proxy-send
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: timeout-proxy-send.example.org
+    http:
+      paths:
+      - backend:
+          service:
+            name: echo-backend
+            port:
+              number: 8080
+        path: /
+        pathType: Prefix
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "45s"
+  name: ingress-timeout-proxy-read
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: timeout-proxy-read.example.org
+    http:
+      paths:
+      - backend:
+          service:
+            name: echo-backend
+            port:
+              number: 8080
+        path: /read
+        pathType: Prefix
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "15s"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60s"
+  name: ingress-timeout-send-and-read
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: timeout-send-and-read.example.org
+    http:
+      paths:
+      - backend:
+          service:
+            name: echo-backend
+            port:
+              number: 8080
+        path: /
+        pathType: Prefix
