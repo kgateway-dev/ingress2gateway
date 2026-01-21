@@ -46,6 +46,29 @@ func Run(ctx context.Context, bin string, args ...string) error {
 	return cmd.Run()
 }
 
+// RunIngress2Gateway runs ingress2gateway against the input file and returns the generated YAML output.
+func RunIngress2Gateway(ctx context.Context, emitter, root, inputFile string) ([]byte, error) {
+	cmd := exec.CommandContext(
+		ctx,
+		"go", "run", ".",
+		"print",
+		"--providers=ingress-nginx",
+		fmt.Sprintf("--emitter=%s", emitter),
+		"--input-file", inputFile,
+	)
+	cmd.Dir = root
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("ingress2gateway command failed: %w\nstderr:\n%s", err, stderr.String())
+	}
+
+	return stdout.Bytes(), nil
+}
+
 func Kubectl(ctx context.Context, kubeContext string, args ...string) (string, error) {
 	base := []string{"--context", kubeContext}
 	base = append(base, args...)

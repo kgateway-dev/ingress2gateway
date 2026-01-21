@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package kgateway
+package common
 
 import (
 	"context"
@@ -25,7 +25,7 @@ import (
 	"strings"
 )
 
-func kgatewayVersionFromGoMod(ctx context.Context) (string, error) {
+func KgatewayVersionFromGoMod(ctx context.Context) (string, error) {
 	out, err := exec.CommandContext(ctx, "go", "env", "GOMOD").CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("go env GOMOD: %w: %s", err, string(out))

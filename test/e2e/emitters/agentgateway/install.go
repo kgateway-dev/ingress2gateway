@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package kgateway
+package agentgateway
 
 import (
 	"context"
@@ -25,20 +25,20 @@ import (
 	testutils "github.com/kgateway-dev/ingress2gateway/test/e2e/utils"
 )
 
-func installKgateway(ctx context.Context, kubeContext string) {
+func installAgentgateway(ctx context.Context, kubeContext string) {
 	modVer, err := common.KgatewayVersionFromGoMod(ctx)
 	if err != nil {
 		panic(fmt.Errorf("read kgateway module version from go.mod: %w", err))
 	}
-	chartVer := testutils.EnvOrDefault("KGATEWAY_VERSION", modVer)
-	ns := "kgateway-system"
+	chartVer := testutils.EnvOrDefault("AGENTGATEWAY_VERSION", modVer)
+	ns := "agentgateway-system"
 
-	log.Printf("Installing kgateway chart version %s (module version: %s)", chartVer, modVer)
+	log.Printf("Installing agentgateway chart version %s (module version: %s)", chartVer, modVer)
 
 	testutils.MustRun(ctx, "helm",
 		"--kube-context", kubeContext,
-		"upgrade", "-i", "kgateway-crds",
-		"oci://cr.kgateway.dev/kgateway-dev/charts/kgateway-crds",
+		"upgrade", "-i", "agentgateway-crds",
+		"oci://ghcr.io/kgateway-dev/charts/agentgateway-crds",
 		"--create-namespace", "--namespace", ns,
 		"--version", chartVer,
 		"--set", "controller.image.pullPolicy=Always",
@@ -46,20 +46,20 @@ func installKgateway(ctx context.Context, kubeContext string) {
 
 	testutils.MustRun(ctx, "helm",
 		"--kube-context", kubeContext,
-		"upgrade", "-i", "kgateway",
-		"oci://cr.kgateway.dev/kgateway-dev/charts/kgateway",
+		"upgrade", "-i", "agentgateway",
+		"oci://ghcr.io/kgateway-dev/charts/agentgateway",
 		"--namespace", ns,
 		"--version", chartVer,
 		"--set", "controller.image.pullPolicy=Always",
 		"--set", "controller.extraEnv.KGW_ENABLE_GATEWAY_API_EXPERIMENTAL_FEATURES=true",
 	)
 
-	testutils.MustKubectl(ctx, kubeContext, "-n", ns, "rollout", "status", "deploy/kgateway", "--timeout=3m")
+	testutils.MustKubectl(ctx, kubeContext, "-n", ns, "rollout", "status", "deploy/agentgateway", "--timeout=3m")
 
-	if _, err := testutils.Kubectl(ctx, kubeContext, "get", "gatewayclass", "kgateway"); err != nil {
-		panic(fmt.Errorf("expected GatewayClass/kgateway not found: %w", err))
+	if _, err := testutils.Kubectl(ctx, kubeContext, "get", "gatewayclass", "agentgateway"); err != nil {
+		panic(fmt.Errorf("expected GatewayClass/agentgateway not found: %w", err))
 	}
-	if _, err := testutils.Kubectl(ctx, kubeContext, "wait", "--for=condition=Accepted", "gatewayclass/kgateway", "--timeout=1m"); err != nil {
-		panic(fmt.Errorf("GatewayClass/kgateway not Accepted: %w", err))
+	if _, err := testutils.Kubectl(ctx, kubeContext, "wait", "--for=condition=Accepted", "gatewayclass/agentgateway", "--timeout=1m"); err != nil {
+		panic(fmt.Errorf("GatewayClass/agentgateway not Accepted: %w", err))
 	}
 }

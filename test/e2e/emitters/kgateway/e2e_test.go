@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kgateway-dev/ingress2gateway/test/e2e/emitters/common"
 	testutils "github.com/kgateway-dev/ingress2gateway/test/e2e/utils"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -31,73 +32,45 @@ import (
 	"sigs.k8s.io/gateway-api/conformance/utils/roundtripper"
 )
 
+var (
+	e2eSetupComplete bool
+	kubeContext      string
+)
+
 func TestMain(m *testing.M) {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
-	kindClusterName = testutils.EnvOrDefault("KIND_CLUSTER_NAME", defaultClusterName)
-	kubeContext = "kind-" + kindClusterName
-	keepCluster = testutils.EnvOrDefault("KEEP_KIND_CLUSTER", "false") == "true"
-
-	testutils.MustHaveBin("docker")
-	testutils.MustHaveBin("kind")
-	testutils.MustHaveBin("kubectl")
-	testutils.MustHaveBin("helm")
-	testutils.MustHaveBin("go")
-	testutils.MustHaveBin("openssl")
+	common.MustHaveE2EBinaries()
 
 	ctx := context.Background()
+	kubeContext = common.KubeContext
 
-	// If the cluster exists, reuse it. Otherwise, create a new one.
-	if testutils.KindClusterExists(ctx, kindClusterName) {
-		log.Printf("Reusing existing kind cluster %q", kindClusterName)
-	} else {
-		createArgs := []string{"create", "cluster", "--name", kindClusterName, "--wait", "3m"}
-		if img := os.Getenv("KIND_NODE_IMAGE"); img != "" {
-			createArgs = append(createArgs, "--image", img)
-		}
-		testutils.MustRun(ctx, "kind", createArgs...)
-	}
+	kindClusterName := common.KindClusterName
 
-	// Ensure kubectl uses the right context.
-	testutils.MustRun(ctx, "kind", "export", "kubeconfig", "--name", kindClusterName)
-
-	// MetalLB so LoadBalancer services get external IPs in kind.
-	testutils.InstallMetalLB(ctx, kubeContext, defaultMetalLBVersion)
-
-	// Gateway API CRDs (experimental install includes standard + experimental types).
-	testutils.InstallGatewayAPICRDs(ctx, kubeContext, defaultGatewayAPIVersion)
-
-	// Install ingress-nginx (from the provided manifest URL, with version variable).
-	testutils.InstallIngressNginx(ctx, kubeContext, defaultIngressNginxVersion)
+	common.EnsureKindCluster(ctx, kindClusterName)
+	common.ExportKubeconfig(ctx, kindClusterName)
+	common.InstallPrereqs(ctx, kubeContext, common.PrereqConfig{
+		MetalLBVersion:      common.DefaultMetalLBVersion,
+		GatewayAPIVersion:   common.DefaultGatewayAPIVersion,
+		IngressNginxVersion: common.DefaultIngressNginxVersion,
+	})
 
 	// Install kgateway (chart version defaults to the module version in go.mod).
-	installKgateway(ctx)
+	installKgateway(ctx, kubeContext)
 
-	// Shared backend echo server (kept across subtests).
-	// HTTP requests are made directly from test code using Gateway API conformance utilities.
-	testutils.ApplyEchoBackend(ctx, kubeContext, defaultEchoImage)
-
-	// TLS-enabled backend for SSL passthrough tests.
-	testutils.ApplyTLSBackend(ctx, kubeContext, defaultEchoImage)
-
-	// External auth service for external auth tests.
-	testutils.ApplyExternalAuthService(ctx, kubeContext)
-
-	// Create file-based secret for basic auth tests.
-	testutils.CreateBasicAuthFileSecret(ctx, kubeContext, "basic-auth")
+	// Shared backend test servers (kept across subtests).
+	common.InstallSharedBackends(ctx, kubeContext, common.DefaultEchoImage)
 
 	e2eSetupComplete = true
 
+	// Run tests
 	code := m.Run()
 
 	// Give stdout/stderr a moment to flush in some CI environments.
 	time.Sleep(100 * time.Millisecond)
 
-	if !keepCluster {
-		_ = testutils.Run(ctx, "kind", "delete", "cluster", "--name", kindClusterName)
-	} else {
-		log.Printf("KEEP_KIND_CLUSTER=true; leaving kind cluster %q running", kindClusterName)
-	}
+	// Cleanup kind cluster if needed.
+	common.CleanupKindCluster(ctx, kindClusterName, common.KeepCluster)
 
 	os.Exit(code)
 }
@@ -168,7 +141,7 @@ func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 
 	// Run ingress2gateway to generate output from input, compare with expected output,
 	// and get the path to the generated output file.
-	generatedOutPath, err := compareAndGenerateOutput(ctx, t, root, inPath, outPath)
+	generatedOutPath, err := testutils.CompareAndGenerateOutput(ctx, t, "kgateway", root, inPath, outPath)
 	if err != nil {
 		t.Fatalf("failed to generate and compare output: %v", err)
 	}

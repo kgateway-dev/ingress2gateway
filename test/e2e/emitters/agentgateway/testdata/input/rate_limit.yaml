@@ -1,0 +1,49 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/limit-rpm: "600"
+  name: agtw-ingress-ratelimit-rpm
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: agtw.ratelimit.example.org
+    http:
+      paths:
+      - backend:
+          service:
+            name: echo-backend
+            port:
+              number: 8080
+        path: /
+        pathType: Prefix
+      - backend:
+          service:
+            name: echo-backend
+            port:
+              number: 8080
+        path: /rpm
+        pathType: Prefix
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
+  name: agtw-ingress-ratelimit-burst
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: agtw.ratelimit-burst.example.org
+    http:
+      paths:
+      - backend:
+          service:
+            name: echo-backend
+            port:
+              number: 8080
+        path: /
+        pathType: Prefix

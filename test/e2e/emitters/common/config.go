@@ -14,20 +14,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package kgateway
+package common
+
+import (
+	testutils "github.com/kgateway-dev/ingress2gateway/test/e2e/utils"
+)
 
 const (
-	defaultClusterName         = "i2g-kgtw"
-	defaultIngressNginxVersion = "v1.14.1"
-	defaultGatewayAPIVersion   = "v1.4.0"
-	defaultMetalLBVersion      = "v0.15.3"
+	DefaultClusterName         = "i2g-e2e"
+	DefaultIngressNginxVersion = "v1.14.1"
+	DefaultGatewayAPIVersion   = "v1.4.0"
+	DefaultMetalLBVersion      = "v0.15.3"
 
-	defaultEchoImage = "gcr.io/k8s-staging-gateway-api/echo-basic:v20231214-v1.0.0-140-gf544a46e"
+	DefaultEchoImage = "gcr.io/k8s-staging-gateway-api/echo-basic:v20231214-v1.0.0-140-gf544a46e"
 )
 
 var (
-	kubeContext      string
-	kindClusterName  string
-	keepCluster      bool
-	e2eSetupComplete bool
+	KindClusterName = testutils.EnvOrDefault("KIND_CLUSTER_NAME", DefaultClusterName)
+	KeepCluster     = testutils.EnvOrDefault("KEEP_KIND_CLUSTER", "true") == "true"
+	KubeContext     = "kind-" + KindClusterName
 )
