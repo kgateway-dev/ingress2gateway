@@ -61,6 +61,35 @@ Currently, the agentgateway emitter emits a notification when projecting **Basic
 
 ### Traffic Behavior
 
+#### CORS
+
+The agentgateway emitter supports projecting CORS behavior based on the following Ingress NGINX annotations:
+
+- `nginx.ingress.kubernetes.io/enable-cors`
+- `nginx.ingress.kubernetes.io/cors-allow-origin`
+- `nginx.ingress.kubernetes.io/cors-allow-methods`
+- `nginx.ingress.kubernetes.io/cors-allow-headers`
+- `nginx.ingress.kubernetes.io/cors-expose-headers`
+- `nginx.ingress.kubernetes.io/cors-allow-credentials`
+- `nginx.ingress.kubernetes.io/cors-max-age`
+
+These are mapped into an `AgentgatewayPolicy` using agentgateway’s `Traffic.Cors` model (which inlines the Gateway API `HTTPCORSFilter`):
+
+- `enable-cors`  `cors-allow-origin` → `AgentgatewayPolicy.spec.traffic.cors.allowOrigins`
+- `cors-allow-headers` → `AgentgatewayPolicy.spec.traffic.cors.allowHeaders`
+- `cors-expose-headers` → `AgentgatewayPolicy.spec.traffic.cors.exposeHeaders`
+- `cors-allow-methods` → `AgentgatewayPolicy.spec.traffic.cors.allowMethods`
+- `cors-allow-credentials` → `AgentgatewayPolicy.spec.traffic.cors.allowCredentials`
+- `cors-max-age` → `AgentgatewayPolicy.spec.traffic.cors.maxAge`
+
+**Notes:**
+
+- The emitter only projects CORS when `enable-cors` is truthy **and** at least one value is present in `cors-allow-origin`.
+- `cors-allow-origin` values are de-duped while preserving order; empty values are ignored.
+- Header lists (`cors-allow-headers`, `cors-expose-headers`) are de-duped case-insensitively.
+- Method values are normalized to upper-case and filtered to valid Gateway API HTTP methods (plus `*`); unknown values are ignored.
+- If `cors-max-age` is unset or non-positive, it is not projected.
+
 #### Basic Authentication
 
 The agentgateway emitter supports projecting Basic Authentication from the following Ingress NGINX annotations:
@@ -141,7 +170,7 @@ These are mapped into an `AgentgatewayPolicy` using agentgateway’s `LocalRateL
 
 ## AgentgatewayPolicy Projection
 
-Rate limit, timeout, and basic auth annotations are converted into `AgentgatewayPolicy` resources.
+Rate limit, timeout, CORS, and basic auth annotations are converted into `AgentgatewayPolicy` resources.
 
 ### Naming
 

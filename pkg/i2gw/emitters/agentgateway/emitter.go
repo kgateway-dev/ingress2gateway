@@ -97,8 +97,11 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 			if applyTimeoutPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
 				touched = true
 			}
-
-			// BasicAuth maps cleanly to AgentgatewayPolicy.spec.traffic.basicAuthentication.
+			// CORS maps to AgentgatewayPolicy.spec.traffic.cors.
+			if applyCorsPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
+				touched = true
+			}
+			// BasicAuth maps to AgentgatewayPolicy.spec.traffic.basicAuthentication.
 			// Note: agentgateway expects htpasswd content under a '.htaccess' key; see BasicAuthentication docs.
 			if applyBasicAuthPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
 				touched = true
