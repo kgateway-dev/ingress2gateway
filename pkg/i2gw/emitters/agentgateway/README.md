@@ -51,6 +51,24 @@ The command should generate Gateway API resources plus agentgateway extension re
 
 ### Traffic Behavior
 
+#### Request Timeouts
+
+The agentgateway emitter currently supports projecting request timeouts based on the following Ingress NGINX annotations:
+
+- `nginx.ingress.kubernetes.io/proxy-send-timeout`
+- `nginx.ingress.kubernetes.io/proxy-read-timeout`
+
+These are mapped into an `AgentgatewayPolicy` using agentgateway’s `Traffic.Timeouts` model:
+
+- `proxy-send-timeout` → `AgentgatewayPolicy.spec.traffic.timeouts.request`
+- `proxy-read-timeout` → `AgentgatewayPolicy.spec.traffic.timeouts.request`
+
+**Notes:**
+
+- If **both** annotations are set, the emitter uses the **larger** of the two values for
+  `spec.traffic.timeouts.request` to avoid unexpectedly truncating requests.
+- Invalid/unsupported duration values are ignored by the provider and will not be projected.
+
 #### Local Rate Limiting
 
 The agentgateway emitter currently supports projecting local rate limiting via:
@@ -72,7 +90,7 @@ These are mapped into an `AgentgatewayPolicy` using agentgateway’s `LocalRateL
 
 ## AgentgatewayPolicy Projection
 
-Rate limit annotations are converted into `AgentgatewayPolicy` resources.
+Rate limit and timeout annotations are converted into `AgentgatewayPolicy` resources.
 
 ### Naming
 

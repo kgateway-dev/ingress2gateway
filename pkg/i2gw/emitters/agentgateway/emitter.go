@@ -85,17 +85,41 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 			// generating duplicate filters on the same backendRef.
 			coverage := uniquePolicyIndices(pol.RuleBackendSources)
 
-			// Apply rate limit policy
+			touched := false
+
+			// Apply policy features that map to AgentgatewayPolicy.
 			if applyRateLimitPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
-				// Set targetRefs for the policy
+				touched = true
+			}
+			if applyTimeoutPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
+				touched = true
+			}
+
+			// Buffer policy currently has no equivalent in AgentgatewayPolicy (see README for limitations).
+			if pol.ProxyBodySize != nil || pol.ClientBodyBufferSize != nil {
+				errs = append(errs, field.Invalid(
+					field.NewPath("emitter", "agentgateway", "AgentgatewayPolicy"),
+					polSourceIngressName,
+					"buffer policy (nginx.ingress.kubernetes.io/proxy-body-size/nginx.ingress.kubernetes.io/client-body-buffer-size) "+
+						"is not supported by the agentgateway emitter",
+				))
+			}
+
+			// Attach the resulting AgentgatewayPolicy to the HTTPRoute, but only if the policy fully covers the route.
+			// Unlike kgateway, agentgateway does not support attaching policies via HTTPRoute filter ExtensionRef.
+			if touched {
 				agp := agentgatewayPolicies[polSourceIngressName]
 				if agp != nil {
-					// AgentgatewayPolicy is attached via policy attachment (targetRefs/targetSelectors).
-					// Agentgateway does *not* support attaching a policy to individual backendRefs using
-					// HTTPRouteFilter{Type: ExtensionRef}. If we can't apply the policy to the full route,
-					// we must surface a conversion error.
-					if len(coverage) == numRules(httpRouteContext.HTTPRoute) {
-						// Full coverage via targetRefs.
+					total := numRules(httpRouteContext.HTTPRoute)
+					covered := len(coverage)
+					// Some ingress-nginx features are recorded at the Ingress scope (not per rule/backend pair).
+					// In that case RuleBackendSources may be empty; treat this as "applies to all backends".
+					// This avoids false "subset coverage" errors like (0/1) for Ingress-wide annotations.
+					if covered == 0 {
+						covered = total
+					}
+
+					if covered == total {
 						agp.Spec.TargetRefs = []shared.LocalPolicyTargetReferenceWithSectionName{{
 							LocalPolicyTargetReference: shared.LocalPolicyTargetReference{
 								Group: gatewayv1.Group("gateway.networking.k8s.io"),
@@ -104,20 +128,13 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 							},
 						}}
 					} else {
-						total := numRules(httpRouteContext.HTTPRoute)
 						errs = append(errs, field.Invalid(
-							field.NewPath("HTTPRoute").
-								Key(fmt.Sprintf("%s/%s", httpRouteKey.Namespace, httpRouteKey.Name)).
-								Child("spec", "rules"),
-							agp.Name,
-							fmt.Sprintf(
-								"agentgateway does not support HTTPRoute backendRef ExtensionRef filters; "+
-									"policy %q only applies to a subset of backendRefs (%d/%d). Split the Ingress "+
-									"into separate resources or make the policy apply to all paths/backends.",
-								agp.Name, len(coverage), total,
-							),
+							field.NewPath("emitter", "agentgateway", "AgentgatewayPolicy"),
+							polSourceIngressName,
+							fmt.Sprintf("policy only applies to a subset of backendRefs within the HTTPRoute (%d/%d); "+
+								"agentgateway requires full policy coverage because it does not support attaching policies "+
+								"via HTTPRoute filter ExtensionRef", covered, total),
 						))
-						// Avoid emitting an invalid policy (ExactlyOneOf targetRefs/targetSelectors).
 						delete(agentgatewayPolicies, polSourceIngressName)
 					}
 				}
