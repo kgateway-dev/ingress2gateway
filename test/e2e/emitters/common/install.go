@@ -85,8 +85,8 @@ func InstallSharedBackends(ctx context.Context, kubeContext string, echoImage st
 	// External auth service for external auth tests.
 	testutils.ApplyExternalAuthService(ctx, kubeContext)
 
-	// Create file-based secret for basic auth tests.
-	testutils.CreateBasicAuthFileSecret(ctx, kubeContext, "basic-auth")
+	// Create file-based secret for kgateway and agentgateway emitter basic auth tests.
+	testutils.CreateBasicAuthCombinedSecret(ctx, kubeContext, "basic-auth")
 }
 
 // CleanupKindCluster deletes the kind cluster unless KEEP_KIND_CLUSTER=true.

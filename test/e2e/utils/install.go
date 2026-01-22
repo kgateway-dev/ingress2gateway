@@ -381,31 +381,31 @@ func CreateTLSSecret(ctx context.Context, kubeContext, secretName, hostname stri
 	log.Printf("Created TLS secret %s for hostname %s", secretName, hostname)
 }
 
-// CreateBasicAuthFileSecret creates a Kubernetes Secret with auth-file format for basic authentication.
-// The secret contains an htpasswd file in the key "auth".
-func CreateBasicAuthFileSecret(ctx context.Context, kubeContext, secretName string) {
-	// Check if secret already exists
+// CreateBasicAuthCombinedSecret creates a Secret usable by BOTH emitters:
+// - kgateway: expects htpasswd content under key "auth"
+// - agentgateway: expects htpasswd content under key ".htaccess"
+func CreateBasicAuthCombinedSecret(ctx context.Context, kubeContext, secretName string) {
 	if _, err := Kubectl(ctx, kubeContext, "get", "secret", secretName, "-n", "default"); err == nil {
-		log.Printf("Basic auth file secret %s already exists, skipping creation", secretName)
+		log.Printf("Basic auth combined secret %s already exists, skipping creation", secretName)
 		return
 	}
 
-	// Create Kubernetes secret with auth-file format
-	// The secret contains the htpasswd data in the key "auth"
-	// Username: user, Password: password
+	// Same htpasswd line for both keys. (This is base64 for: user:{SHA}...)
+	htpasswdB64 := "dXNlcjp7U0hBfVc2cGg1TW01UHo4R2dpVUxiUGd6RzM3bWo5Zz0="
+
 	secretYAML := `
 apiVersion: v1
-data:
-  auth: dXNlcjp7U0hBfVc2cGg1TW01UHo4R2dpVUxiUGd6RzM3bWo5Zz0=
 kind: Secret
 metadata:
-  name: basic-auth
+  name: ` + secretName + `
   namespace: default
 type: Opaque
+data:
+  auth: ` + htpasswdB64 + `
+  .htaccess: ` + htpasswdB64 + `
 `
 	MustKubectlApplyStdin(ctx, kubeContext, secretYAML)
-
-	log.Printf("Created basic auth file secret %s", secretName)
+	log.Printf("Created basic auth combined secret %s", secretName)
 }
 
 func ApplyExternalAuthService(ctx context.Context, kubeContext string) {

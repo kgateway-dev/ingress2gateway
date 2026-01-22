@@ -47,9 +47,60 @@ go run . print \
 
 The command should generate Gateway API resources plus agentgateway extension resources (when applicable).
 
+## Notifications
+
+Some conversions require follow-up user action that cannot be expressed safely as emitted manifests. In those cases,
+the agentgateway emitter emits **INFO** notifications on the CLI during conversion.
+
+Currently, the agentgateway emitter emits a notification when projecting **Basic Authentication**, because:
+
+- ingress-nginx (auth-file) commonly expects htpasswd content under the Secret key **`auth`**
+- agentgateway expects htpasswd content under the Secret key **`.htaccess`**
+
 ## Supported Annotations
 
 ### Traffic Behavior
+
+#### Basic Authentication
+
+The agentgateway emitter supports projecting Basic Authentication from the following Ingress NGINX annotations:
+
+- `nginx.ingress.kubernetes.io/auth-type` (supported: `basic`)
+- `nginx.ingress.kubernetes.io/auth-secret`
+- `nginx.ingress.kubernetes.io/auth-secret-type` (supported: `auth-file`)
+
+These are mapped into an `AgentgatewayPolicy` using agentgateway’s `Traffic.BasicAuthentication` model:
+
+- `auth-secret` → `AgentgatewayPolicy.spec.traffic.basicAuthentication.secretRef.name`
+
+**Notes:**
+
+- The agentgateway API supports Basic Auth in two forms: inline `users` or a `secretRef`. The emitter currently
+  projects only the `secretRef` form.
+- `auth-secret-type` is accepted for parity with ingress-nginx. The emitter currently supports only the default
+  ingress-nginx secret format: `auth-file`.
+- Agentgateway expects the referenced Secret to contain a key named **`.htaccess`** with htpasswd-formatted content.
+  (See the AgentgatewayPolicy API docs for details.)
+- Ingress NGINX (auth-file format) typically expects htpasswd content under the key **`auth`** in the Secret.
+  To support *both* dataplanes using the *same* Secret name, create a “dual-key” Secret containing **both**
+  keys with the same htpasswd content:
+
+  ```yaml
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: basic-auth
+    namespace: default
+  type: Opaque
+  stringData:
+    auth: |
+      user:{SHA}W6ph5Mm5Pz8GgiULbPgzG37mj9g=
+    .htaccess: |
+      user:{SHA}W6ph5Mm5Pz8GgiULbPgzG37mj9g=
+  ```
+
+  This allows the same `nginx.ingress.kubernetes.io/auth-secret: basic-auth` reference to work for both
+  ingress-nginx and agentgateway outputs.
 
 #### Request Timeouts
 
@@ -90,7 +141,7 @@ These are mapped into an `AgentgatewayPolicy` using agentgateway’s `LocalRateL
 
 ## AgentgatewayPolicy Projection
 
-Rate limit and timeout annotations are converted into `AgentgatewayPolicy` resources.
+Rate limit, timeout, and basic auth annotations are converted into `AgentgatewayPolicy` resources.
 
 ### Naming
 

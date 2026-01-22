@@ -62,6 +62,9 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 	// Track AgentgatewayPolicies per ingress name
 	agentgatewayPolicies := map[string]*agentgatewayv1alpha1.AgentgatewayPolicy{}
 
+	// De-dupe INFO notifications across routes/policies.
+	basicAuthSecretSeen := map[basicAuthSecretKey]struct{}{}
+
 	for httpRouteKey, httpRouteContext := range ir.HTTPRoutes {
 		ingx := httpRouteContext.IngressNginx
 		if ingx == nil {
@@ -93,6 +96,19 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 			}
 			if applyTimeoutPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
 				touched = true
+			}
+
+			// BasicAuth maps cleanly to AgentgatewayPolicy.spec.traffic.basicAuthentication.
+			// Note: agentgateway expects htpasswd content under a '.htaccess' key; see BasicAuthentication docs.
+			if applyBasicAuthPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
+				touched = true
+				// Emit an INFO notification with guidance about Secret key expectations.
+				emitBasicAuthSecretNotifications(
+					pol,
+					polSourceIngressName,
+					httpRouteKey.Namespace,
+					basicAuthSecretSeen,
+				)
 			}
 
 			// Buffer policy currently has no equivalent in AgentgatewayPolicy (see README for limitations).
