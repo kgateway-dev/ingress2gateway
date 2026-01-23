@@ -61,6 +61,34 @@ Currently, the agentgateway emitter emits a notification when projecting **Basic
 
 ### Traffic Behavior
 
+#### Rewrite Target
+
+The agentgateway emitter supports rewriting request paths via:
+
+- `nginx.ingress.kubernetes.io/rewrite-target`
+
+and (for regex/capture-group behavior):
+
+- `nginx.ingress.kubernetes.io/use-regex: "true"`
+
+This is projected into an `AgentgatewayPolicy` using agentgateway’s `Traffic.Transformation` model by setting the
+HTTP pseudo-header `:path` in `spec.traffic.transformation.request.set`.
+
+Mappings:
+
+- **Non-regex rewrite** (default): sets `:path` to a literal string value:
+  - `rewrite-target: /new` → `AgentgatewayPolicy.spec.traffic.transformation.request.set[:path] = '"/new"'`
+- **Regex rewrite** (`use-regex: "true"`): rewrites the request path using a CEL `regexReplace(...)` expression:
+  - `rewrite-target: /new/$1` → `AgentgatewayPolicy.spec.traffic.transformation.request.set[:path] = 'regexReplace(request.path, "<pattern>", "/new/$1")'`
+
+**Notes:**
+
+- Agentgateway represents transformations using **CEL expressions**. As a result, literal strings are expressed as
+  quoted CEL string literals (for example `'"/authz"'` or `'"/new"'`) rather than raw strings.
+- When `use-regex: "true"` is set, the emitter derives the `<pattern>` from the generated `HTTPRoute` rule path
+  regular expression (so capture groups `$1`, `$2`, … behave like ingress-nginx). If the rule contains zero or
+  multiple distinct regex match values, the emitter falls back to `^(.*)`.
+
 #### CORS
 
 The agentgateway emitter supports projecting CORS behavior based on the following Ingress NGINX annotations:
@@ -203,7 +231,7 @@ These are mapped into an `AgentgatewayPolicy` using agentgateway’s `LocalRateL
 
 ## AgentgatewayPolicy Projection
 
-Rate limit, timeout, CORS, and basic/external auth annotations are converted into `AgentgatewayPolicy` resources.
+Rate limit, timeout, CORS, rewrite target, and basic/external auth annotations are converted into `AgentgatewayPolicy` resources.
 
 ### Naming
 

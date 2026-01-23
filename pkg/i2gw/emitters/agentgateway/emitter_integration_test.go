@@ -310,3 +310,29 @@ func TestAgentgatewayIngressNginxIntegration_CORS(t *testing.T) {
 		})
 	}
 }
+
+func TestAgentgatewayIngressNginxIntegration_RewriteTarget(t *testing.T) {
+	t.Helper()
+
+	tests := []struct {
+		name      string
+		inputRel  string
+		goldenRel string
+	}{
+		{
+			name: "rewrite_target",
+			inputRel: filepath.Join(
+				"pkg", "i2gw", "emitters", "agentgateway", "testing", "testdata", "input", "rewrite_target.yaml",
+			),
+			goldenRel: filepath.Join(
+				"pkg", "i2gw", "emitters", "agentgateway", "testing", "testdata", "output", "rewrite_target.yaml",
+			),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runGoldenTest(t, tt.inputRel, tt.goldenRel)
+		})
+	}
+}
