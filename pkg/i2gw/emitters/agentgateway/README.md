@@ -131,6 +131,39 @@ These are mapped into an `AgentgatewayPolicy` using agentgateway’s `Traffic.Ba
   This allows the same `nginx.ingress.kubernetes.io/auth-secret: basic-auth` reference to work for both
   ingress-nginx and agentgateway outputs.
 
+#### External Authentication
+
+The agentgateway emitter supports external authentication via:
+
+- `nginx.ingress.kubernetes.io/auth-url`
+- `nginx.ingress.kubernetes.io/auth-response-headers`
+
+These are mapped into an `AgentgatewayPolicy` using agentgateway’s `Traffic.ExtAuth` model:
+
+- `auth-url` → `AgentgatewayPolicy.spec.traffic.extAuth.backendRef`
+  - Parsed from the URL host (must be a Kubernetes Service `*.svc[.cluster.local]`)
+  - Namespace is taken from the hostname when present (`<svc>.<ns>.svc...`), otherwise defaults to the Ingress namespace
+  - Port is taken from the URL when present; otherwise defaults to `80` for `http` and `443` for `https`
+- `auth-url` path (when not `/`) → `AgentgatewayPolicy.spec.traffic.extAuth.http.path`
+- `auth-response-headers` → `AgentgatewayPolicy.spec.traffic.extAuth.http.allowedResponseHeaders[]`
+
+**Notes:**
+
+- Only **in-cluster** auth URLs that resolve to a Kubernetes Service are supported. If `auth-url` does not include a
+  `*.svc` hostname (i.e. it appears to be an external hostname), the provider records the intent but the emitter does
+  not project an `AgentgatewayPolicy` for it.
+- The emitted `spec.traffic.extAuth.http.path` is a **CEL expression** (not a plain string). For a constant path, the
+  emitter emits a CEL string literal, which will look like this in YAML:
+
+  ```yaml
+  http:
+    path: '"/authz"'
+  ```
+
+  This is expected: the outer quotes are YAML, and the inner quotes are part of the CEL string literal.
+- If the URL path is empty or `/`, the emitter omits `http.path` (agentgateway defaults to the original request path).
+- The emitter currently projects ext auth using the agentgateway **HTTP** ext auth mode (`spec.traffic.extAuth.http`).
+
 #### Request Timeouts
 
 The agentgateway emitter currently supports projecting request timeouts based on the following Ingress NGINX annotations:
@@ -170,7 +203,7 @@ These are mapped into an `AgentgatewayPolicy` using agentgateway’s `LocalRateL
 
 ## AgentgatewayPolicy Projection
 
-Rate limit, timeout, CORS, and basic auth annotations are converted into `AgentgatewayPolicy` resources.
+Rate limit, timeout, CORS, and basic/external auth annotations are converted into `AgentgatewayPolicy` resources.
 
 ### Naming
 

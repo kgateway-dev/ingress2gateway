@@ -90,17 +90,26 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 
 			touched := false
 
-			// Apply policy features that map to AgentgatewayPolicy.
+			// Apply rate limit policy features that map to AgentgatewayPolicy.
 			if applyRateLimitPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
 				touched = true
 			}
+
+			// Apply timeout policy features that map to AgentgatewayPolicy.
 			if applyTimeoutPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
 				touched = true
 			}
+
 			// CORS maps to AgentgatewayPolicy.spec.traffic.cors.
 			if applyCorsPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
 				touched = true
 			}
+
+			// ExtAuth maps to AgentgatewayPolicy.spec.traffic.extAuth.
+			if applyExtAuthPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
+				touched = true
+			}
+
 			// BasicAuth maps to AgentgatewayPolicy.spec.traffic.basicAuthentication.
 			// Note: agentgateway expects htpasswd content under a '.htaccess' key; see BasicAuthentication docs.
 			if applyBasicAuthPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
