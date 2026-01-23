@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /after/rewrite
+  name: rewrite-localhost
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: rewrite.localdev.me
+    http:
+      paths:
+      - backend:
+          service:
+            name: echo-backend
+            port:
+              number: 8080
+        path: /before/rewrite
+        pathType: Prefix

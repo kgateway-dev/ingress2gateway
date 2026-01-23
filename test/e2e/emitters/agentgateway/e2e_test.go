@@ -429,3 +429,17 @@ func TestCORS(t *testing.T) {
 		Timeout:            1 * time.Minute,
 	})
 }
+
+func TestRewriteTarget(t *testing.T) {
+	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "rewrite_target.yaml", "rewrite_target.yaml")
+
+	// Must match "test/e2e/emitters/agentgateway/testdata/output/rewrite_target.yaml".
+	reqPath := "/before/rewrite"
+	wantPath := "/after/rewrite"
+
+	// Validate behavior through Ingress (ingress-nginx)
+	testutils.RequireEchoedPathEventually(t, ingressHostHeader, "http", ingressIP, "", reqPath, wantPath, 1*time.Minute)
+
+	// Validate behavior through Gateway (agentgateway + generated AgentgatewayPolicy)
+	testutils.RequireEchoedPathEventually(t, host, "http", gwAddr, "80", reqPath, wantPath, 1*time.Minute)
+}

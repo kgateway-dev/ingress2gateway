@@ -100,6 +100,13 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 				touched = true
 			}
 
+			// rewrite-target maps to AgentgatewayPolicy.spec.traffic.transformation.
+			// Note: agentgateway attaches policies at the HTTPRoute scope; this feature is only safe when
+			// it fully covers the route (enforced by the full-coverage check below).
+			if applyRewriteTargetPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, &httpRouteContext, agentgatewayPolicies) {
+				touched = true
+			}
+
 			// CORS maps to AgentgatewayPolicy.spec.traffic.cors.
 			if applyCorsPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
 				touched = true
