@@ -5,7 +5,7 @@ go 1.25.5
 require (
 	github.com/GoogleCloudPlatform/gke-gateway-api v1.4.0
 	github.com/google/go-cmp v0.7.0
-	github.com/kgateway-dev/kgateway/v2 v2.2.0-beta.6
+	github.com/kgateway-dev/kgateway/v2 v2.2.0-rc.2
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/samber/lo v1.39.0
 	github.com/spf13/cobra v1.10.2
