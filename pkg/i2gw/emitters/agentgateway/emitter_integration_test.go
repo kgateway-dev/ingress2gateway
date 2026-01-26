@@ -336,3 +336,29 @@ func TestAgentgatewayIngressNginxIntegration_RewriteTarget(t *testing.T) {
 		})
 	}
 }
+
+func TestAgentgatewayIngressNginxIntegration_BackendTLS(t *testing.T) {
+	t.Helper()
+
+	tests := []struct {
+		name      string
+		inputRel  string
+		goldenRel string
+	}{
+		{
+			name: "backend_tls",
+			inputRel: filepath.Join(
+				"pkg", "i2gw", "emitters", "agentgateway", "testing", "testdata", "input", "backend_tls.yaml",
+			),
+			goldenRel: filepath.Join(
+				"pkg", "i2gw", "emitters", "agentgateway", "testing", "testdata", "output", "backend_tls.yaml",
+			),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runGoldenTest(t, tt.inputRel, tt.goldenRel)
+		})
+	}
+}

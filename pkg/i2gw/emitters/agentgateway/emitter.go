@@ -26,6 +26,7 @@ import (
 
 	agentgatewayv1alpha1 "github.com/kgateway-dev/kgateway/v2/api/v1alpha1/agentgateway"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -61,6 +62,9 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 
 	// Track AgentgatewayPolicies per ingress name
 	agentgatewayPolicies := map[string]*agentgatewayv1alpha1.AgentgatewayPolicy{}
+
+	// Track Backend TLS AgentgatewayPolicies per Service (ns/name)
+	backendTLSPolicies := map[types.NamespacedName]*agentgatewayv1alpha1.AgentgatewayPolicy{}
 
 	// De-dupe INFO notifications across routes/policies.
 	basicAuthSecretSeen := map[basicAuthSecretKey]struct{}{}
@@ -116,6 +120,15 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 			if applyExtAuthPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
 				touched = true
 			}
+
+			// Backend TLS maps to AgentgatewayPolicy.spec.backend.tls, targeting the covered Service backends.
+			// Note: this emits per-Service policies (like kgateway's BackendConfigPolicy approach).
+			applyBackendTLSPolicy(
+				pol,
+				httpRouteKey,
+				httpRouteContext,
+				backendTLSPolicies,
+			)
 
 			// BasicAuth maps to AgentgatewayPolicy.spec.traffic.basicAuthentication.
 			// Note: agentgateway expects htpasswd content under a '.htaccess' key; see BasicAuthentication docs.
