@@ -229,6 +229,36 @@ These are mapped into an `AgentgatewayPolicy` using agentgateway’s `LocalRateL
 - Burst multiplier defaults to `1` if unset/zero.
 - Unknown/unsupported units are ignored.
 
+### Backend Behavior
+
+#### Backend TLS
+
+The agentgateway emitter supports projecting backend TLS/mTLS behavior based on the following Ingress NGINX annotations
+(as represented by the provider's BackendTLS policy IR):
+
+- `nginx.ingress.kubernetes.io/proxy-ssl-secret`
+- `nginx.ingress.kubernetes.io/proxy-ssl-name`
+- `nginx.ingress.kubernetes.io/proxy-ssl-verify`
+
+These are mapped into an `AgentgatewayPolicy` using agentgateway’s `BackendSimple.TLS` model:
+
+- `proxy-ssl-name` → `AgentgatewayPolicy.spec.backend.tls.sni`
+- `proxy-ssl-verify: "off"` → `AgentgatewayPolicy.spec.backend.tls.insecureSkipVerify = All`
+- `proxy-ssl-secret` → `AgentgatewayPolicy.spec.backend.tls.mtlsCertificateRef[0].name`
+
+**Notes:**
+
+- **Per-Service policy:** Backend TLS is emitted as **one AgentgatewayPolicy per referenced backend Service**, not per Ingress.
+  The policy targets the Service so that TLS settings apply when connecting to that backend.
+- **Secret namespace handling:** If `proxy-ssl-secret` is provided as `namespace/name`, the emitter uses only `name`.
+  (The referenced Secret must exist in the same namespace as the emitted policy.)
+- **Verification behavior:** When `proxy-ssl-verify` disables verification, the emitter sets
+  `spec.backend.tls.insecureSkipVerify: All`. When verification is enabled, the emitter does **not** set
+  `insecureSkipVerify` and instead configures mTLS via `mtlsCertificateRef` (when a secret is provided).
+- **CA certificates/SAN pinning:** The current mapping projects the core knobs needed for common ingress-nginx usage
+  (mTLS secret, SNI, verify on/off). It does not currently project CA certificate ConfigMaps or SAN pinning fields
+  (e.g. `caCertificateRefs`, `verifySubjectAltNames`) even though the agentgateway API supports them.
+
 ## AgentgatewayPolicy Projection
 
 Rate limit, timeout, CORS, rewrite target, and basic/external auth annotations are converted into `AgentgatewayPolicy` resources.
@@ -238,6 +268,11 @@ Rate limit, timeout, CORS, rewrite target, and basic/external auth annotations a
 Policies are created **per source Ingress name**:
 
 - `metadata.name: <ingress-name>`
+- `metadata.namespace: <route-namespace>`
+
+Backend TLS policies are created **per backend Service**:
+
+- `metadata.name: <service-name>-backend-tls`
 - `metadata.namespace: <route-namespace>`
 
 ### Attachment Semantics
@@ -265,6 +300,9 @@ non-functional at runtime, the emitter fails fast during generation when only pa
 
 - Split the source Ingress into separate Ingress resources so each generated HTTPRoute can be fully covered by a policy.
 - Adjust annotations so the policy applies uniformly to all paths/backends of the resulting HTTPRoute.
+
+For backend TLS, prefer targeting the **Service** via a backend policy (as emitted) so TLS settings apply cleanly without
+needing per-backend HTTPRoute filters.
 
 ## Deterministic Output
 
