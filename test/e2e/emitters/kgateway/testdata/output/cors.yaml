@@ -1,9 +1,9 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: nginx
   annotations:
     gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: nginx
 spec:
   gatewayClassName: kgateway
   listeners:
@@ -16,22 +16,32 @@ status: {}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: ingress-cors-b-cors-localdev-me
   annotations:
     gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: ingress-cors-b-cors-localdev-me
 spec:
   hostnames:
   - cors.localdev.me
   parentRefs:
   - name: nginx
   rules:
-  - matches:
+  - backendRefs:
+    - name: echo-backend
+      port: 8080
+    filters:
+    - responseHeaderModifier:
+        remove:
+        - Access-Control-Allow-Origin
+        - Access-Control-Allow-Methods
+        - Access-Control-Allow-Headers
+        - Access-Control-Expose-Headers
+        - Access-Control-Max-Age
+        - Access-Control-Allow-Credentials
+      type: ResponseHeaderModifier
+    matches:
     - path:
         type: PathPrefix
         value: /
-    backendRefs:
-    - name: echo-backend
-      port: 8080
 status:
   parents: []
 ---
@@ -45,7 +55,7 @@ spec:
     - https://example.com
     - https://another.com
     exposeHeaders:
-    - "*"
+    - '*'
     - X-CustomResponseHeader
   targetRefs:
   - group: gateway.networking.k8s.io

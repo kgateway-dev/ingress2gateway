@@ -8,14 +8,14 @@ metadata:
 spec:
   gatewayClassName: kgateway
   listeners:
-    - hostname: myservicea.foo.org
-      name: myservicea-foo-org-http
-      port: 80
-      protocol: HTTP
-    - hostname: myserviceb.foo.org
-      name: myserviceb-foo-org-http
-      port: 80
-      protocol: HTTP
+  - hostname: myservicea.foo.org
+    name: myservicea-foo-org-http
+    port: 80
+    protocol: HTTP
+  - hostname: myserviceb.foo.org
+    name: myserviceb-foo-org-http
+    port: 80
+    protocol: HTTP
 status: {}
 ---
 apiVersion: gateway.networking.k8s.io/v1
@@ -27,36 +27,56 @@ metadata:
   namespace: default
 spec:
   hostnames:
-    - myservicea.foo.org
+  - myservicea.foo.org
   parentRefs:
-    - name: nginx
+  - name: nginx
   rules:
-    - backendRefs:
-        - filters:
-            - extensionRef:
-                group: gateway.kgateway.dev
-                kind: TrafficPolicy
-                name: ingress-myservicea1
-              type: ExtensionRef
-          name: myservicea
-          port: 80
-      matches:
-        - path:
-            type: PathPrefix
-            value: /
-    - backendRefs:
-        - filters:
-            - extensionRef:
-                group: gateway.kgateway.dev
-                kind: TrafficPolicy
-                name: ingress-myservicea2
-              type: ExtensionRef
-          name: myservicea
-          port: 80
-      matches:
-        - path:
-            type: PathPrefix
-            value: /2
+  - backendRefs:
+    - filters:
+      - extensionRef:
+          group: gateway.kgateway.dev
+          kind: TrafficPolicy
+          name: ingress-myservicea1
+        type: ExtensionRef
+      name: myservicea
+      port: 80
+    filters:
+    - responseHeaderModifier:
+        remove:
+        - Access-Control-Allow-Origin
+        - Access-Control-Allow-Methods
+        - Access-Control-Allow-Headers
+        - Access-Control-Expose-Headers
+        - Access-Control-Max-Age
+        - Access-Control-Allow-Credentials
+      type: ResponseHeaderModifier
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+  - backendRefs:
+    - filters:
+      - extensionRef:
+          group: gateway.kgateway.dev
+          kind: TrafficPolicy
+          name: ingress-myservicea2
+        type: ExtensionRef
+      name: myservicea
+      port: 80
+    filters:
+    - responseHeaderModifier:
+        remove:
+        - Access-Control-Allow-Origin
+        - Access-Control-Allow-Methods
+        - Access-Control-Allow-Headers
+        - Access-Control-Expose-Headers
+        - Access-Control-Max-Age
+        - Access-Control-Allow-Credentials
+      type: ResponseHeaderModifier
+    matches:
+    - path:
+        type: PathPrefix
+        value: /2
 status:
   parents: []
 ---
@@ -69,17 +89,27 @@ metadata:
   namespace: default
 spec:
   hostnames:
-    - myserviceb.foo.org
+  - myserviceb.foo.org
   parentRefs:
-    - name: nginx
+  - name: nginx
   rules:
-    - backendRefs:
-        - name: myserviceb
-          port: 80
-      matches:
-        - path:
-            type: PathPrefix
-            value: /
+  - backendRefs:
+    - name: myserviceb
+      port: 80
+    filters:
+    - responseHeaderModifier:
+        remove:
+        - Access-Control-Allow-Origin
+        - Access-Control-Allow-Methods
+        - Access-Control-Allow-Headers
+        - Access-Control-Expose-Headers
+        - Access-Control-Max-Age
+        - Access-Control-Allow-Credentials
+      type: ResponseHeaderModifier
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
 status:
   parents: []
 ---
@@ -92,18 +122,18 @@ spec:
   cors:
     allowCredentials: false
     allowHeaders:
-      - X-Requested-With
-      - Content-Type
+    - X-Requested-With
+    - Content-Type
     allowMethods:
-      - GET
-      - POST
-      - OPTIONS
+    - GET
+    - POST
+    - OPTIONS
     allowOrigins:
-      - https://example.com
-      - https://another.com
+    - https://example.com
+    - https://another.com
     exposeHeaders:
-      - X-Expose-One
-      - X-Expose-Two
+    - X-Expose-One
+    - X-Expose-Two
     maxAge: 600
 status:
   ancestors: null
@@ -116,8 +146,8 @@ metadata:
 spec:
   cors:
     allowOrigins:
-      - https://example.com
-      - https://another.com
+    - https://example.com
+    - https://another.com
 status:
   ancestors: null
 ---
@@ -129,14 +159,14 @@ metadata:
 spec:
   cors:
     allowOrigins:
-      - https://example.com
-      - https://another.com
+    - https://example.com
+    - https://another.com
     exposeHeaders:
-      - '*'
-      - X-CustomResponseHeader
+    - '*'
+    - X-CustomResponseHeader
   targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: ingress-myserviceb-myserviceb-foo-org
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: ingress-myserviceb-myserviceb-foo-org
 status:
   ancestors: null

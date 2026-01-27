@@ -28,6 +28,16 @@ spec:
   - backendRefs:
     - name: echo-backend
       port: 8080
+    filters:
+    - responseHeaderModifier:
+        remove:
+        - Access-Control-Allow-Origin
+        - Access-Control-Allow-Methods
+        - Access-Control-Allow-Headers
+        - Access-Control-Expose-Headers
+        - Access-Control-Max-Age
+        - Access-Control-Allow-Credentials
+      type: ResponseHeaderModifier
     matches:
     - path:
         type: PathPrefix
