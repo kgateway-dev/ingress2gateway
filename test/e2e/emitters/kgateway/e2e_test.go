@@ -621,3 +621,81 @@ func TestExternalAuth(t *testing.T) {
 		},
 	})
 }
+
+func TestServiceUpstream(t *testing.T) {
+	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "service_upstream.yaml", "service_upstream.yaml")
+
+	// Test HTTP connectivity via Ingress
+	testutils.MakeHTTPRequestEventually(t, kubeContext, testutils.HTTPRequestConfig{
+		HostHeader:         ingressHostHeader,
+		Scheme:             "http",
+		Address:            ingressIP,
+		Port:               "",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+	})
+
+	// Test HTTP connectivity via Gateway
+	testutils.MakeHTTPRequestEventually(t, kubeContext, testutils.HTTPRequestConfig{
+		HostHeader:         host,
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+	})
+}
+
+func TestBackendProtocol(t *testing.T) {
+	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "backend_protocol.yaml", "backend_protocol.yaml")
+
+	// Test HTTP connectivity via Ingress
+	testutils.MakeHTTPRequestEventually(t, kubeContext, testutils.HTTPRequestConfig{
+		HostHeader:         ingressHostHeader,
+		Scheme:             "http",
+		Address:            ingressIP,
+		Port:               "",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+	})
+
+	// Test HTTP connectivity via Gateway
+	testutils.MakeHTTPRequestEventually(t, kubeContext, testutils.HTTPRequestConfig{
+		HostHeader:         host,
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+	})
+}
+
+func TestBackendTLS(t *testing.T) {
+	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "backend_tls.yaml", "backend_tls.yaml")
+
+	// Test HTTP connectivity via Ingress
+	testutils.MakeHTTPRequestEventually(t, kubeContext, testutils.HTTPRequestConfig{
+		HostHeader:         ingressHostHeader,
+		Scheme:             "http",
+		Address:            ingressIP,
+		Port:               "",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+	})
+
+	// Test HTTP connectivity via Gateway
+	testutils.MakeHTTPRequestEventually(t, kubeContext, testutils.HTTPRequestConfig{
+		HostHeader:         host,
+		Scheme:             "http",
+		Address:            gwAddr,
+		Port:               "80",
+		Path:               "/",
+		ExpectedStatusCode: 200,
+		Timeout:            1 * time.Minute,
+	})
+}
