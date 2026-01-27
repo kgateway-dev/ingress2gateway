@@ -3,6 +3,7 @@ kind: Ingress
 metadata:
   annotations:
     nginx.ingress.kubernetes.io/client-body-buffer-size: 10m
+    nginx.ingress.kubernetes.io/proxy-buffering: "on"
     nginx.ingress.kubernetes.io/limit-rpm: "600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "30s"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "45s"
@@ -29,6 +30,7 @@ kind: Ingress
 metadata:
   annotations:
     nginx.ingress.kubernetes.io/client-body-buffer-size: 20m
+    nginx.ingress.kubernetes.io/proxy-buffering: "on"
     nginx.ingress.kubernetes.io/limit-rps: "10"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60" # No "s" suffix, should still be parsed correctly
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60" # No "s" suffix, should still be parsed correctly
@@ -54,9 +56,10 @@ kind: Ingress
 metadata:
   annotations:
     nginx.ingress.kubernetes.io/client-body-buffer-size: 40m
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-buffering: "on"
     nginx.ingress.kubernetes.io/limit-rps: "50"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
-    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "90s"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "90s"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "120"

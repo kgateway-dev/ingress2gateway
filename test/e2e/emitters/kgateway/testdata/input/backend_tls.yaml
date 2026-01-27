@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backend-tls-cert
+  namespace: default
+type: kubernetes.io/tls
+stringData:
+  tls.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIBkTCB+wIJAKHHCgVZfULhMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnRl
+    c3RjYTAeFw0yMzAxMDEwMDAwMDBaFw0yNDAxMDEwMDAwMDBaMBExDzANBgNVBAMM
+    BnRlc3RjYTCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEAw7Hs7hf5Z1JQ0v3F
+    e5z8HzF3Y0YKj2cPqR3xK5dN7rH5V8p5Y0YKj2cPqR3xK5dN7rH5V8p5Y0YKj2cP
+    qR3xK5dN7rH5V8p5Y0YKj2cPqR3xK5dN7rH5V8p5Y0YKj2cPqR3xK5dN7rH5V8p5
+    Y0YKj2cPqR3xK5dN7rH5V8p5Y0YKj2cPqR3xK5dN7rCAwEAAaMQMA4wDAYDVR0T
+    BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOBgQBWvL5S8f0H0Z8A8N3F0H0H0H0H0H0H
+    0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H
+    0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H
+    0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H
+    ==
+    -----END CERTIFICATE-----
+  tls.key: |
+    -----BEGIN PRIVATE KEY-----
+    MIICdgIBADANBgkqhkiG9w0BAQEFAASCAmAwggJcAgEAAoGBAMOx7O4X+WdSUNL9
+    xXuc/B8xd2NGCo9nD6kd8SuXTe6x+VfKeWNGCo9nD6kd8SuXTe6x+VfKeWNGCo9n
+    D6kd8SuXTe6x+VfKeWNGCo9nD6kd8SuXTe6x+VfKeWNGCo9nD6kd8SuXTe6x+VfK
+    eWNGCo9nD6kd8SuXTe6x+VfKeWNGCo9nD6kd8SuXTe6xAgMBAAECgYEAwqDN+P3n
+    H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0
+    H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0H0
+    -----END PRIVATE KEY-----
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    nginx.ingress.kubernetes.io/proxy-ssl-secret: default/backend-tls-cert
+    nginx.ingress.kubernetes.io/proxy-ssl-server-name: "on"
+    nginx.ingress.kubernetes.io/proxy-ssl-name: "backend-tls.example.com"
+    nginx.ingress.kubernetes.io/proxy-ssl-verify: "on"
+  name: backend-tls-test
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: tls.localdev.me
+    http:
+      paths:
+      - backend:
+          service:
+            name: echo-backend
+            port:
+              number: 8080
+        path: /
+        pathType: Prefix
