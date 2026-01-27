@@ -32,6 +32,8 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
+const gatewayClass = "agentgateway"
+
 func init() {
 	i2gw.EmitterConstructorByName["agentgateway"] = NewEmitter
 }
@@ -53,7 +55,7 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 	// Set GatewayClassName to "agentgateway" for all Gateways
 	for key := range gatewayResources.Gateways {
 		gateway := gatewayResources.Gateways[key]
-		gateway.Spec.GatewayClassName = "agentgateway"
+		gateway.Spec.GatewayClassName = gatewayClass
 		gatewayResources.Gateways[key] = gateway
 	}
 
@@ -63,8 +65,8 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 	// Track AgentgatewayPolicies per ingress name
 	agentgatewayPolicies := map[string]*agentgatewayv1alpha1.AgentgatewayPolicy{}
 
-	// Track Backend TLS AgentgatewayPolicies per Service (ns/name)
-	backendTLSPolicies := map[types.NamespacedName]*agentgatewayv1alpha1.AgentgatewayPolicy{}
+	// Track backend-scoped AgentgatewayPolicies per Service (ns/name) (e.g. TLS, connect timeout)
+	backendPolicies := map[types.NamespacedName]*agentgatewayv1alpha1.AgentgatewayPolicy{}
 
 	// De-dupe INFO notifications across routes/policies.
 	basicAuthSecretSeen := map[basicAuthSecretKey]struct{}{}
@@ -100,9 +102,19 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 			}
 
 			// Apply timeout policy features that map to AgentgatewayPolicy.
-			if applyTimeoutPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
+			if applyRequestTimeoutPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
 				touched = true
 			}
+
+			// Proxy connect timeout maps to AgentgatewayPolicy.spec.backend.tcp.connectTimeout, targeting Services.
+			applyProxyConnectTimeoutPolicy(
+				pol,
+				polSourceIngressName,
+				httpRouteKey,
+				httpRouteContext,
+				agentgatewayPolicies,
+				backendPolicies,
+			)
 
 			// rewrite-target maps to AgentgatewayPolicy.spec.traffic.transformation.
 			// Note: agentgateway attaches policies at the HTTPRoute scope; this feature is only safe when
@@ -127,7 +139,7 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 				pol,
 				httpRouteKey,
 				httpRouteContext,
-				backendTLSPolicies,
+				backendPolicies,
 			)
 
 			// BasicAuth maps to AgentgatewayPolicy.spec.traffic.basicAuthentication.
@@ -198,6 +210,11 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 
 	// Collect AgentgatewayPolicies
 	for _, ap := range agentgatewayPolicies {
+		agentgatewayObjs = append(agentgatewayObjs, ap)
+	}
+
+	// Collect backend-scoped policies (Service-targeted).
+	for _, ap := range backendPolicies {
 		agentgatewayObjs = append(agentgatewayObjs, ap)
 	}
 

@@ -16,10 +16,6 @@ spec:
     name: timeout-proxy-send-example-org-http
     port: 80
     protocol: HTTP
-  - hostname: timeout-send-and-read.example.org
-    name: timeout-send-and-read-example-org-http
-    port: 80
-    protocol: HTTP
 status: {}
 ---
 apiVersion: gateway.networking.k8s.io/v1
@@ -68,29 +64,6 @@ spec:
 status:
   parents: []
 ---
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
-  name: ingress-timeout-send-and-read-timeout-send-and-read-example-org
-  namespace: default
-spec:
-  hostnames:
-  - timeout-send-and-read.example.org
-  parentRefs:
-  - name: nginx
-  rules:
-  - backendRefs:
-    - name: myservice
-      port: 80
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
-status:
-  parents: []
----
 apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayPolicy
 metadata:
@@ -119,22 +92,22 @@ spec:
     name: ingress-timeout-proxy-send-timeout-proxy-send-example-org
   traffic:
     timeouts:
-      request: 30s
+      request: 1m0s
 status:
   ancestors: null
 ---
 apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayPolicy
 metadata:
-  name: ingress-timeout-send-and-read
+  name: myservice-backend-connect-timeout
   namespace: default
 spec:
+  backend:
+    tcp:
+      connectTimeout: 15s
   targetRefs:
-  - group: gateway.networking.k8s.io
-    kind: HTTPRoute
-    name: ingress-timeout-send-and-read-timeout-send-and-read-example-org
-  traffic:
-    timeouts:
-      request: 1m0s
+  - group: ""
+    kind: Service
+    name: myservice
 status:
   ancestors: null

@@ -16,10 +16,6 @@ spec:
     name: myserviceb-foo-org-http
     port: 80
     protocol: HTTP
-  - hostname: tls.example.org
-    name: tls-example-org-http
-    port: 80
-    protocol: HTTP
 status: {}
 ---
 apiVersion: gateway.networking.k8s.io/v1
@@ -27,16 +23,16 @@ kind: HTTPRoute
 metadata:
   annotations:
     gateway.networking.k8s.io/generator: ingress2gateway-dev
-  name: ingress-backendtls-tls-example-org
+  name: ingress-myserviceb-myserviceb-foo-org
   namespace: default
 spec:
   hostnames:
-  - tls.example.org
+  - myserviceb.foo.org
   parentRefs:
   - name: nginx
   rules:
   - backendRefs:
-    - name: httpbin2
+    - name: myserviceb
       port: 80
     matches:
     - path:
@@ -87,63 +83,31 @@ spec:
 status:
   parents: []
 ---
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
-  name: ingress-myserviceb-myserviceb-foo-org
-  namespace: default
-spec:
-  hostnames:
-  - myserviceb.foo.org
-  parentRefs:
-  - name: nginx
-  rules:
-  - backendRefs:
-    - name: myserviceb
-      port: 80
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
-status:
-  parents: []
----
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: BackendConfigPolicy
 metadata:
-  name: httpbin2-backend-config
+  name: myservicea-backend-config
   namespace: default
 spec:
+  connectTimeout: 30s
   targetRefs:
   - group: ""
     kind: Service
-    name: httpbin2
-  tls:
-    secretRef:
-      name: base-certificate-tls
-    sni: tls.example.com
+    name: myservicea
 status:
   ancestors: null
 ---
 apiVersion: gateway.kgateway.dev/v1alpha1
-kind: HTTPListenerPolicy
+kind: BackendConfigPolicy
 metadata:
-  name: nginx-access-log
+  name: myserviceb-backend-config
   namespace: default
 spec:
-  accessLog:
-  - fileSink:
-      path: /dev/stdout
-      stringFormat: '[%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%
-        %PROTOCOL%" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT%
-        %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% "%REQ(X-FORWARDED-FOR)%"
-        "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"%n'
+  connectTimeout: 2m0s
   targetRefs:
   - group: ""
-    kind: Gateway
-    name: nginx
+    kind: Service
+    name: myserviceb
 status:
   ancestors: null
 ---
@@ -153,14 +117,9 @@ metadata:
   name: ingress-myservicea1
   namespace: default
 spec:
-  buffer:
-    maxRequestSize: 10m
-  rateLimit:
-    local:
-      tokenBucket:
-        fillInterval: 1m0s
-        maxTokens: 600
-        tokensPerFill: 600
+  timeouts:
+    request: 30s
+    streamIdle: 45s
 status:
   ancestors: null
 ---
@@ -170,14 +129,9 @@ metadata:
   name: ingress-myservicea2
   namespace: default
 spec:
-  buffer:
-    maxRequestSize: 20m
-  rateLimit:
-    local:
-      tokenBucket:
-        fillInterval: 1s
-        maxTokens: 10
-        tokensPerFill: 10
+  timeouts:
+    request: 1m0s
+    streamIdle: 1m0s
 status:
   ancestors: null
 ---
@@ -189,15 +143,12 @@ metadata:
 spec:
   buffer:
     maxRequestSize: 100m
-  rateLimit:
-    local:
-      tokenBucket:
-        fillInterval: 1s
-        maxTokens: 250
-        tokensPerFill: 50
   targetRefs:
   - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: ingress-myserviceb-myserviceb-foo-org
+  timeouts:
+    request: 1m30s
+    streamIdle: 1m30s
 status:
   ancestors: null

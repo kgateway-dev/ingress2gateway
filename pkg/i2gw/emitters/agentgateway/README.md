@@ -237,6 +237,7 @@ The agentgateway emitter supports projecting backend TLS/mTLS behavior based on 
 (as represented by the provider's BackendTLS policy IR):
 
 - `nginx.ingress.kubernetes.io/proxy-ssl-secret`
+- `nginx.ingress.kubernetes.io/proxy-ssl-server-name`
 - `nginx.ingress.kubernetes.io/proxy-ssl-name`
 - `nginx.ingress.kubernetes.io/proxy-ssl-verify`
 
@@ -250,6 +251,10 @@ These are mapped into an `AgentgatewayPolicy` using agentgateway’s `BackendSim
 
 - **Per-Service policy:** Backend TLS is emitted as **one AgentgatewayPolicy per referenced backend Service**, not per Ingress.
   The policy targets the Service so that TLS settings apply when connecting to that backend.
+- **SNI enablement:** ingress-nginx commonly gates sending SNI on `proxy-ssl-server-name: "on"`.
+  The agentgateway emitter records SNI via `proxy-ssl-name` and projects it to `spec.backend.tls.sni`.
+  If `proxy-ssl-server-name` is present in the source Ingress, it is treated as an enablement flag; the SNI value still
+  comes from `proxy-ssl-name`.
 - **Secret namespace handling:** If `proxy-ssl-secret` is provided as `namespace/name`, the emitter uses only `name`.
   (The referenced Secret must exist in the same namespace as the emitted policy.)
 - **Verification behavior:** When `proxy-ssl-verify` disables verification, the emitter sets
@@ -259,9 +264,52 @@ These are mapped into an `AgentgatewayPolicy` using agentgateway’s `BackendSim
   (mTLS secret, SNI, verify on/off). It does not currently project CA certificate ConfigMaps or SAN pinning fields
   (e.g. `caCertificateRefs`, `verifySubjectAltNames`) even though the agentgateway API supports them.
 
+#### Proxy Connect Timeout
+
+The agentgateway emitter supports projecting upstream **connection timeout** behavior via:
+
+- `nginx.ingress.kubernetes.io/proxy-connect-timeout`
+
+This is projected into a **Service-targeted** `AgentgatewayPolicy` by setting:
+
+- `AgentgatewayPolicy.spec.backend.tcp.connectTimeout`
+
+Mappings:
+
+- `proxy-connect-timeout: "5s"` → `AgentgatewayPolicy.spec.backend.tcp.connectTimeout: 5s`
+
+**Notes:**
+
+- This feature is emitted as a **per-Service** `AgentgatewayPolicy` (similar to how the kgateway emitter uses a
+  per-Service `BackendConfigPolicy`), because connect timeouts are backend-scoped.
+- The policy targets the covered Service backends using `spec.targetRefs`:
+
+  ```yaml
+  spec:
+    targetRefs:
+      - group: ""
+        kind: Service
+        name: <service-name>
+    backend:
+      tcp:
+        connectTimeout: 5s
+  ```
+
+- **Interaction with request timeout:** if a route-level request timeout is also configured via
+  `nginx.ingress.kubernetes.io/proxy-read-timeout`/`nginx.ingress.kubernetes.io/proxy-send-timeout`, the emitter
+  only projects `proxy-connect-timeout` when it is **less than or equal to**
+  `AgentgatewayPolicy.spec.traffic.timeouts.request`. This mirrors the behavior used in agentgateway output to avoid
+  producing a connect timeout that exceeds the effective request timeout.
+- Invalid/unsupported duration values are ignored by the provider and will not be projected.
+
 ## AgentgatewayPolicy Projection
 
-Rate limit, timeout, CORS, rewrite target, and basic/external auth annotations are converted into `AgentgatewayPolicy` resources.
+Rate limit, timeout, CORS, rewrite target, etc. annotations are converted into AgentgatewayPolicy resources.
+The agentgateway emitter emits AgentgatewayPolicy resources in two shapes:
+
+- HTTPRoute-scoped policies for traffic-level behavior (rate limit, request timeouts, CORS, rewrite target,
+  basic auth, ext auth).
+- Service-scoped policies for backend connection behavior (backend TLS and proxy connect timeout).
 
 ### Naming
 
@@ -273,6 +321,11 @@ Policies are created **per source Ingress name**:
 Backend TLS policies are created **per backend Service**:
 
 - `metadata.name: <service-name>-backend-tls`
+- `metadata.namespace: <route-namespace>`
+
+Proxy connect timeout policies are created **per backend Service**:
+
+- `metadata.name: <service-name>-backend-connect-timeout`
 - `metadata.namespace: <route-namespace>`
 
 ### Attachment Semantics
