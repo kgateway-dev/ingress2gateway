@@ -2,9 +2,9 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
-    nginx.ingress.kubernetes.io/client-body-buffer-size: 10m
-    nginx.ingress.kubernetes.io/limit-rpm: "600"
-    nginx.ingress.kubernetes.io/enable-access-log: "true"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "30s"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "45s"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30s"
   name: ingress-myservicea1
   namespace: default
 spec:
@@ -25,8 +25,9 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
-    nginx.ingress.kubernetes.io/client-body-buffer-size: 20m
-    nginx.ingress.kubernetes.io/limit-rps: "10"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60" # No "s" suffix, should still be parsed correctly
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60" # No "s" suffix, should still be parsed correctly
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60" # Will be ignored since it's higher than ingress-myservicea1 Ingress
   name: ingress-myservicea2
   namespace: default
 spec:
@@ -47,10 +48,10 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
-    nginx.ingress.kubernetes.io/client-body-buffer-size: 40m
-    nginx.ingress.kubernetes.io/limit-rps: "50"
-    nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "90s"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "90s"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "120"
   name: ingress-myserviceb
   namespace: default
 spec:
@@ -62,31 +63,6 @@ spec:
       - backend:
           service:
             name: myserviceb
-            port:
-              number: 80
-        path: /
-        pathType: Prefix
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  annotations:
-    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
-    nginx.ingress.kubernetes.io/proxy-ssl-secret: default/base-certificate-tls
-    nginx.ingress.kubernetes.io/proxy-ssl-server-name: "on"
-    nginx.ingress.kubernetes.io/proxy-ssl-name: "tls.example.com"
-    nginx.ingress.kubernetes.io/proxy-ssl-verify: "on"
-  name: ingress-backendtls
-  namespace: default
-spec:
-  ingressClassName: nginx
-  rules:
-  - host: tls.example.org
-    http:
-      paths:
-      - backend:
-          service:
-            name: httpbin2
             port:
               number: 80
         path: /

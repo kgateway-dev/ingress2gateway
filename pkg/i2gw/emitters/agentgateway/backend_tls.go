@@ -41,9 +41,9 @@ import (
 //
 // Notes:
 //   - Agentgateway backend TLS uses:
-//       - mtlsCertificateRef: Secret containing tls.crt/tls.key (and optional ca.cert)
-//       - caCertificateRefs: ConfigMap refs (not used here)
-//       - insecureSkipVerify: enum (All|Hostname)
+//   - mtlsCertificateRef: Secret containing tls.crt/tls.key (and optional ca.cert)
+//   - caCertificateRefs: ConfigMap refs (not used here)
+//   - insecureSkipVerify: enum (All|Hostname)
 //   - The ingress-nginx IR provides a single SecretName; we map this to mtlsCertificateRef when Verify=true.
 func applyBackendTLSPolicy(
 	pol providerir.Policy,
