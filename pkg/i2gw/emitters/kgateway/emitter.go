@@ -215,8 +215,8 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 				touched = true
 			}
 
-			// Check if SSL redirect is enabled (but don't apply it yet - will split route later)
-			if applySSLRedirectPolicy(pol, httpRouteKey, &httpRouteContext, coverage) {
+			// Check if SSL redirect is enabled but don't apply it yet (will split route later).
+			if applySSLRedirectPolicy(pol) {
 				// Mark this HTTPRoute for SSL redirect splitting
 				routesToSplitForSSLRedirect[httpRouteKey] = true
 			}

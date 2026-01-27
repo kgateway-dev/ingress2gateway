@@ -61,6 +61,41 @@ Currently, the agentgateway emitter emits a notification when projecting **Basic
 
 ### Traffic Behavior
 
+#### SSL Redirect
+
+The agentgateway emitter supports projecting **HTTP → HTTPS redirects** by **splitting** the generated HTTPRoute into two routes when
+either of the following Ingress NGINX annotations are truthy:
+
+- `nginx.ingress.kubernetes.io/ssl-redirect`
+- `nginx.ingress.kubernetes.io/force-ssl-redirect`
+
+This is implemented using Gateway API `HTTPRoute` `RequestRedirect` filters (for the HTTP listener) and a separate HTTPS-bound
+`HTTPRoute` that preserves backend routing.
+
+**Semantics:**
+
+- A new **HTTP redirect route** is generated:
+  - Bound to the Gateway **HTTP** listener (`parentRefs[].sectionName: <hostname>-http`)
+  - Each rule includes a `RequestRedirect` filter with:
+    - `scheme: https`
+    - `statusCode: 301`
+  - **No** `backendRefs` are present (Gateway API does not allow `RequestRedirect` filters and backends in the same rule).
+- A new **HTTPS backend route** is generated:
+  - Bound to the Gateway **HTTPS** listener (`parentRefs[].sectionName: <hostname>-https`)
+  - Preserves the original backendRefs
+  - Any existing `RequestRedirect` filters are removed (if present)
+
+**Naming:**
+
+- HTTP redirect route: `<original-http-route-name>-http-redirect`
+- HTTPS backend route: `<original-http-route-name>-https`
+
+**Notes:**
+
+- If an HTTPS listener cannot be determined for the hostname, the emitter will still attempt to emit the HTTP redirect route when
+  an HTTP listener exists; the HTTPS backend route is omitted in that case.
+- Redirect behavior is implemented purely with Gateway API objects (no agentgateway extensions are required).
+
 #### Rewrite Target
 
 The agentgateway emitter supports rewriting request paths via:

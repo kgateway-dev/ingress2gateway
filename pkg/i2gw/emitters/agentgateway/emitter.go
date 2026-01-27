@@ -68,6 +68,9 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 	// Track backend-scoped AgentgatewayPolicies per Service (ns/name) (e.g. TLS, connect timeout)
 	backendPolicies := map[types.NamespacedName]*agentgatewayv1alpha1.AgentgatewayPolicy{}
 
+	// Track HTTPRoutes that need SSL redirect splitting
+	routesToSplitForSSLRedirect := map[types.NamespacedName]bool{}
+
 	// De-dupe INFO notifications across routes/policies.
 	basicAuthSecretSeen := map[basicAuthSecretKey]struct{}{}
 
@@ -104,6 +107,11 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 			// Apply timeout policy features that map to AgentgatewayPolicy.
 			if applyRequestTimeoutPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
 				touched = true
+			}
+
+			// Check if SSL redirect is enabled but don't apply it yet (will split route later).
+			if applySSLRedirectPolicy(pol) {
+				routesToSplitForSSLRedirect[httpRouteKey] = true
 			}
 
 			// Proxy connect timeout maps to AgentgatewayPolicy.spec.backend.tcp.connectTimeout, targeting Services.
@@ -206,6 +214,94 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 
 		// Update gatewayResources with modified HTTPRoute
 		gatewayResources.HTTPRoutes[httpRouteKey] = httpRouteContext.HTTPRoute
+	}
+
+	// Split HTTPRoutes that have SSL redirect enabled
+	for httpRouteKey := range routesToSplitForSSLRedirect {
+		httpRouteContext, exists := ir.HTTPRoutes[httpRouteKey]
+		if !exists {
+			continue
+		}
+
+		// Get the Gateway for this HTTPRoute
+		var gatewayCtx *emitterir.GatewayContext
+		if len(httpRouteContext.Spec.ParentRefs) > 0 {
+			parentRef := httpRouteContext.Spec.ParentRefs[0]
+			gatewayNamespace := httpRouteKey.Namespace
+			if parentRef.Namespace != nil {
+				gatewayNamespace = string(*parentRef.Namespace)
+			}
+			gatewayName := string(parentRef.Name)
+			if gatewayName != "" {
+				gatewayKey := types.NamespacedName{
+					Namespace: gatewayNamespace,
+					Name:      gatewayName,
+				}
+				if gw, ok := ir.Gateways[gatewayKey]; ok {
+					gatewayCtx = &gw
+				}
+			}
+		}
+
+		if gatewayCtx == nil {
+			continue
+		}
+
+		// Split the route
+		httpRedirectRoute, httpsBackendRoute, success := splitHTTPRouteForSSLRedirect(
+			httpRouteContext,
+			httpRouteKey,
+			gatewayCtx,
+		)
+		if !success || httpRedirectRoute == nil {
+			continue
+		}
+
+		// Decide which route should receive any HTTPRoute-scoped AgentgatewayPolicies.
+		// Prefer the HTTPS backend route (the route that still has backendRefs).
+		// If no HTTPS route was created (e.g. no HTTPS listener), fall back to the HTTP redirect route.
+		newPolicyRouteName := httpRedirectRoute.Name
+		if httpsBackendRoute != nil {
+			newPolicyRouteName = httpsBackendRoute.Name
+		}
+
+		// Retarget existing HTTPRoute-scoped policies that pointed at the original route.
+		for _, ap := range agentgatewayPolicies {
+			if ap == nil {
+				continue
+			}
+			for i := range ap.Spec.TargetRefs {
+				tr := &ap.Spec.TargetRefs[i]
+				// Only retarget policies attached to this HTTPRoute.
+				if tr.LocalPolicyTargetReference.Group == gatewayv1.Group("gateway.networking.k8s.io") &&
+					tr.LocalPolicyTargetReference.Kind == gatewayv1.Kind("HTTPRoute") &&
+					string(tr.LocalPolicyTargetReference.Name) == httpRouteKey.Name {
+					tr.LocalPolicyTargetReference.Name = gatewayv1.ObjectName(newPolicyRouteName)
+				}
+			}
+		}
+
+		// Remove the original route
+		delete(ir.HTTPRoutes, httpRouteKey)
+		delete(gatewayResources.HTTPRoutes, httpRouteKey)
+
+		// Add the HTTP redirect route
+		httpRedirectKey := types.NamespacedName{
+			Namespace: httpRedirectRoute.Namespace,
+			Name:      httpRedirectRoute.Name,
+		}
+		ir.HTTPRoutes[httpRedirectKey] = *httpRedirectRoute
+		gatewayResources.HTTPRoutes[httpRedirectKey] = httpRedirectRoute.HTTPRoute
+
+		// Add the HTTPS backend route if it was created
+		if httpsBackendRoute != nil {
+			httpsBackendKey := types.NamespacedName{
+				Namespace: httpsBackendRoute.Namespace,
+				Name:      httpsBackendRoute.Name,
+			}
+			ir.HTTPRoutes[httpsBackendKey] = *httpsBackendRoute
+			gatewayResources.HTTPRoutes[httpsBackendKey] = httpsBackendRoute.HTTPRoute
+		}
 	}
 
 	// Collect AgentgatewayPolicies

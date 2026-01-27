@@ -33,9 +33,9 @@ import (
 )
 
 var (
-	e2eSetupComplete bool
-	kubeContext      string
-	DefaultHostHeader   = common.DefaultHostHeader
+	e2eSetupComplete  bool
+	kubeContext       string
+	DefaultHostHeader = common.DefaultHostHeader
 )
 
 func TestMain(m *testing.M) {
