@@ -98,6 +98,7 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 			coverage := uniquePolicyIndices(pol.RuleBackendSources)
 
 			touched := false
+			corsTouched := false
 
 			// Apply rate limit policy features that map to AgentgatewayPolicy.
 			if applyRateLimitPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
@@ -133,7 +134,7 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 
 			// CORS maps to AgentgatewayPolicy.spec.traffic.cors.
 			if applyCorsPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
-				touched = true
+				touched, corsTouched = true, true
 			}
 
 			// ExtAuth maps to AgentgatewayPolicy.spec.traffic.extAuth.
@@ -195,6 +196,10 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 								Name:  gatewayv1.ObjectName(httpRouteKey.Name),
 							},
 						}}
+						// Strip upstream CORS headers when CORS is enabled and policy is attached.
+						if corsTouched {
+							utils.EnsureStripUpstreamCORSHeaders(&httpRouteContext.HTTPRoute)
+						}
 					} else {
 						errs = append(errs, field.Invalid(
 							field.NewPath("emitter", "agentgateway", "AgentgatewayPolicy"),

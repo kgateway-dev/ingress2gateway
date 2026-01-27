@@ -431,6 +431,51 @@ func TestCORS(t *testing.T) {
 		ExpectedStatusCode: 200,
 		Timeout:            1 * time.Minute,
 	})
+
+	// Negative coverage:
+	// - ensure upstream CORS headers are stripped
+	// - ensure only configured allowOrigins are reflected back
+	//
+	// We force the upstream echo backend to emit a permissive ACAO header using
+	// X-Echo-Set-Header (echo server feature) and then assert the gateway behavior.
+	base := testutils.HTTPRequestConfig{
+		Scheme:              "http",
+		Address:             gwAddr,
+		HostHeader:          "cors.localdev.me",
+		Port:                "80",
+		Path:                "/get",
+		ExpectedStatusCodes: []int{200},
+		Timeout:             time.Minute,
+	}
+
+	// No Origin header: should NOT emit ACAO (and should strip upstream ACAO).
+	{
+		cfg := base
+		cfg.Headers = map[string]string{
+			"X-Echo-Set-Header": "Access-Control-Allow-Origin:*",
+		}
+		testutils.RequireResponseHeaderEventually(t, cfg, "Access-Control-Allow-Origin", false, "")
+	}
+
+	// Disallowed Origin: should NOT emit ACAO (and should strip upstream ACAO).
+	{
+		cfg := base
+		cfg.Headers = map[string]string{
+			"Origin":            "https://evil.com",
+			"X-Echo-Set-Header": "Access-Control-Allow-Origin:*",
+		}
+		testutils.RequireResponseHeaderEventually(t, cfg, "Access-Control-Allow-Origin", false, "")
+	}
+
+	// Allowed Origin: should emit ACAO:<origin> (and must NOT leak upstream '*').
+	{
+		cfg := base
+		cfg.Headers = map[string]string{
+			"Origin":            "https://example.com",
+			"X-Echo-Set-Header": "Access-Control-Allow-Origin:*",
+		}
+		testutils.RequireResponseHeaderEventually(t, cfg, "Access-Control-Allow-Origin", true, "https://example.com")
+	}
 }
 
 func TestRewriteTarget(t *testing.T) {

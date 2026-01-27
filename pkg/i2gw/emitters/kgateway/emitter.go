@@ -91,6 +91,9 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 			continue
 		}
 
+		// If any policy projects CORS for this route, strip upstream CORS headers.
+		routeCorsTouched := false
+
 		// One TrafficPolicy per source Ingress name.
 		tp := map[string]*kgateway.TrafficPolicy{}
 
@@ -123,6 +126,7 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 			}
 			if applyCorsPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, tp) {
 				touched = true
+				routeCorsTouched = true
 			}
 			if applyRateLimitPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, tp) {
 				touched = true
@@ -237,7 +241,17 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 			// Coverage logic is shared across all features:
 			// - If this policy covers all route backends, attach via targetRefs.
 			// - Otherwise, attach via ExtensionRef filters on the covered backendRefs.
-			if len(coverage) == numRules(httpRouteContext.HTTPRoute) {
+			total := numRules(httpRouteContext.HTTPRoute)
+			covered := len(coverage)
+
+			// Some ingress-nginx features are recorded at the Ingress scope (not per rule/backend pair).
+			// In that case RuleBackendSources may be empty; treat this as "applies to all backends".
+			// This avoids silently generating a TrafficPolicy that never gets attached.
+			if covered == 0 {
+				covered = total
+			}
+
+			if covered == total {
 				// Full coverage via targetRefs.
 				t.Spec.TargetRefs = []shared.LocalPolicyTargetReferenceWithSectionName{{
 					LocalPolicyTargetReference: shared.LocalPolicyTargetReference{
@@ -263,6 +277,12 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 						)
 				}
 			}
+		}
+
+		// Prevent upstream/backends from leaking permissive CORS headers.
+		// We do this once per route if ANY CORS policy was projected.
+		if routeCorsTouched {
+			utils.EnsureStripUpstreamCORSHeaders(&httpRouteContext.HTTPRoute)
 		}
 
 		// Write back the mutated HTTPRouteContext into the IR.

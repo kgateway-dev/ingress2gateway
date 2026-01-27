@@ -153,6 +153,30 @@ These are mapped into an `AgentgatewayPolicy` using agentgateway’s `Traffic.Co
 - Method values are normalized to upper-case and filtered to valid Gateway API HTTP methods (plus `*`); unknown values are ignored.
 - If `cors-max-age` is unset or non-positive, it is not projected.
 
+##### Upstream CORS header stripping
+
+When CORS is projected, the emitter also adds a Gateway API `ResponseHeaderModifier` filter to the generated `HTTPRoute`
+rules to remove common CORS response headers from the upstream/backend response:
+
+- `Access-Control-Allow-Origin`
+- `Access-Control-Allow-Methods`
+- `Access-Control-Allow-Headers`
+- `Access-Control-Expose-Headers`
+- `Access-Control-Max-Age`
+- `Access-Control-Allow-Credentials`
+
+**Why?**
+
+Some backends unconditionally emit permissive CORS headers (for example `Access-Control-Allow-Origin: *`), which can
+cause disallowed Origins to appear “allowed” even when the gateway policy is configured with a restricted allowlist.
+Stripping these upstream headers ensures that the effective CORS behavior is controlled by the emitted policy.
+
+**Impact:**
+
+If your application intentionally manages CORS by emitting its own CORS headers, enabling CORS on the Ingress and using
+the agentgateway emitter will suppress those upstream headers. Configure the desired CORS behavior via the Ingress NGINX
+CORS annotations so it is enforced by the gateway.
+
 #### Basic Authentication
 
 The agentgateway emitter supports projecting Basic Authentication from the following Ingress NGINX annotations:

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"maps"
 	"net"
+	"net/textproto"
 	"strings"
 	"testing"
 	"time"
@@ -563,6 +564,146 @@ func pathAndCodeFromClient(t *testing.T, hostHeader, scheme, address, port, path
 	code = fmt.Sprintf("%d", cRes.StatusCode)
 	out = fmt.Sprintf("Status: %d, Protocol: %s, EchoPath: %s", cRes.StatusCode, cRes.Protocol, echoPath)
 	return echoPath, code, out, nil
+}
+
+// containsInt checks if a slice of ints contains a specific int.
+func containsInt(haystack []int, needle int) bool {
+	for _, v := range haystack {
+		if v == needle {
+			return true
+		}
+	}
+	return false
+}
+
+// RequireResponseHeaderEventually polls until the response header matches the expectation.
+func RequireResponseHeaderEventually(
+	t *testing.T,
+	cfg HTTPRequestConfig,
+	headerName string,
+	wantPresent bool,
+	wantValue string,
+) {
+	t.Helper()
+
+	if cfg.Scheme == "" {
+		cfg.Scheme = "http"
+	}
+	if cfg.Path == "" {
+		cfg.Path = "/"
+	}
+
+	port := cfg.Port
+	if port == "" {
+		if strings.EqualFold(cfg.Scheme, "https") {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	gwAddr := net.JoinHostPort(cfg.Address, port)
+
+	timeout := cfg.Timeout
+	if timeout == 0 {
+		timeout = time.Minute
+	}
+
+	expectedCodes := cfg.ExpectedStatusCodes
+	if len(expectedCodes) == 0 {
+		code := cfg.ExpectedStatusCode
+		if code == 0 {
+			code = 200
+		}
+		expectedCodes = []int{code}
+	}
+
+	rt := getRoundTripper()
+
+	deadline := time.Now().Add(timeout)
+	var (
+		lastStatus int
+		lastVals   []string
+		lastErr    error
+	)
+
+	for time.Now().Before(deadline) {
+		// Build an expected request similar to MakeHTTPRequestEventually.
+		expected := gwhttp.ExpectedResponse{
+			Request: gwhttp.Request{
+				Host:             cfg.HostHeader,
+				Method:           "GET",
+				Path:             cfg.Path,
+				Headers:          cfg.Headers,
+				UnfollowRedirect: cfg.UnfollowRedirect,
+				SNI:              cfg.SNI,
+			},
+			RedirectRequest: cfg.RedirectRequest,
+		}
+
+		if len(expectedCodes) > 1 {
+			expected.Response.StatusCodes = expectedCodes
+		} else {
+			expected.Response.StatusCode = expectedCodes[0]
+		}
+
+		for k, v := range cfg.Headers {
+			expected.Request.Headers[k] = v
+		}
+
+		// Avoid keep-alives / caches affecting header assertions across retries.
+		expected.Request.Headers["Connection"] = "close"
+		expected.Request.Headers["X-E2E-Nonce"] = fmt.Sprintf("%d", time.Now().UnixNano())
+
+		req := gwhttp.MakeRequest(t, &expected, gwAddr, strings.ToUpper(cfg.Scheme), cfg.Scheme)
+		_, cRes, err := rt.CaptureRoundTrip(req)
+		if err != nil || cRes == nil {
+			lastErr = err
+			time.Sleep(250 * time.Millisecond)
+			continue
+		}
+
+		lastStatus = cRes.StatusCode
+		if !containsInt(expectedCodes, cRes.StatusCode) {
+			time.Sleep(250 * time.Millisecond)
+			continue
+		}
+
+		canon := textproto.CanonicalMIMEHeaderKey(headerName)
+		lastVals = cRes.Headers[canon]
+
+		if wantPresent {
+			if len(lastVals) == 0 {
+				time.Sleep(250 * time.Millisecond)
+				continue
+			}
+			if wantValue != "" {
+				ok := false
+				for _, v := range lastVals {
+					if v == wantValue {
+						ok = true
+						break
+					}
+				}
+				if !ok {
+					time.Sleep(250 * time.Millisecond)
+					continue
+				}
+			}
+			return
+		}
+
+		// want absent
+		if len(lastVals) != 0 {
+			time.Sleep(250 * time.Millisecond)
+			continue
+		}
+		return
+	}
+
+	t.Fatalf(
+		"timed out waiting for response header assertion: header=%q wantPresent=%v wantValue=%q lastStatus=%d lastHeaderVals=%v lastErr=%v",
+		headerName, wantPresent, wantValue, lastStatus, lastVals, lastErr,
+	)
 }
 
 func RequireEchoedPathEventually(
