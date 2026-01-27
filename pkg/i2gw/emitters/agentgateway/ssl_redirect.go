@@ -1,5 +1,5 @@
 /*
-Copyright 2023 The Kubernetes Authors.
+Copyright 2025 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package kgateway
+package agentgateway
 
 import (
 	"fmt"
@@ -27,13 +27,13 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// applySSLRedirectPolicy marks rules that need SSL redirect handling.
+// applySSLRedirectPolicy marks route rules that need SSL redirect handling.
 // The actual route splitting happens later in the emitter.
 //
 // Semantics:
 //   - If SSLRedirect is enabled, mark the HTTPRoute for later splitting
 //   - Returns true if SSL redirect is enabled for this policy
-func applySSLRedirectPolicy(pol providerir.Policy) bool {
+func applySSLRedirectPolicy(pol providerir.IngressNginxPolicy) bool {
 	if pol.SSLRedirect == nil || !*pol.SSLRedirect {
 		return false
 	}
@@ -74,10 +74,9 @@ func splitHTTPRouteForSSLRedirect(
 		}
 	}
 
-	// If HTTPS listener doesn't exist, we can't create the HTTPS route
-	// Still create HTTP redirect route though
+	// If HTTPS listener doesn't exist, we can't create the HTTPS route.
+	// Still create HTTP redirect route though (if HTTP listener exists).
 	if httpsListenerName == nil {
-		// Only create HTTP redirect route if HTTP listener exists
 		if httpListenerName == nil {
 			return nil, nil, false
 		}

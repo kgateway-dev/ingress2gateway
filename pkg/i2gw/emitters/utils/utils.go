@@ -17,8 +17,11 @@ limitations under the License.
 package utils
 
 import (
+	"fmt"
+
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
+
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -121,5 +124,58 @@ func ToGatewayResources(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Er
 	for key, val := range ir.ReferenceGrants {
 		gatewayResources.ReferenceGrants[key] = val.ReferenceGrant
 	}
+
+	// Dedupe TLS certificateRefs within each Gateway listener.
+	dedupeGatewayListenerCertificateRefs(&gatewayResources)
+
 	return gatewayResources, nil
+}
+
+func dedupeGatewayListenerCertificateRefs(gr *i2gw.GatewayResources) {
+	for gwKey, gw := range gr.Gateways {
+		changed := false
+		for i := range gw.Spec.Listeners {
+			l := &gw.Spec.Listeners[i]
+			if l.TLS == nil || len(l.TLS.CertificateRefs) < 2 {
+				continue
+			}
+
+			seen := make(map[string]struct{}, len(l.TLS.CertificateRefs))
+			out := make([]gatewayv1.SecretObjectReference, 0, len(l.TLS.CertificateRefs))
+
+			for _, ref := range l.TLS.CertificateRefs {
+				k := secretObjectRefKey(ref)
+				if _, ok := seen[k]; ok {
+					continue
+				}
+				seen[k] = struct{}{}
+				out = append(out, ref)
+			}
+
+			if len(out) != len(l.TLS.CertificateRefs) {
+				l.TLS.CertificateRefs = out
+				changed = true
+			}
+		}
+		if changed {
+			gr.Gateways[gwKey] = gw
+		}
+	}
+}
+
+func secretObjectRefKey(ref gatewayv1.SecretObjectReference) string {
+	group := ""
+	kind := ""
+	ns := ""
+	if ref.Group != nil {
+		group = string(*ref.Group)
+	}
+	if ref.Kind != nil {
+		kind = string(*ref.Kind)
+	}
+	if ref.Namespace != nil {
+		ns = string(*ref.Namespace)
+	}
+
+	return fmt.Sprintf("%s|%s|%s|%s", group, kind, string(ref.Name), ns)
 }
