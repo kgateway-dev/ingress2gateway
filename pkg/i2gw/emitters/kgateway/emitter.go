@@ -35,6 +35,8 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
+const gatewayClassName = "kgateway"
+
 func init() {
 	i2gw.EmitterConstructorByName["kgateway"] = NewEmitter
 }
@@ -56,7 +58,7 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 	// Set GatewayClassName to "kgateway" for all Gateways
 	for key := range gatewayResources.Gateways {
 		gateway := gatewayResources.Gateways[key]
-		gateway.Spec.GatewayClassName = "kgateway"
+		gateway.Spec.GatewayClassName = gatewayClassName
 		gatewayResources.Gateways[key] = gateway
 	}
 
