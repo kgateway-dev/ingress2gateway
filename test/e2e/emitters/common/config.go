@@ -33,4 +33,6 @@ var (
 	KindClusterName = testutils.EnvOrDefault("KIND_CLUSTER_NAME", DefaultClusterName)
 	KeepCluster     = testutils.EnvOrDefault("KEEP_KIND_CLUSTER", "true") == "true"
 	KubeContext     = "kind-" + KindClusterName
+	// The host header to use for test requests. Must match in testdata input files.
+	DefaultHostHeader = "demo.localdev.me"
 )

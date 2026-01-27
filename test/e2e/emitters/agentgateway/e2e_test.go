@@ -31,6 +31,7 @@ import (
 var (
 	e2eSetupComplete bool
 	kubeContext      = common.KubeContext
+	defaultHostHeader   = common.DefaultHostHeader
 )
 
 func TestMain(m *testing.M) {
@@ -127,7 +128,7 @@ func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 		}
 	}
 	if hostHeader == "" {
-		hostHeader = "demo.localdev.me"
+		hostHeader = defaultHostHeader
 	}
 
 	// Verify expected output file exists for comparison.
@@ -181,10 +182,12 @@ func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 		t.Fatalf("gateway address: %v", err)
 	}
 
-	// Prefer HTTPRoute or TLSRoute hostnames if present.
+	// Prefer HTTPRoute or TLSRoute hostnames only when the input didn't specify any hosts.
 	host := hostHeader
-	if hr := testutils.FirstRouteHost(outObjs); hr != "" {
-		host = hr
+	if hostHeader == defaultHostHeader {
+		if hr := testutils.FirstRouteHost(outObjs); hr != "" {
+			host = hr
+		}
 	}
 
 	return ctx, gwAddr, host, hostHeader, ingressIP
