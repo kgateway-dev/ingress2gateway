@@ -207,6 +207,32 @@ func TestAgentgatewayIngressNginxIntegration_RateLimit(t *testing.T) {
 	}
 }
 
+func TestAgentgatewayIngressNginxIntegration_LoadBalance(t *testing.T) {
+	t.Helper()
+
+	tests := []struct {
+		name      string
+		inputRel  string
+		goldenRel string
+	}{
+		{
+			name: "load_balance",
+			inputRel: filepath.Join(
+				"pkg", "i2gw", "emitters", "agentgateway", "testing", "testdata", "input", "load_balance.yaml",
+			),
+			goldenRel: filepath.Join(
+				"pkg", "i2gw", "emitters", "agentgateway", "testing", "testdata", "output", "load_balance.yaml",
+			),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runGoldenTest(t, tt.inputRel, tt.goldenRel)
+		})
+	}
+}
+
 func TestAgentgatewayIngressNginxIntegration_BasicAuth(t *testing.T) {
 	t.Helper()
 
