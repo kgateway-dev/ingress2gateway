@@ -14,12 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package emitterir
+package providerir
 
 import (
 	"testing"
 
-	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -31,10 +31,10 @@ func TestToEmitterIRConvertsIngressNginxPolicy(t *testing.T) {
 	routeKey := types.NamespacedName{Namespace: "default", Name: "route"}
 	backendKey := types.NamespacedName{Namespace: "default", Name: "backend-a"}
 	useRegex := true
-	backendProtocol := providerir.BackendProtocolGRPC
+	backendProtocol := BackendProtocolGRPC
 
-	sourceIR := providerir.ProviderIR{
-		HTTPRoutes: map[types.NamespacedName]providerir.HTTPRouteContext{
+	sourceIR := ProviderIR{
+		HTTPRoutes: map[types.NamespacedName]HTTPRouteContext{
 			routeKey: {
 				HTTPRoute: gatewayv1.HTTPRoute{
 					ObjectMeta: metav1.ObjectMeta{Namespace: routeKey.Namespace, Name: routeKey.Name},
@@ -50,24 +50,24 @@ func TestToEmitterIRConvertsIngressNginxPolicy(t *testing.T) {
 						}},
 					},
 				},
-				ProviderSpecificIR: providerir.ProviderSpecificHTTPRouteIR{
-					IngressNginx: &providerir.IngressNginxHTTPRouteIR{
-						Policies: map[string]providerir.Policy{
+				ProviderSpecificIR: ProviderSpecificHTTPRouteIR{
+					IngressNginx: &IngressNginxHTTPRouteIR{
+						Policies: map[string]Policy{
 							"ing-a": {
-								Cors: &providerir.CorsPolicy{
+								Cors: &CorsPolicy{
 									Enable:      true,
 									AllowOrigin: []string{"https://example.com"},
 								},
-								RateLimit: &providerir.RateLimitPolicy{
+								RateLimit: &RateLimitPolicy{
 									Limit:           10,
-									Unit:            providerir.RateLimitUnitRPM,
+									Unit:            RateLimitUnitRPM,
 									BurstMultiplier: 3,
 								},
 								UseRegexPaths: &useRegex,
-								RuleBackendSources: []providerir.PolicyIndex{
+								RuleBackendSources: []PolicyIndex{
 									{Rule: 0, Backend: 0},
 								},
-								Backends: map[types.NamespacedName]providerir.Backend{
+								Backends: map[types.NamespacedName]Backend{
 									backendKey: {
 										Namespace: backendKey.Namespace,
 										Name:      backendKey.Name,
@@ -82,7 +82,7 @@ func TestToEmitterIRConvertsIngressNginxPolicy(t *testing.T) {
 						RegexForcedByUseRegex: true,
 					},
 				},
-				RuleBackendSources: [][]providerir.BackendSource{
+				RuleBackendSources: [][]BackendSource{
 					{{
 						Ingress: &networkingv1.Ingress{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "ing-a"}},
 					}},
@@ -107,8 +107,8 @@ func TestToEmitterIRConvertsIngressNginxPolicy(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected policy for ingress ing-a")
 	}
-	if pol.RateLimit == nil || pol.RateLimit.Unit != RateLimitUnitRPM {
-		t.Fatalf("expected rate limit unit %q, got %#v", RateLimitUnitRPM, pol.RateLimit)
+	if pol.RateLimit == nil || pol.RateLimit.Unit != emitterir.RateLimitUnitRPM {
+		t.Fatalf("expected rate limit unit %q, got %#v", emitterir.RateLimitUnitRPM, pol.RateLimit)
 	}
 	if pol.UseRegexPaths == nil || !*pol.UseRegexPaths {
 		t.Fatalf("expected UseRegexPaths=true")
@@ -120,8 +120,8 @@ func TestToEmitterIRConvertsIngressNginxPolicy(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected backend %v", backendKey)
 	}
-	if backend.Protocol == nil || *backend.Protocol != BackendProtocolGRPC {
-		t.Fatalf("expected backend protocol %q, got %#v", BackendProtocolGRPC, backend.Protocol)
+	if backend.Protocol == nil || *backend.Protocol != emitterir.BackendProtocolGRPC {
+		t.Fatalf("expected backend protocol %q, got %#v", emitterir.BackendProtocolGRPC, backend.Protocol)
 	}
 
 	// Ensure slice/map fields are copied, not shared.
@@ -133,7 +133,7 @@ func TestToEmitterIRConvertsIngressNginxPolicy(t *testing.T) {
 	}
 
 	// Ensure converted policies retain dedupe behavior for later emitter updates.
-	updated := pol.AddRuleBackendSources([]PolicyIndex{{Rule: 0, Backend: 0}, {Rule: 1, Backend: 0}})
+	updated := pol.AddRuleBackendSources([]emitterir.PolicyIndex{{Rule: 0, Backend: 0}, {Rule: 1, Backend: 0}})
 	if len(updated.RuleBackendSources) != 2 {
 		t.Fatalf("expected deduped rule/backend sources length 2, got %d", len(updated.RuleBackendSources))
 	}
