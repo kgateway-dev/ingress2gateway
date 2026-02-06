@@ -36,21 +36,18 @@ import (
 //   - Exact "/foo"       -> "^/foo$"
 //   - Existing RegularExpression matches are preserved.
 func applyRegexPathMatchingForHost(
-	ingx *emitterir.IngressNginxHTTPRouteIR,
 	httpRouteCtx *emitterir.HTTPRouteContext,
 ) bool {
-	if ingx == nil || ingx.RegexLocationForHost == nil || !*ingx.RegexLocationForHost {
+	if httpRouteCtx.RegexLocationForHost == nil || !*httpRouteCtx.RegexLocationForHost {
 		return false
 	}
 
 	// Rules contributed by an ingress with use-regex=true should NOT be escaped.
 	userRegexRule := map[int]bool{}
-	if ingx.Policies != nil {
-		for _, pol := range ingx.Policies {
-			if pol.UseRegexPaths != nil && *pol.UseRegexPaths {
-				for _, idx := range pol.RuleBackendSources {
-					userRegexRule[idx.Rule] = true
-				}
+	for _, pol := range httpRouteCtx.PoliciesBySourceIngressName {
+		if pol.UseRegexPaths != nil && *pol.UseRegexPaths {
+			for _, idx := range pol.RuleBackendSources {
+				userRegexRule[idx.Rule] = true
 			}
 		}
 	}

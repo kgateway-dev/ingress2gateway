@@ -35,227 +35,35 @@ func ToEmitterIR(pIR ProviderIR) emitterir.EmitterIR {
 		ReferenceGrants:    make(map[types.NamespacedName]emitterir.ReferenceGrantContext),
 	}
 
-	for key, gatewayCtx := range pIR.Gateways {
-		eIR.Gateways[key] = emitterir.GatewayContext{Gateway: gatewayCtx.Gateway}
+	for k, v := range pIR.Gateways {
+		eIR.Gateways[k] = emitterir.GatewayContext{Gateway: v.Gateway}
 	}
-	for key, httpRouteCtx := range pIR.HTTPRoutes {
-		eIR.HTTPRoutes[key] = emitterir.HTTPRouteContext{
-			HTTPRoute:          httpRouteCtx.HTTPRoute,
-			IngressNginx:       convertIngressNginxHTTPRouteIR(httpRouteCtx.ProviderSpecificIR.IngressNginx),
-			RuleBackendSources: convertBackendSources(httpRouteCtx.RuleBackendSources),
-		}
+	for k, v := range pIR.HTTPRoutes {
+		httpRouteContext := emitterir.HTTPRouteContext{HTTPRoute: v.HTTPRoute}
+		applyProviderSpecificHTTPRouteIR(&httpRouteContext, v)
+		eIR.HTTPRoutes[k] = httpRouteContext
 	}
-	for key, gatewayClassCtx := range pIR.GatewayClasses {
-		eIR.GatewayClasses[key] = emitterir.GatewayClassContext{GatewayClass: gatewayClassCtx}
+	for k, v := range pIR.GatewayClasses {
+		eIR.GatewayClasses[k] = emitterir.GatewayClassContext{GatewayClass: v}
 	}
-	for key, tlsRouteCtx := range pIR.TLSRoutes {
-		eIR.TLSRoutes[key] = emitterir.TLSRouteContext{TLSRoute: tlsRouteCtx}
+	for k, v := range pIR.TLSRoutes {
+		eIR.TLSRoutes[k] = emitterir.TLSRouteContext{TLSRoute: v}
 	}
-	for key, tcpRouteCtx := range pIR.TCPRoutes {
-		eIR.TCPRoutes[key] = emitterir.TCPRouteContext{TCPRoute: tcpRouteCtx}
+	for k, v := range pIR.TCPRoutes {
+		eIR.TCPRoutes[k] = emitterir.TCPRouteContext{TCPRoute: v}
 	}
-	for key, udpRouteCtx := range pIR.UDPRoutes {
-		eIR.UDPRoutes[key] = emitterir.UDPRouteContext{UDPRoute: udpRouteCtx}
+	for k, v := range pIR.UDPRoutes {
+		eIR.UDPRoutes[k] = emitterir.UDPRouteContext{UDPRoute: v}
 	}
-	for key, grpcRouteCtx := range pIR.GRPCRoutes {
-		eIR.GRPCRoutes[key] = emitterir.GRPCRouteContext{GRPCRoute: grpcRouteCtx}
+	for k, v := range pIR.GRPCRoutes {
+		eIR.GRPCRoutes[k] = emitterir.GRPCRouteContext{GRPCRoute: v}
 	}
-	for key, backendTLSPolicyCtx := range pIR.BackendTLSPolicies {
-		eIR.BackendTLSPolicies[key] = emitterir.BackendTLSPolicyContext{BackendTLSPolicy: backendTLSPolicyCtx}
+	for k, v := range pIR.BackendTLSPolicies {
+		eIR.BackendTLSPolicies[k] = emitterir.BackendTLSPolicyContext{BackendTLSPolicy: v}
 	}
-	for key, referenceGrantCtx := range pIR.ReferenceGrants {
-		eIR.ReferenceGrants[key] = emitterir.ReferenceGrantContext{ReferenceGrant: referenceGrantCtx}
+	for k, v := range pIR.ReferenceGrants {
+		eIR.ReferenceGrants[k] = emitterir.ReferenceGrantContext{ReferenceGrant: v}
 	}
 
 	return eIR
-}
-
-func convertBackendSources(in [][]BackendSource) [][]emitterir.BackendSource {
-	if in == nil {
-		return nil
-	}
-	out := make([][]emitterir.BackendSource, len(in))
-	for i, ruleSources := range in {
-		out[i] = make([]emitterir.BackendSource, len(ruleSources))
-		for j, src := range ruleSources {
-			out[i][j] = emitterir.BackendSource{
-				Ingress:        src.Ingress,
-				Path:           src.Path,
-				DefaultBackend: src.DefaultBackend,
-			}
-		}
-	}
-	return out
-}
-
-func convertIngressNginxHTTPRouteIR(in *IngressNginxHTTPRouteIR) *emitterir.IngressNginxHTTPRouteIR {
-	if in == nil {
-		return nil
-	}
-
-	out := &emitterir.IngressNginxHTTPRouteIR{
-		RegexLocationForHost:  in.RegexLocationForHost,
-		RegexForcedByUseRegex: in.RegexForcedByUseRegex,
-		RegexForcedByRewrite:  in.RegexForcedByRewrite,
-	}
-	if in.Policies != nil {
-		out.Policies = make(map[string]emitterir.IngressNginxPolicy, len(in.Policies))
-		for ingressName, policy := range in.Policies {
-			out.Policies[ingressName] = convertIngressNginxPolicy(policy)
-		}
-	}
-
-	return out
-}
-
-func convertIngressNginxPolicy(in IngressNginxPolicy) emitterir.IngressNginxPolicy {
-	return emitterir.IngressNginxPolicy{
-		ClientBodyBufferSize: in.ClientBodyBufferSize,
-		ProxyBodySize:        in.ProxyBodySize,
-		Cors:                 convertIngressNginxCorsPolicy(in.Cors),
-		RateLimit:            convertIngressNginxRateLimitPolicy(in.RateLimit),
-		ProxySendTimeout:     in.ProxySendTimeout,
-		ProxyReadTimeout:     in.ProxyReadTimeout,
-		ProxyConnectTimeout:  in.ProxyConnectTimeout,
-		EnableAccessLog:      in.EnableAccessLog,
-		ExtAuth:              convertIngressNginxExtAuthPolicy(in.ExtAuth),
-		BasicAuth:            convertIngressNginxBasicAuthPolicy(in.BasicAuth),
-		SessionAffinity:      convertIngressNginxSessionAffinityPolicy(in.SessionAffinity),
-		LoadBalancing:        convertIngressNginxBackendLoadBalancingPolicy(in.LoadBalancing),
-		BackendTLS:           convertIngressNginxBackendTLSPolicy(in.BackendTLS),
-		BackendProtocol:      convertIngressNginxBackendProtocol(in.BackendProtocol),
-		SSLRedirect:          in.SSLRedirect,
-		RewriteTarget:        in.RewriteTarget,
-		UseRegexPaths:        in.UseRegexPaths,
-		RuleBackendSources:   convertIngressNginxPolicyIndices(in.RuleBackendSources),
-		Backends:             convertIngressNginxBackends(in.Backends),
-	}
-}
-
-func convertIngressNginxPolicyIndices(in []IngressNginxPolicyIndex) []emitterir.IngressNginxPolicyIndex {
-	if in == nil {
-		return nil
-	}
-	out := make([]emitterir.IngressNginxPolicyIndex, len(in))
-	for i := range in {
-		out[i] = emitterir.IngressNginxPolicyIndex{
-			Rule:    in[i].Rule,
-			Backend: in[i].Backend,
-		}
-	}
-	return out
-}
-
-func convertIngressNginxCorsPolicy(in *IngressNginxCorsPolicy) *emitterir.IngressNginxCorsPolicy {
-	if in == nil {
-		return nil
-	}
-	return &emitterir.IngressNginxCorsPolicy{
-		Enable:           in.Enable,
-		AllowOrigin:      cloneStringSlice(in.AllowOrigin),
-		AllowCredentials: in.AllowCredentials,
-		AllowHeaders:     cloneStringSlice(in.AllowHeaders),
-		ExposeHeaders:    cloneStringSlice(in.ExposeHeaders),
-		AllowMethods:     cloneStringSlice(in.AllowMethods),
-		MaxAge:           in.MaxAge,
-	}
-}
-
-func convertIngressNginxExtAuthPolicy(in *IngressNginxExtAuthPolicy) *emitterir.IngressNginxExtAuthPolicy {
-	if in == nil {
-		return nil
-	}
-	return &emitterir.IngressNginxExtAuthPolicy{
-		AuthURL:         in.AuthURL,
-		ResponseHeaders: cloneStringSlice(in.ResponseHeaders),
-	}
-}
-
-func convertIngressNginxBasicAuthPolicy(in *IngressNginxBasicAuthPolicy) *emitterir.IngressNginxBasicAuthPolicy {
-	if in == nil {
-		return nil
-	}
-	return &emitterir.IngressNginxBasicAuthPolicy{
-		SecretName: in.SecretName,
-		AuthType:   in.AuthType,
-	}
-}
-
-func convertIngressNginxSessionAffinityPolicy(in *IngressNginxSessionAffinityPolicy) *emitterir.IngressNginxSessionAffinityPolicy {
-	if in == nil {
-		return nil
-	}
-	return &emitterir.IngressNginxSessionAffinityPolicy{
-		CookieName:     in.CookieName,
-		CookiePath:     in.CookiePath,
-		CookieDomain:   in.CookieDomain,
-		CookieSameSite: in.CookieSameSite,
-		CookieExpires:  in.CookieExpires,
-		CookieSecure:   in.CookieSecure,
-	}
-}
-
-func convertIngressNginxBackendTLSPolicy(in *IngressNginxBackendTLSPolicy) *emitterir.IngressNginxBackendTLSPolicy {
-	if in == nil {
-		return nil
-	}
-	return &emitterir.IngressNginxBackendTLSPolicy{
-		SecretName: in.SecretName,
-		Verify:     in.Verify,
-		Hostname:   in.Hostname,
-	}
-}
-
-func convertIngressNginxBackendLoadBalancingPolicy(in *IngressNginxBackendLoadBalancingPolicy) *emitterir.IngressNginxBackendLoadBalancingPolicy {
-	if in == nil {
-		return nil
-	}
-	return &emitterir.IngressNginxBackendLoadBalancingPolicy{
-		Strategy: emitterir.IngressNginxLoadBalancingStrategy(in.Strategy),
-	}
-}
-
-func convertIngressNginxRateLimitPolicy(in *IngressNginxRateLimitPolicy) *emitterir.IngressNginxRateLimitPolicy {
-	if in == nil {
-		return nil
-	}
-	return &emitterir.IngressNginxRateLimitPolicy{
-		Limit:           in.Limit,
-		Unit:            emitterir.IngressNginxRateLimitUnit(in.Unit),
-		BurstMultiplier: in.BurstMultiplier,
-	}
-}
-
-func convertIngressNginxBackendProtocol(in *IngressNginxBackendProtocol) *emitterir.IngressNginxBackendProtocol {
-	if in == nil {
-		return nil
-	}
-	value := emitterir.IngressNginxBackendProtocol(*in)
-	return &value
-}
-
-func convertIngressNginxBackends(in map[types.NamespacedName]IngressNginxBackend) map[types.NamespacedName]emitterir.IngressNginxBackend {
-	if in == nil {
-		return nil
-	}
-	out := make(map[types.NamespacedName]emitterir.IngressNginxBackend, len(in))
-	for key, backend := range in {
-		out[key] = emitterir.IngressNginxBackend{
-			Namespace: backend.Namespace,
-			Name:      backend.Name,
-			Port:      backend.Port,
-			Host:      backend.Host,
-			Protocol:  convertIngressNginxBackendProtocol(backend.Protocol),
-		}
-	}
-	return out
-}
-
-func cloneStringSlice(in []string) []string {
-	if in == nil {
-		return nil
-	}
-	out := make([]string, len(in))
-	copy(out, in)
-	return out
 }

@@ -84,9 +84,12 @@ func splitHTTPRouteForSSLRedirect(
 
 	// Create HTTP redirect route
 	httpRedirectRoute := emitterir.HTTPRouteContext{
-		HTTPRoute:          *httpRouteContext.HTTPRoute.DeepCopy(),
-		IngressNginx:       httpRouteContext.IngressNginx,
-		RuleBackendSources: httpRouteContext.RuleBackendSources,
+		HTTPRoute:                   *httpRouteContext.HTTPRoute.DeepCopy(),
+		PoliciesBySourceIngressName: httpRouteContext.PoliciesBySourceIngressName,
+		RegexLocationForHost:        httpRouteContext.RegexLocationForHost,
+		RegexForcedByUseRegex:       httpRouteContext.RegexForcedByUseRegex,
+		RegexForcedByRewrite:        httpRouteContext.RegexForcedByRewrite,
+		RuleBackendSources:          httpRouteContext.RuleBackendSources,
 	}
 	httpRedirectRoute.ObjectMeta.Name = fmt.Sprintf("%s-http-redirect", httpRouteKey.Name)
 	httpRedirectRoute.ObjectMeta.Namespace = httpRouteKey.Namespace
@@ -126,9 +129,12 @@ func splitHTTPRouteForSSLRedirect(
 	var httpsBackendRoute *emitterir.HTTPRouteContext
 	if httpsListenerName != nil {
 		route := emitterir.HTTPRouteContext{
-			HTTPRoute:          *httpRouteContext.HTTPRoute.DeepCopy(),
-			IngressNginx:       httpRouteContext.IngressNginx,
-			RuleBackendSources: httpRouteContext.RuleBackendSources,
+			HTTPRoute:                   *httpRouteContext.HTTPRoute.DeepCopy(),
+			PoliciesBySourceIngressName: httpRouteContext.PoliciesBySourceIngressName,
+			RegexLocationForHost:        httpRouteContext.RegexLocationForHost,
+			RegexForcedByUseRegex:       httpRouteContext.RegexForcedByUseRegex,
+			RegexForcedByRewrite:        httpRouteContext.RegexForcedByRewrite,
+			RuleBackendSources:          httpRouteContext.RuleBackendSources,
 		}
 		route.ObjectMeta.Name = fmt.Sprintf("%s-https", httpRouteKey.Name)
 		route.ObjectMeta.Namespace = httpRouteKey.Namespace

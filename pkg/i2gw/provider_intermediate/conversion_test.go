@@ -96,14 +96,11 @@ func TestToEmitterIRConvertsIngressNginxPolicy(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected converted HTTPRoute %v", routeKey)
 	}
-	if routeCtx.IngressNginx == nil {
-		t.Fatalf("expected ingress-nginx IR to be converted")
-	}
-	if routeCtx.IngressNginx.RegexLocationForHost == nil || !*routeCtx.IngressNginx.RegexLocationForHost {
-		t.Fatalf("expected RegexLocationForHost=true, got %#v", routeCtx.IngressNginx.RegexLocationForHost)
+	if routeCtx.RegexLocationForHost == nil || !*routeCtx.RegexLocationForHost {
+		t.Fatalf("expected RegexLocationForHost=true, got %#v", routeCtx.RegexLocationForHost)
 	}
 
-	pol, ok := routeCtx.IngressNginx.Policies["ing-a"]
+	pol, ok := routeCtx.PoliciesBySourceIngressName["ing-a"]
 	if !ok {
 		t.Fatalf("expected policy for ingress ing-a")
 	}

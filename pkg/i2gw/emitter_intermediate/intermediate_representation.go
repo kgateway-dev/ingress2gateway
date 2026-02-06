@@ -56,9 +56,20 @@ type GatewayContext struct {
 
 type HTTPRouteContext struct {
 	gatewayv1.HTTPRoute
-	// IngressNginx contains ingress-nginx-specific IR data for kgateway emitter
-	IngressNginx *IngressNginxHTTPRouteIR
-	// RuleBackendSources tracks the source Ingress resources for each backend
+
+	// PoliciesBySourceIngressName stores feature policy data keyed by source Ingress name.
+	PoliciesBySourceIngressName map[string]Policy
+
+	// RegexLocationForHost is true when regex location matching should be used for the route host.
+	RegexLocationForHost *bool
+
+	// RegexForcedByUseRegex is true when RegexLocationForHost is driven by use-regex annotation.
+	RegexForcedByUseRegex bool
+
+	// RegexForcedByRewrite is true when RegexLocationForHost is driven by rewrite-target annotation.
+	RegexForcedByRewrite bool
+
+	// RuleBackendSources tracks the source Ingress resources for each backend.
 	RuleBackendSources [][]BackendSource
 }
 
@@ -104,38 +115,14 @@ type ReferenceGrantContext struct {
 	gatewayv1beta1.ReferenceGrant
 }
 
-// IngressNginxGatewayIR is the emitter-side ingress-nginx gateway IR.
-type IngressNginxGatewayIR struct{}
-
-// IngressNginxServiceIR is the emitter-side ingress-nginx service IR.
-type IngressNginxServiceIR struct{}
-
-// IngressNginxHTTPRouteIR contains ingress-nginx-specific fields for HTTPRoute.
-type IngressNginxHTTPRouteIR struct {
-	// Policies keyed by source Ingress name.
-	Policies map[string]IngressNginxPolicy
-
-	// RegexLocationForHost is true when ingress-nginx would enforce the "~*" (case-insensitive)
-	// regex location modifier for all paths under a host.
-	RegexLocationForHost *bool
-
-	// RegexForcedByUseRegex is true when RegexLocationForHost is true specifically
-	// because of the nginx.ingress.kubernetes.io/use-regex annotation.
-	RegexForcedByUseRegex bool
-
-	// RegexForcedByRewrite is true when RegexLocationForHost is true specifically
-	// because of the nginx.ingress.kubernetes.io/rewrite-target annotation.
-	RegexForcedByRewrite bool
-}
-
-// IngressNginxPolicyIndex identifies a (rule, backend) pair within a merged HTTPRoute.
-type IngressNginxPolicyIndex struct {
+// PolicyIndex identifies a (rule, backend) pair within a merged HTTPRoute.
+type PolicyIndex struct {
 	Rule    int
 	Backend int
 }
 
-// IngressNginxCorsPolicy defines a CORS policy extracted from ingress-nginx annotations.
-type IngressNginxCorsPolicy struct {
+// CorsPolicy defines a CORS policy extracted from annotations.
+type CorsPolicy struct {
 	Enable           bool
 	AllowOrigin      []string
 	AllowCredentials *bool
@@ -145,20 +132,20 @@ type IngressNginxCorsPolicy struct {
 	MaxAge           *int32
 }
 
-// IngressNginxExtAuthPolicy defines an external auth policy extracted from ingress-nginx annotations.
-type IngressNginxExtAuthPolicy struct {
+// ExtAuthPolicy defines an external auth policy extracted from annotations.
+type ExtAuthPolicy struct {
 	AuthURL         string
 	ResponseHeaders []string
 }
 
-// IngressNginxBasicAuthPolicy defines a basic auth policy extracted from ingress-nginx annotations.
-type IngressNginxBasicAuthPolicy struct {
+// BasicAuthPolicy defines a basic auth policy extracted from annotations.
+type BasicAuthPolicy struct {
 	SecretName string
 	AuthType   string
 }
 
-// IngressNginxSessionAffinityPolicy defines a session affinity policy extracted from ingress-nginx annotations.
-type IngressNginxSessionAffinityPolicy struct {
+// SessionAffinityPolicy defines a session affinity policy extracted from annotations.
+type SessionAffinityPolicy struct {
 	CookieName     string
 	CookiePath     string
 	CookieDomain   string
@@ -167,99 +154,99 @@ type IngressNginxSessionAffinityPolicy struct {
 	CookieSecure   *bool
 }
 
-// IngressNginxBackendTLSPolicy defines a backend TLS policy extracted from ingress-nginx annotations.
-type IngressNginxBackendTLSPolicy struct {
+// BackendTLSPolicy defines a backend TLS policy extracted from annotations.
+type BackendTLSPolicy struct {
 	SecretName string
 	Verify     bool
 	Hostname   string
 }
 
-// IngressNginxPolicy describes per-Ingress policy knobs projected from ingress-nginx.
-type IngressNginxPolicy struct {
+// Policy describes per-Ingress policy knobs projected by providers.
+type Policy struct {
 	ClientBodyBufferSize *resource.Quantity
 	ProxyBodySize        *resource.Quantity
-	Cors                 *IngressNginxCorsPolicy
-	RateLimit            *IngressNginxRateLimitPolicy
+	Cors                 *CorsPolicy
+	RateLimit            *RateLimitPolicy
 	ProxySendTimeout     *metav1.Duration
 	ProxyReadTimeout     *metav1.Duration
 	ProxyConnectTimeout  *metav1.Duration
 	EnableAccessLog      *bool
-	ExtAuth              *IngressNginxExtAuthPolicy
-	BasicAuth            *IngressNginxBasicAuthPolicy
-	SessionAffinity      *IngressNginxSessionAffinityPolicy
-	LoadBalancing        *IngressNginxBackendLoadBalancingPolicy
-	BackendTLS           *IngressNginxBackendTLSPolicy
-	BackendProtocol      *IngressNginxBackendProtocol
+	ExtAuth              *ExtAuthPolicy
+	BasicAuth            *BasicAuthPolicy
+	SessionAffinity      *SessionAffinityPolicy
+	LoadBalancing        *BackendLoadBalancingPolicy
+	BackendTLS           *BackendTLSPolicy
+	BackendProtocol      *BackendProtocol
 	SSLRedirect          *bool
 	RewriteTarget        *string
 	UseRegexPaths        *bool
 
 	// RuleBackendSources lists covered (rule, backend) pairs in the merged HTTPRoute.
-	RuleBackendSources []IngressNginxPolicyIndex
+	RuleBackendSources []PolicyIndex
 
 	// Backends holds all proxied backends that cannot be rendered as a standard k8s service.
-	Backends map[types.NamespacedName]IngressNginxBackend
+	Backends map[types.NamespacedName]Backend
 
 	// ruleBackendIndexSet is an internal helper used to deduplicate RuleBackendSources entries.
-	ruleBackendIndexSet map[IngressNginxPolicyIndex]struct{}
+	ruleBackendIndexSet map[PolicyIndex]struct{}
 }
 
-// IngressNginxBackendProtocol defines the L7 protocol used to talk to a Backend.
-type IngressNginxBackendProtocol string
+// BackendProtocol defines the L7 protocol used to talk to a Backend.
+type BackendProtocol string
 
-// IngressNginxBackendProtocolGRPC is the gRPC protocol.
-const IngressNginxBackendProtocolGRPC IngressNginxBackendProtocol = "grpc"
+// BackendProtocolGRPC is the gRPC protocol.
+const BackendProtocolGRPC BackendProtocol = "grpc"
 
-// IngressNginxBackend defines a proxied backend that cannot be rendered as a standard k8s Service.
-type IngressNginxBackend struct {
+// Backend defines a proxied backend that cannot be rendered as a standard k8s Service.
+type Backend struct {
 	Namespace string
 	Name      string
 	Port      int32
 	Host      string
-	Protocol  *IngressNginxBackendProtocol
+	Protocol  *BackendProtocol
 }
 
-// IngressNginxRateLimitUnit defines the unit of rate limiting.
-type IngressNginxRateLimitUnit string
+// RateLimitUnit defines the unit of rate limiting.
+type RateLimitUnit string
 
 const (
-	// IngressNginxRateLimitUnitRPS defines rate limit in requests per second.
-	IngressNginxRateLimitUnitRPS IngressNginxRateLimitUnit = "rps"
-	// IngressNginxRateLimitUnitRPM defines rate limit in requests per minute.
-	IngressNginxRateLimitUnitRPM IngressNginxRateLimitUnit = "rpm"
+	// RateLimitUnitRPS defines rate limit in requests per second.
+	RateLimitUnitRPS RateLimitUnit = "rps"
+	// RateLimitUnitRPM defines rate limit in requests per minute.
+	RateLimitUnitRPM RateLimitUnit = "rpm"
 )
 
-// IngressNginxRateLimitPolicy defines a rate limiting policy derived from ingress-nginx annotations.
-type IngressNginxRateLimitPolicy struct {
+// RateLimitPolicy defines a rate limiting policy derived from annotations.
+type RateLimitPolicy struct {
 	Limit           int32
-	Unit            IngressNginxRateLimitUnit
+	Unit            RateLimitUnit
 	BurstMultiplier int32
 }
 
-// IngressNginxLoadBalancingStrategy represents upstream load-balancing mode.
-type IngressNginxLoadBalancingStrategy string
+// LoadBalancingStrategy represents upstream load-balancing mode.
+type LoadBalancingStrategy string
 
-// IngressNginxLoadBalancingStrategyRoundRobin is the supported round_robin strategy.
-const IngressNginxLoadBalancingStrategyRoundRobin IngressNginxLoadBalancingStrategy = "round_robin"
+// LoadBalancingStrategyRoundRobin is the supported round_robin strategy.
+const LoadBalancingStrategyRoundRobin LoadBalancingStrategy = "round_robin"
 
-// IngressNginxBackendLoadBalancingPolicy defines backend load-balancing policy.
-type IngressNginxBackendLoadBalancingPolicy struct {
-	Strategy IngressNginxLoadBalancingStrategy
+// BackendLoadBalancingPolicy defines backend load-balancing policy.
+type BackendLoadBalancingPolicy struct {
+	Strategy LoadBalancingStrategy
 }
 
 // AddRuleBackendSources returns a copy of p with idxs added to RuleBackendSources,
 // ensuring each (rule, backend) pair is unique.
-func (p IngressNginxPolicy) AddRuleBackendSources(idxs []IngressNginxPolicyIndex) IngressNginxPolicy {
+func (p Policy) AddRuleBackendSources(idxs []PolicyIndex) Policy {
 	pCopy := p
 
 	if len(pCopy.RuleBackendSources) > 0 && pCopy.ruleBackendIndexSet == nil {
-		pCopy.ruleBackendIndexSet = make(map[IngressNginxPolicyIndex]struct{}, len(pCopy.RuleBackendSources))
+		pCopy.ruleBackendIndexSet = make(map[PolicyIndex]struct{}, len(pCopy.RuleBackendSources))
 		for _, existing := range pCopy.RuleBackendSources {
 			pCopy.ruleBackendIndexSet[existing] = struct{}{}
 		}
 	}
 	if pCopy.ruleBackendIndexSet == nil {
-		pCopy.ruleBackendIndexSet = make(map[IngressNginxPolicyIndex]struct{})
+		pCopy.ruleBackendIndexSet = make(map[PolicyIndex]struct{})
 	}
 
 	for _, idx := range idxs {
@@ -273,38 +260,38 @@ func (p IngressNginxPolicy) AddRuleBackendSources(idxs []IngressNginxPolicyIndex
 	return pCopy
 }
 
-// Type aliases for emitter code ergonomics.
+// Backward-compatibility aliases for older ingress-nginx-prefixed names.
 
-type Policy = IngressNginxPolicy
+type IngressNginxPolicy = Policy
 
-type PolicyIndex = IngressNginxPolicyIndex
+type IngressNginxPolicyIndex = PolicyIndex
 
-type CorsPolicy = IngressNginxCorsPolicy
+type IngressNginxCorsPolicy = CorsPolicy
 
-type ExtAuthPolicy = IngressNginxExtAuthPolicy
+type IngressNginxExtAuthPolicy = ExtAuthPolicy
 
-type BasicAuthPolicy = IngressNginxBasicAuthPolicy
+type IngressNginxBasicAuthPolicy = BasicAuthPolicy
 
-type SessionAffinityPolicy = IngressNginxSessionAffinityPolicy
+type IngressNginxSessionAffinityPolicy = SessionAffinityPolicy
 
-type BackendTLSPolicy = IngressNginxBackendTLSPolicy
+type IngressNginxBackendTLSPolicy = BackendTLSPolicy
 
-type BackendProtocol = IngressNginxBackendProtocol
+type IngressNginxBackendProtocol = BackendProtocol
 
-const BackendProtocolGRPC = IngressNginxBackendProtocolGRPC
+const IngressNginxBackendProtocolGRPC = BackendProtocolGRPC
 
-type Backend = IngressNginxBackend
+type IngressNginxBackend = Backend
 
-type RateLimitUnit = IngressNginxRateLimitUnit
+type IngressNginxRateLimitUnit = RateLimitUnit
 
-const RateLimitUnitRPS = IngressNginxRateLimitUnitRPS
+const IngressNginxRateLimitUnitRPS = RateLimitUnitRPS
 
-const RateLimitUnitRPM = IngressNginxRateLimitUnitRPM
+const IngressNginxRateLimitUnitRPM = RateLimitUnitRPM
 
-type RateLimitPolicy = IngressNginxRateLimitPolicy
+type IngressNginxRateLimitPolicy = RateLimitPolicy
 
-type LoadBalancingStrategy = IngressNginxLoadBalancingStrategy
+type IngressNginxLoadBalancingStrategy = LoadBalancingStrategy
 
-const LoadBalancingStrategyRoundRobin = IngressNginxLoadBalancingStrategyRoundRobin
+const IngressNginxLoadBalancingStrategyRoundRobin = LoadBalancingStrategyRoundRobin
 
-type BackendLoadBalancingPolicy = IngressNginxBackendLoadBalancingPolicy
+type IngressNginxBackendLoadBalancingPolicy = BackendLoadBalancingPolicy
