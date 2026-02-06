@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
-	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 
 	agentgatewayv1alpha1 "github.com/kgateway-dev/kgateway/v2/api/v1alpha1/agentgateway"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
@@ -42,11 +41,11 @@ import (
 // Notes:
 //   - The ingress-nginx IR provides a single SecretName; we map this to mtlsCertificateRef when Verify=true.
 //   - Agentgateway backend TLS uses:
-//     - mtlsCertificateRef: Secret containing tls.crt/tls.key (and optional ca.cert)
-//     - caCertificateRefs: ConfigMap refs (not used here)
-//     - insecureSkipVerify: enum (All|Hostname)
+//   - mtlsCertificateRef: Secret containing tls.crt/tls.key (and optional ca.cert)
+//   - caCertificateRefs: ConfigMap refs (not used here)
+//   - insecureSkipVerify: enum (All|Hostname)
 func applyBackendTLSPolicy(
-	pol providerir.Policy,
+	pol emitterir.Policy,
 	httpRouteKey types.NamespacedName,
 	httpRouteCtx emitterir.HTTPRouteContext,
 	backendTLSPolicies map[types.NamespacedName]*agentgatewayv1alpha1.AgentgatewayPolicy,

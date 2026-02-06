@@ -20,7 +20,6 @@ import (
 	"fmt"
 
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
-	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
@@ -33,7 +32,7 @@ import (
 // Semantics:
 //   - If SSLRedirect is enabled, mark the HTTPRoute for later splitting
 //   - Returns true if SSL redirect is enabled for this policy
-func applySSLRedirectPolicy(pol providerir.Policy) bool {
+func applySSLRedirectPolicy(pol emitterir.Policy) bool {
 	if pol.SSLRedirect == nil || !*pol.SSLRedirect {
 		return false
 	}

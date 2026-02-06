@@ -18,7 +18,6 @@ package agentgateway
 
 import (
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
-	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 
 	agentgatewayv1alpha1 "github.com/kgateway-dev/kgateway/v2/api/v1alpha1/agentgateway"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
@@ -35,7 +34,7 @@ import (
 // NGINX has separate proxy-send-timeout and proxy-read-timeout knobs; we conservatively
 // choose the larger of the two when both are set.
 func applyRequestTimeoutPolicy(
-	pol providerir.Policy,
+	pol emitterir.Policy,
 	ingressName, namespace string,
 	ap map[string]*agentgatewayv1alpha1.AgentgatewayPolicy,
 ) bool {
@@ -64,7 +63,7 @@ func applyRequestTimeoutPolicy(
 
 // effectiveRequestTimeout returns the request timeout that applyRequestTimeoutPolicy
 // would set, without creating/modifying objects.
-func effectiveRequestTimeout(pol providerir.Policy) *metav1.Duration {
+func effectiveRequestTimeout(pol emitterir.Policy) *metav1.Duration {
 	if pol.ProxyReadTimeout == nil && pol.ProxySendTimeout == nil {
 		return nil
 	}
@@ -85,7 +84,7 @@ func effectiveRequestTimeout(pol providerir.Policy) *metav1.Duration {
 //     we skip projecting connectTimeout because the request timeout will fire first.
 //   - Across contributors for the same Service, "lowest connect timeout wins".
 func applyProxyConnectTimeoutPolicy(
-	pol providerir.Policy,
+	pol emitterir.Policy,
 	ingressName string,
 	httpRouteKey types.NamespacedName,
 	httpRouteCtx emitterir.HTTPRouteContext,
