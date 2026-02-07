@@ -75,8 +75,7 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 	basicAuthSecretSeen := map[basicAuthSecretKey]struct{}{}
 
 	for httpRouteKey, httpRouteContext := range ir.HTTPRoutes {
-		ingx := httpRouteContext.IngressNginx
-		if ingx == nil {
+		if len(httpRouteContext.PoliciesBySourceIngressName) == 0 {
 			continue
 		}
 
@@ -84,14 +83,14 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 		// TODO: implement regex path matching if needed
 
 		// deterministic policy iteration
-		policyNames := make([]string, 0, len(ingx.Policies))
-		for name := range ingx.Policies {
+		policyNames := make([]string, 0, len(httpRouteContext.PoliciesBySourceIngressName))
+		for name := range httpRouteContext.PoliciesBySourceIngressName {
 			policyNames = append(policyNames, name)
 		}
 		sort.Strings(policyNames)
 
 		for _, polSourceIngressName := range policyNames {
-			pol := ingx.Policies[polSourceIngressName]
+			pol := httpRouteContext.PoliciesBySourceIngressName[polSourceIngressName]
 
 			// Normalize (rule, backend) coverage to unique pairs to avoid
 			// generating duplicate filters on the same backendRef.

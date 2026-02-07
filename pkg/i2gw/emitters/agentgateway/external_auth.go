@@ -22,7 +22,7 @@ import (
 	"net/url"
 	"strings"
 
-	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	agentgatewayv1alpha1 "github.com/kgateway-dev/kgateway/v2/api/v1alpha1/agentgateway"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
 
@@ -43,7 +43,7 @@ import (
 //   - External auth URLs (non-.svc) are skipped by this mapping.
 //   - This mapping assumes HTTP-mode external auth (Ingress NGINX auth-url semantics).
 func applyExtAuthPolicy(
-	pol providerir.Policy,
+	pol emitterir.Policy,
 	ingressName, namespace string,
 	ap map[string]*agentgatewayv1alpha1.AgentgatewayPolicy,
 ) bool {

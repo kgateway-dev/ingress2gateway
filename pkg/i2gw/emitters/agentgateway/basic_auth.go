@@ -19,8 +19,8 @@ package agentgateway
 import (
 	"fmt"
 
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
-	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 
 	agentgatewayv1alpha1 "github.com/kgateway-dev/kgateway/v2/api/v1alpha1/agentgateway"
 	corev1 "k8s.io/api/core/v1"
@@ -44,7 +44,7 @@ type basicAuthSecretKey struct {
 //     content (per the BasicAuthentication API docs). The emitter cannot validate or
 //     rewrite Secret contents at generation time.
 func applyBasicAuthPolicy(
-	pol providerir.Policy,
+	pol emitterir.Policy,
 	ingressName, namespace string,
 	ap map[string]*agentgatewayv1alpha1.AgentgatewayPolicy,
 ) bool {
@@ -70,7 +70,7 @@ func applyBasicAuthPolicy(
 // emitBasicAuthSecretNotifications emits an INFO notification whenever the agentgateway emitter
 // projects BasicAuth into an AgentgatewayPolicy to warn users about theSecret key expectations.
 func emitBasicAuthSecretNotifications(
-	pol providerir.Policy,
+	pol emitterir.Policy,
 	sourceIngressName string,
 	routeNamespace string,
 	seen map[basicAuthSecretKey]struct{},

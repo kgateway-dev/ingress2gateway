@@ -17,7 +17,7 @@ limitations under the License.
 package agentgateway
 
 import (
-	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	agentgatewayv1alpha1 "github.com/kgateway-dev/kgateway/v2/api/v1alpha1/agentgateway"
 )
 
@@ -27,7 +27,7 @@ import (
 // Agentgateway uses LocalRateLimit with Requests/Tokens and Unit (Seconds/Minutes/Hours),
 // which is simpler than kgateway's TokenBucket approach.
 func applyRateLimitPolicy(
-	pol providerir.Policy,
+	pol emitterir.Policy,
 	ingressName, namespace string,
 	ap map[string]*agentgatewayv1alpha1.AgentgatewayPolicy,
 ) bool {
@@ -52,11 +52,11 @@ func applyRateLimitPolicy(
 	)
 
 	switch rl.Unit {
-	case providerir.RateLimitUnitRPS:
+	case emitterir.RateLimitUnitRPS:
 		// Requests per second.
 		requests = &rl.Limit
 		unit = agentgatewayv1alpha1.LocalRateLimitUnitSeconds
-	case providerir.RateLimitUnitRPM:
+	case emitterir.RateLimitUnitRPM:
 		// Requests per minute.
 		requests = &rl.Limit
 		unit = agentgatewayv1alpha1.LocalRateLimitUnitMinutes
