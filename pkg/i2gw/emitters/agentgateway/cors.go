@@ -19,7 +19,7 @@ package agentgateway
 import (
 	"strings"
 
-	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 
 	agentgatewayv1alpha1 "github.com/kgateway-dev/kgateway/v2/api/v1alpha1/agentgateway"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -32,7 +32,7 @@ import (
 //
 //	AgentgatewayPolicy.spec.traffic.cors (which inlines a Gateway API HTTPCORSFilter)
 func applyCorsPolicy(
-	pol providerir.Policy,
+	pol emitterir.Policy,
 	ingressName, namespace string,
 	ap map[string]*agentgatewayv1alpha1.AgentgatewayPolicy,
 ) bool {

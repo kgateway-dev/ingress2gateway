@@ -86,8 +86,7 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 	routesToSplitForSSLRedirect := map[types.NamespacedName]bool{}
 
 	for httpRouteKey, httpRouteContext := range ir.HTTPRoutes {
-		ingx := httpRouteContext.IngressNginx
-		if ingx == nil {
+		if len(httpRouteContext.PoliciesBySourceIngressName) == 0 {
 			continue
 		}
 
@@ -98,22 +97,23 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 		tp := map[string]*kgateway.TrafficPolicy{}
 
 		// Apply host-wide regex enforcement first (so rule path regex is finalized)
-		applyRegexPathMatchingForHost(ingx, &httpRouteContext)
+		applyRegexPathMatchingForHost(&httpRouteContext)
 
 		// deterministic policy iteration
-		policyNames := make([]string, 0, len(ingx.Policies))
-		for name := range ingx.Policies {
+		policyNames := make([]string, 0, len(httpRouteContext.PoliciesBySourceIngressName))
+		for name := range httpRouteContext.PoliciesBySourceIngressName {
 			policyNames = append(policyNames, name)
 		}
 		sort.Strings(policyNames)
 
 		// Rewrite-target pass: creates per-rule TPs and attaches filters itself.
 		for _, name := range policyNames {
-			pol := ingx.Policies[name]
+			pol := httpRouteContext.PoliciesBySourceIngressName[name]
 			applyRewriteTargetPolicies(pol, name, httpRouteKey.Namespace, &httpRouteContext, tp)
 		}
 
-		for polSourceIngressName, pol := range ingx.Policies {
+		for _, polSourceIngressName := range policyNames {
+			pol := httpRouteContext.PoliciesBySourceIngressName[polSourceIngressName]
 			// Normalize (rule, backend) coverage to unique pairs to avoid
 			// generating duplicate filters on the same backendRef.
 			coverage := uniquePolicyIndices(pol.RuleBackendSources)

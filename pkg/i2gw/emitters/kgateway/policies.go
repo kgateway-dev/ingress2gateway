@@ -19,7 +19,7 @@ package kgateway
 import (
 	"time"
 
-	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
@@ -40,7 +40,7 @@ import (
 // which matches NGINX's proxy-body-size more directly. client-body-buffer-size is
 // treated as a fallback when proxy-body-size is not configured.
 func applyBufferPolicy(
-	pol providerir.Policy,
+	pol emitterir.Policy,
 	ingressName, namespace string,
 	tp map[string]*kgateway.TrafficPolicy,
 ) bool {
@@ -67,7 +67,7 @@ func applyBufferPolicy(
 // applyRateLimitPolicy projects the rate limit policy IR into a Kgateway TrafficPolicy.
 // returning true if it modified/created a TrafficPolicy for this ingress.
 func applyRateLimitPolicy(
-	pol providerir.Policy,
+	pol emitterir.Policy,
 	ingressName, namespace string,
 	tp map[string]*kgateway.TrafficPolicy,
 ) bool {
@@ -93,12 +93,12 @@ func applyRateLimitPolicy(
 	)
 
 	switch rl.Unit {
-	case providerir.RateLimitUnitRPS:
+	case emitterir.RateLimitUnitRPS:
 		// Requests per second.
 		tokensPerFill = rl.Limit
 		maxTokens = rl.Limit * burstMult
 		fillInterval = metav1.Duration{Duration: time.Second}
-	case providerir.RateLimitUnitRPM:
+	case emitterir.RateLimitUnitRPM:
 		// Requests per minute.
 		tokensPerFill = rl.Limit
 		maxTokens = rl.Limit * burstMult
@@ -136,7 +136,7 @@ func applyRateLimitPolicy(
 //   - If ProxySendTimeout is set, it is mapped to the Request timeout in Kgateway.
 //   - If ProxyReadTimeout is set, it is mapped to the StreamIdle timeout in Kgateway.
 func applyTimeoutPolicy(
-	pol providerir.Policy,
+	pol emitterir.Policy,
 	ingressName, namespace string,
 	tp map[string]*kgateway.TrafficPolicy,
 ) bool {
