@@ -15,7 +15,7 @@ The typical development workflow for adding an Ingress NGINX feature to the Kgat
    current supported features before adding more.
 2. If any of the above features cannot map to an existing Kgateway API, create a Kgateway issue, label it with `kind/ingress-nginx`,
    `help wanted`, `priority/high`, etc. and describe what's needed.
-3. Extend the ingress-nginx emitter IR (`pkg/i2gw/emitter_intermediate/ingressnginx.go`) as needed. Most changes should fall within the Policy IR.
+3. Extend the ingress-nginx emitter IR (`pkg/i2gw/emitter_intermediate/intermediate_representation.go`) as needed. Most changes should fall within the Policy IR.
 4. Add a feature-specific function to the ingress-nginx provider (`pkg/i2gw/providers/ingressnginx`), e.g. `proxyReadTimeoutFeature()`
    that parses the Ingress NGINX annotation from source Ingresses and records them as ingress-nginx policy IR that is converted into emitter IR.
 5. Update the Kgateway Emitter (`pkg/i2gw/emitters/kgateway/emitter.go`) to consume the IR and return Kgateway-specific resources.

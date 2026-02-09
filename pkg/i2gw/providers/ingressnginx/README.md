@@ -10,7 +10,7 @@ To specify the name of the Ingress class to select, use `--ingress-nginx-ingress
 ## IR Model
 
 Ingress annotations are parsed into structured ingress-nginx policy fields on provider HTTPRoute contexts.
-Those fields are then converted into emitter IR types defined in `pkg/i2gw/emitter_intermediate/ingressnginx.go`,
+Those fields are then converted into emitter IR types defined in `pkg/i2gw/emitter_intermediate/intermediate_representation.go`,
 which are consumed by implementation emitters such as `kgateway` and `agentgateway`.
 
 ## Supported Annotations
