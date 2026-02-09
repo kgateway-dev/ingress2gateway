@@ -27,7 +27,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-const clientBodyBufferSizeAnnotation = "nginx.ingress.kubernetes.io/client-body-buffer-size"
+const (
+	clientBodyBufferSizeAnnotation = "nginx.ingress.kubernetes.io/client-body-buffer-size"
+	proxyBufferingAnnotation       = "nginx.ingress.kubernetes.io/proxy-buffering"
+)
 
 // bufferPolicyFeature parses the "nginx.ingress.kubernetes.io/client-body-buffer-size" annotation
 // from Ingresses and records them as generic Policies in the ingress-nginx provider-specific IR.
@@ -45,6 +48,13 @@ func bufferPolicyFeature(
 		ing := &ingresses[i]
 		val := ing.Annotations[clientBodyBufferSizeAnnotation]
 		if val == "" {
+			continue
+		}
+
+		// Skip buffer size annotations when proxy-buffering is disabled or unset.
+		// Buffering is disabled by default in NGINX ingress controller.
+		bufferingEnabled := ing.Annotations[proxyBufferingAnnotation]
+		if bufferingEnabled != "on" {
 			continue
 		}
 

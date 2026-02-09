@@ -46,6 +46,13 @@ func proxyBodySizeFeature(
 			continue
 		}
 
+		// Skip proxy-body-size annotation when proxy-buffering is disabled or unset.
+		// Buffering is disabled by default in NGINX ingress controller.
+		bufferingEnabled := ing.Annotations[proxyBufferingAnnotation]
+		if bufferingEnabled != "on" {
+			continue
+		}
+
 		q, err := resource.ParseQuantity(raw)
 		if err != nil {
 			errs = append(errs, field.Invalid(
