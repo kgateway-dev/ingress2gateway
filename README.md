@@ -13,6 +13,7 @@ an issue and describe your use case.
 
 ## Supported emitters
 
+* [agentgateway](pkg/i2gw/emitters/agentgateway/README.md)
 * [kgateway](pkg/i2gw/emitters/kgateway/README.md)
 
 If your emitter, or a specific feature, is not currently supported, please open

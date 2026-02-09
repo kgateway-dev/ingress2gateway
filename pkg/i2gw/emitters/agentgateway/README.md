@@ -24,7 +24,7 @@ The typical development workflow for adding an Ingress NGINX feature to the Agen
    the business provides requirements. When this list is complete, refer to [this doc](https://docs.google.com/document/d/12ejNTb45hASGYvUjd3t9mfNwuMTX3KBM68ALM4jRFBY/edit?usp=sharing) for additional features. **Note:** Several of the features from the above list have already been implemented, so review the
    current supported features before adding more.
 2. If a feature cannot map to an existing agentgateway API, open an Agentgateway issue describing what’s needed.
-3. Extend the ingress-nginx emitter IR/generic Policy IR (`pkg/i2gw/emitter_intermediate/ingressnginx.go`) as needed so features are represented in a structured way.
+3. Extend the ingress-nginx emitter IR/generic Policy IR (`pkg/i2gw/emitter_intermediate/intermediate_representation.go`) as needed so features are represented in a structured way.
 4. Add a feature-specific function to the ingress-nginx provider (`pkg/i2gw/providers/ingressnginx`), e.g.
    `rateLimitFeature()`, that parses the Ingress NGINX annotation(s) and records them as ingress-nginx policy IR
    that is converted into emitter IR.
