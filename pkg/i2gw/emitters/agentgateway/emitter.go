@@ -109,6 +109,11 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 				touched = true
 			}
 
+			// frontend HTTP settings map to AgentgatewayPolicy.spec.frontend.http.
+			if applyFrontendHTTPPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
+				touched = true
+			}
+
 			// Check if SSL redirect is enabled but don't apply it yet (will split route later).
 			if applySSLRedirectPolicy(pol) {
 				routesToSplitForSSLRedirect[httpRouteKey] = true

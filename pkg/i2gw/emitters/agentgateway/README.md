@@ -269,6 +269,34 @@ These are mapped into an `AgentgatewayPolicy` using agentgateway’s `Traffic.Ti
   `spec.traffic.timeouts.request` to avoid unexpectedly truncating requests.
 - Invalid/unsupported duration values are ignored by the provider and will not be projected.
 
+#### Frontend HTTP Settings
+
+The agentgateway emitter supports projecting frontend HTTP listener settings from the following ingress-nginx annotations:
+
+- `nginx.ingress.kubernetes.io/http1-max-headers`
+- `nginx.ingress.kubernetes.io/http1-idle-timeout`
+- `nginx.ingress.kubernetes.io/http2-window-size`
+- `nginx.ingress.kubernetes.io/http2-connection-window-size`
+- `nginx.ingress.kubernetes.io/http2-frame-size`
+- `nginx.ingress.kubernetes.io/http2-keepalive-interval`
+- `nginx.ingress.kubernetes.io/http2-keepalive-timeout`
+
+These are mapped into `AgentgatewayPolicy.spec.frontend.http`:
+
+- `http1-max-headers` -> `frontend.http.http1MaxHeaders`
+- `http1-idle-timeout` -> `frontend.http.http1IdleTimeout`
+- `http2-window-size` -> `frontend.http.http2WindowSize`
+- `http2-connection-window-size` -> `frontend.http.http2ConnectionWindowSize`
+- `http2-frame-size` -> `frontend.http.http2FrameSize`
+- `http2-keepalive-interval` -> `frontend.http.http2KeepaliveInterval`
+- `http2-keepalive-timeout` -> `frontend.http.http2KeepaliveTimeout`
+
+Notes:
+
+- Integer values must be positive.
+- Duration values accept Go duration format or unitless seconds and must be at least `1s`.
+- The policy is attached at the HTTPRoute scope (same full-coverage requirement as other traffic/frontend policies).
+
 #### Local Rate Limiting
 
 The agentgateway emitter currently supports projecting local rate limiting via:

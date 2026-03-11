@@ -166,6 +166,25 @@ The ingress-nginx provider currently supports translating the following annotati
 
 ---
 
+### Frontend HTTP Settings
+
+- `nginx.ingress.kubernetes.io/http1-max-headers`: Maximum number of HTTP/1 request headers.
+- `nginx.ingress.kubernetes.io/http1-idle-timeout`: Idle timeout for HTTP/1 connections.
+- `nginx.ingress.kubernetes.io/http2-window-size`: Initial stream-level flow control window for HTTP/2.
+- `nginx.ingress.kubernetes.io/http2-connection-window-size`: Initial connection-level flow control window for HTTP/2.
+- `nginx.ingress.kubernetes.io/http2-frame-size`: Maximum HTTP/2 frame size.
+- `nginx.ingress.kubernetes.io/http2-keepalive-interval`: Interval between HTTP/2 keepalive pings.
+- `nginx.ingress.kubernetes.io/http2-keepalive-timeout`: Timeout for HTTP/2 keepalive responses.
+
+Behavior:
+
+- Positive integer values are required for `*-max-headers`, `*-window-size`, and `*-frame-size` fields.
+- Duration values accept Go duration format (`5s`, `1m`) or unitless seconds (for example `30`).
+- Duration values must be at least `1s`.
+- These settings are recorded as policy metadata and can be consumed by implementation-specific emitters (for example agentgateway projection to `AgentgatewayPolicy.spec.frontend.http`).
+
+---
+
 ### Session Affinity
 
 - `nginx.ingress.kubernetes.io/affinity`: Enables and sets the affinity type in all Upstreams of an Ingress. The only affinity type available for NGINX is "cookie". For the Kgateway implementation, this maps to `BackendConfigPolicy.spec.loadBalancer.ringHash.hashPolicies` with cookie-based hash policy.
