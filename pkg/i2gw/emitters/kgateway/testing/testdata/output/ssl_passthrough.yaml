@@ -14,7 +14,6 @@ spec:
       protocol: TLS
       tls:
         mode: Passthrough
-status: {}
 ---
 apiVersion: gateway.networking.k8s.io/v1alpha2
 kind: TLSRoute

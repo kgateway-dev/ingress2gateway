@@ -18,9 +18,7 @@ spec:
       protocol: HTTPS
       tls:
         certificateRefs:
-          - group: null
-            kind: null
-            name: force-redirect-tls
+          - name: force-redirect-tls
     - hostname: redirect.example
       name: redirect-example-http
       port: 80
@@ -31,10 +29,7 @@ spec:
       protocol: HTTPS
       tls:
         certificateRefs:
-          - group: null
-            kind: null
-            name: redirect-tls
-status: {}
+          - name: redirect-tls
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
