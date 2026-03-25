@@ -20,15 +20,30 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os/exec"
+	"strings"
 
-	"github.com/kgateway-dev/ingress2gateway/test/e2e/emitters/common"
 	testutils "github.com/kgateway-dev/ingress2gateway/test/e2e/utils"
 )
 
-func installAgentgateway(ctx context.Context, kubeContext string) {
-	modVer, err := common.KgatewayVersionFromGoMod(ctx)
+func agentgatewayVersionFromGoMod(ctx context.Context) (string, error) {
+	out, err := exec.CommandContext(ctx, "go", "list", "-m", "-f", "{{.Version}}", "github.com/agentgateway/agentgateway").CombinedOutput()
 	if err != nil {
-		panic(fmt.Errorf("read kgateway module version from go.mod: %w", err))
+		return "", fmt.Errorf("read github.com/agentgateway/agentgateway module version: %w: %s", err, string(out))
+	}
+
+	modVer := strings.TrimSpace(string(out))
+	if modVer == "" {
+		return "", fmt.Errorf("github.com/agentgateway/agentgateway module version is empty")
+	}
+
+	return modVer, nil
+}
+
+func installAgentgateway(ctx context.Context, kubeContext string) {
+	modVer, err := agentgatewayVersionFromGoMod(ctx)
+	if err != nil {
+		panic(fmt.Errorf("read agentgateway module version from go.mod: %w", err))
 	}
 	chartVer := testutils.EnvOrDefault("AGENTGATEWAY_VERSION", modVer)
 	ns := "agentgateway-system"
@@ -38,20 +53,17 @@ func installAgentgateway(ctx context.Context, kubeContext string) {
 	testutils.MustRun(ctx, "helm",
 		"--kube-context", kubeContext,
 		"upgrade", "-i", "agentgateway-crds",
-		"oci://ghcr.io/kgateway-dev/charts/agentgateway-crds",
+		"oci://cr.agentgateway.dev/charts/agentgateway-crds",
 		"--create-namespace", "--namespace", ns,
 		"--version", chartVer,
-		"--set", "controller.image.pullPolicy=Always",
 	)
 
 	testutils.MustRun(ctx, "helm",
 		"--kube-context", kubeContext,
 		"upgrade", "-i", "agentgateway",
-		"oci://ghcr.io/kgateway-dev/charts/agentgateway",
+		"oci://cr.agentgateway.dev/charts/agentgateway",
 		"--namespace", ns,
 		"--version", chartVer,
-		"--set", "controller.image.pullPolicy=Always",
-		"--set", "controller.extraEnv.KGW_ENABLE_GATEWAY_API_EXPERIMENTAL_FEATURES=true",
 	)
 
 	testutils.MustKubectl(ctx, kubeContext, "-n", ns, "rollout", "status", "deploy/agentgateway", "--timeout=3m")
