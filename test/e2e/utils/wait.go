@@ -432,13 +432,15 @@ func MakeHTTPRequestEventually(t *testing.T, kubeContext string, cfg HTTPRequest
 	timeoutConfig.MaxTimeToConsistency = cfg.Timeout
 	timeoutConfig.RequiredConsecutiveSuccesses = 1
 
-	// Use TLS utilities if certificates are provided
+	// The conformance TLS helper expects the backend/server certificate first.
+	// For passthrough tests we verify the backend cert presented through the gateway;
+	// the server private key is not needed client-side.
 	if len(cfg.CertPem) > 0 && len(cfg.KeyPem) > 0 {
 		sni := cfg.SNI
 		if sni == "" {
 			sni = cfg.HostHeader
 		}
-		gwtls.MakeTLSRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, cfg.CertPem, cfg.KeyPem, []byte{}, sni, expected)
+		gwtls.MakeTLSRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, cfg.CertPem, nil, nil, sni, expected)
 	} else {
 		gwhttp.MakeRequestAndExpectEventuallyConsistentResponse(t, rt, timeoutConfig, gwAddr, expected)
 	}
