@@ -164,10 +164,3 @@ func parseBackendProtocol(raw string) (*emitterir.BackendProtocol, bool) {
 		return nil, false
 	}
 }
-
-func serviceUpstreamEnabled(ing *networkingv1.Ingress) bool {
-	if ing == nil {
-		return false
-	}
-	return strings.EqualFold(strings.TrimSpace(ing.Annotations["nginx.ingress.kubernetes.io/service-upstream"]), "true")
-}

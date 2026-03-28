@@ -2,8 +2,8 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
-    nginx.ingress.kubernetes.io/client-body-buffer-size: "1Mi"
-    nginx.ingress.kubernetes.io/proxy-body-size: "2Mi"
+    nginx.ingress.kubernetes.io/client-body-buffer-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-body-size: "2m"
   name: ingress-buffer-body-size
   namespace: default
 spec:

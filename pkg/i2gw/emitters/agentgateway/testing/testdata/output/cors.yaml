@@ -40,12 +40,31 @@ spec:
       name: ingress-myserviceb-myserviceb-foo-org
   traffic:
     cors:
+      allowCredentials: true
+      allowHeaders:
+        - DNT
+        - Keep-Alive
+        - User-Agent
+        - X-Requested-With
+        - If-Modified-Since
+        - Cache-Control
+        - Content-Type
+        - Range
+        - Authorization
+      allowMethods:
+        - GET
+        - PUT
+        - POST
+        - DELETE
+        - PATCH
+        - OPTIONS
       allowOrigins:
         - https://example.com
         - https://another.com
       exposeHeaders:
         - '*'
         - X-CustomResponseHeader
+      maxAge: 1728000
 status:
   ancestors: null
 ---
@@ -85,6 +104,23 @@ spec:
         - name: myservicea
           port: 80
       filters:
+        - cors:
+            allowCredentials: false
+            allowHeaders:
+              - X-Requested-With
+              - Content-Type
+            allowMethods:
+              - GET
+              - POST
+              - OPTIONS
+            allowOrigins:
+              - https://example.com
+              - https://another.com
+            exposeHeaders:
+              - X-Expose-One
+              - X-Expose-Two
+            maxAge: 600
+          type: CORS
         - responseHeaderModifier:
             remove:
               - Access-Control-Allow-Origin
@@ -98,6 +134,7 @@ spec:
         - path:
             type: PathPrefix
             value: /
+      name: rule-0
 status:
   parents: []
 ---
@@ -118,6 +155,33 @@ spec:
         - name: myserviceb
           port: 80
       filters:
+        - cors:
+            allowCredentials: true
+            allowHeaders:
+              - DNT
+              - Keep-Alive
+              - User-Agent
+              - X-Requested-With
+              - If-Modified-Since
+              - Cache-Control
+              - Content-Type
+              - Range
+              - Authorization
+            allowMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+              - PATCH
+              - OPTIONS
+            allowOrigins:
+              - https://example.com
+              - https://another.com
+            exposeHeaders:
+              - '*'
+              - X-CustomResponseHeader
+            maxAge: 1728000
+          type: CORS
         - responseHeaderModifier:
             remove:
               - Access-Control-Allow-Origin
@@ -131,5 +195,6 @@ spec:
         - path:
             type: PathPrefix
             value: /
+      name: rule-0
 status:
   parents: []

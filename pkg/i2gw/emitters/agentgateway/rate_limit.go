@@ -17,6 +17,8 @@ limitations under the License.
 package agentgateway
 
 import (
+	"strings"
+
 	agentgatewayv1alpha1 "github.com/agentgateway/agentgateway/controller/api/v1alpha1/agentgateway"
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 )
@@ -98,4 +100,105 @@ func applyRateLimitPolicy(
 	agp.Spec.Traffic.RateLimit.Local = append(agp.Spec.Traffic.RateLimit.Local, localRateLimit)
 
 	return true
+}
+
+func effectivePoliciesWithPerRuleFeatures(httpRouteCtx emitterir.HTTPRouteContext) map[string]emitterir.Policy {
+	effectivePolicies := make(map[string]emitterir.Policy, len(httpRouteCtx.PoliciesBySourceIngressName))
+	for ingressName, policy := range httpRouteCtx.PoliciesBySourceIngressName {
+		effectivePolicies[ingressName] = policy
+	}
+
+	for ruleIdx, rateLimit := range httpRouteCtx.RateLimitByRuleIdx {
+		if rateLimit == nil || rateLimit.Limit <= 0 {
+			continue
+		}
+		ingressName, ok := ingressNameFromFeatureSource(rateLimit.Metadata.Source())
+		if !ok {
+			continue
+		}
+
+		policy := effectivePolicies[ingressName]
+		policy.RateLimit = rateLimit
+		policy, ok = addRuleCoverage(policy, httpRouteCtx, ruleIdx)
+		if !ok {
+			continue
+		}
+		effectivePolicies[ingressName] = policy
+	}
+
+	for ruleIdx, accessLog := range httpRouteCtx.EnableAccessLogByRuleIdx {
+		if accessLog == nil {
+			continue
+		}
+		ingressName, ok := ingressNameFromFeatureSource(accessLog.Metadata.Source())
+		if !ok {
+			continue
+		}
+
+		policy := effectivePolicies[ingressName]
+		enabled := accessLog.Enabled
+		policy.EnableAccessLog = &enabled
+		policy, ok = addRuleCoverage(policy, httpRouteCtx, ruleIdx)
+		if !ok {
+			continue
+		}
+		effectivePolicies[ingressName] = policy
+	}
+
+	for ruleIdx, bodySize := range httpRouteCtx.BodySizeByRuleIdx {
+		if bodySize == nil || (bodySize.MaxSize == nil && bodySize.BufferSize == nil) {
+			continue
+		}
+
+		ingressName, ok := ingressNameFromFeatureSource(bodySize.Metadata.Source())
+		if !ok {
+			continue
+		}
+
+		policy := effectivePolicies[ingressName]
+		policy.ProxyBodySize = bodySize.MaxSize
+		policy.ClientBodyBufferSize = bodySize.BufferSize
+		policy, ok = addRuleCoverage(policy, httpRouteCtx, ruleIdx)
+		if !ok {
+			continue
+		}
+		effectivePolicies[ingressName] = policy
+	}
+
+	if len(effectivePolicies) == 0 {
+		return nil
+	}
+	return effectivePolicies
+}
+
+func addRuleCoverage(policy emitterir.Policy, httpRouteCtx emitterir.HTTPRouteContext, ruleIdx int) (emitterir.Policy, bool) {
+	if ruleIdx == routeRuleAllIndex {
+		for idx, rule := range httpRouteCtx.Spec.Rules {
+			for backendIdx := range rule.BackendRefs {
+				policy = policy.AddRuleBackendSources([]emitterir.PolicyIndex{{
+					Rule:    idx,
+					Backend: backendIdx,
+				}})
+			}
+		}
+		return policy, true
+	}
+	if ruleIdx < 0 || ruleIdx >= len(httpRouteCtx.Spec.Rules) {
+		return policy, false
+	}
+	for backendIdx := range httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs {
+		policy = policy.AddRuleBackendSources([]emitterir.PolicyIndex{{
+			Rule:    ruleIdx,
+			Backend: backendIdx,
+		}})
+	}
+	return policy, true
+}
+
+func ingressNameFromFeatureSource(source string) (string, bool) {
+	_, ingressName, ok := strings.Cut(source, "/")
+	if !ok || ingressName == "" {
+		return "", false
+	}
+	return ingressName, true
 }

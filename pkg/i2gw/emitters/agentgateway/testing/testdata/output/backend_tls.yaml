@@ -34,6 +34,27 @@ status:
   ancestors: null
 ---
 apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: httpbin2-backend-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: httpbin2
+  validation:
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: base-certificate-tls
+    hostname: tls.example.com
+status:
+  ancestors: null
+---
+apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   annotations:
@@ -72,6 +93,7 @@ spec:
         - path:
             type: PathPrefix
             value: /
+      name: rule-0
 status:
   parents: []
 ---
@@ -95,5 +117,6 @@ spec:
         - path:
             type: PathPrefix
             value: /
+      name: rule-0
 status:
   parents: []

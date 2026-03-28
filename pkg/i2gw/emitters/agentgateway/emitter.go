@@ -63,6 +63,22 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 		gatewayResources.Gateways[key] = gateway
 	}
 
+	errs = e.ToAgentgatewayResources(ir, &gatewayResources)
+	if len(errs) > 0 {
+		return gatewayResources, errs
+	}
+
+	return gatewayResources, nil
+}
+
+// ToAgentgatewayResources processes emitter IR and adds agentgateway-specific extensions
+// to gatewayResources.
+func (e *Emitter) ToAgentgatewayResources(
+	ir emitterir.EmitterIR,
+	gatewayResources *i2gw.GatewayResources,
+) field.ErrorList {
+	var errs field.ErrorList
+
 	// Track agentgateway-specific resources
 	var agentgatewayObjs []client.Object
 
@@ -82,7 +98,8 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 	basicAuthSecretSeen := map[basicAuthSecretKey]struct{}{}
 
 	for httpRouteKey, httpRouteContext := range ir.HTTPRoutes {
-		if len(httpRouteContext.PoliciesBySourceIngressName) == 0 {
+		effectivePolicies := effectivePoliciesWithPerRuleFeatures(httpRouteContext)
+		if len(effectivePolicies) == 0 {
 			continue
 		}
 
@@ -90,14 +107,14 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 		// TODO: implement regex path matching if needed
 
 		// deterministic policy iteration
-		policyNames := make([]string, 0, len(httpRouteContext.PoliciesBySourceIngressName))
-		for name := range httpRouteContext.PoliciesBySourceIngressName {
+		policyNames := make([]string, 0, len(effectivePolicies))
+		for name := range effectivePolicies {
 			policyNames = append(policyNames, name)
 		}
 		sort.Strings(policyNames)
 
 		for _, polSourceIngressName := range policyNames {
-			pol := httpRouteContext.PoliciesBySourceIngressName[polSourceIngressName]
+			pol := effectivePolicies[polSourceIngressName]
 
 			// Normalize (rule, backend) coverage to unique pairs to avoid
 			// generating duplicate filters on the same backendRef.
@@ -388,5 +405,5 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 		gatewayResources.GatewayExtensions = append(gatewayResources.GatewayExtensions, *u)
 	}
 
-	return gatewayResources, errs
+	return errs
 }
