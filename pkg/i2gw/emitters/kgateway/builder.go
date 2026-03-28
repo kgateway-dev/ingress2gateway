@@ -32,6 +32,7 @@ type BuilderMap struct {
 	TrafficPolicies       map[types.NamespacedName]*kgateway.TrafficPolicy
 	BackendConfigPolicies map[types.NamespacedName]*kgateway.BackendConfigPolicy
 	HTTPListenerPolicies  map[types.NamespacedName]*kgateway.HTTPListenerPolicy
+	GatewayExtensions     map[types.NamespacedName]*kgateway.GatewayExtension
 	Backends              map[types.NamespacedName]*kgateway.Backend
 }
 
@@ -40,6 +41,7 @@ func NewBuilderMap() *BuilderMap {
 		TrafficPolicies:       make(map[types.NamespacedName]*kgateway.TrafficPolicy),
 		BackendConfigPolicies: make(map[types.NamespacedName]*kgateway.BackendConfigPolicy),
 		HTTPListenerPolicies:  make(map[types.NamespacedName]*kgateway.HTTPListenerPolicy),
+		GatewayExtensions:     make(map[types.NamespacedName]*kgateway.GatewayExtension),
 		Backends:              make(map[types.NamespacedName]*kgateway.Backend),
 	}
 }

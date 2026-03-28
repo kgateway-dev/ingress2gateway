@@ -78,9 +78,13 @@ func (e *Emitter) ToKgatewayResources(ir emitterir.EmitterIR, gwResources *i2gw.
 	e.EmitSessionAffinity(ir)
 	e.EmitLoadBalancing(ir)
 	e.EmitAccessLog(ir)
+	e.EmitAuth(ir)
 
 	// Collect all TrafficPolicies and convert to unstructured
 	var kgatewayObjs []client.Object
+	for _, gatewayExtension := range e.builderMap.GatewayExtensions {
+		kgatewayObjs = append(kgatewayObjs, gatewayExtension)
+	}
 	for _, backendConfigPolicy := range e.builderMap.BackendConfigPolicies {
 		kgatewayObjs = append(kgatewayObjs, backendConfigPolicy)
 	}

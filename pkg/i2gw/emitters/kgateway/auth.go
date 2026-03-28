@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
@@ -120,6 +122,73 @@ func parseAuthURL(raw string, ingressNS string) (*parsedAuthURL, error) {
 	}, nil
 }
 
+// EmitAuth projects ingress-nginx external-auth and basic-auth intent into
+// Kgateway GatewayExtensions and TrafficPolicies.
+func (e *Emitter) EmitAuth(ir emitterir.EmitterIR) {
+	for httpRouteKey, httpRouteCtx := range ir.HTTPRoutes {
+		if len(httpRouteCtx.PoliciesBySourceIngressName) == 0 {
+			continue
+		}
+
+		policyNames := make([]string, 0, len(httpRouteCtx.PoliciesBySourceIngressName))
+		for name := range httpRouteCtx.PoliciesBySourceIngressName {
+			policyNames = append(policyNames, name)
+		}
+		sort.Strings(policyNames)
+
+		for _, ingressName := range policyNames {
+			pol := httpRouteCtx.PoliciesBySourceIngressName[ingressName]
+			applyExtAuthPolicy(
+				pol,
+				ingressName,
+				httpRouteKey.Name,
+				httpRouteKey.Namespace,
+				e.builderMap.TrafficPolicies,
+				e.builderMap.GatewayExtensions,
+			)
+			applyBasicAuthPolicy(
+				pol,
+				ingressName,
+				httpRouteKey.Name,
+				httpRouteKey.Namespace,
+				e.builderMap.TrafficPolicies,
+			)
+		}
+	}
+}
+
+func ensureIngressTrafficPolicy(
+	tp map[types.NamespacedName]*kgateway.TrafficPolicy,
+	ingressName, namespace, routeName string,
+) *kgateway.TrafficPolicy {
+	key := types.NamespacedName{
+		Namespace: namespace,
+		Name:      ingressName,
+	}
+	t, ok := tp[key]
+	if !ok {
+		t = &kgateway.TrafficPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      ingressName,
+				Namespace: namespace,
+			},
+			Spec: kgateway.TrafficPolicySpec{},
+		}
+		t.SetGroupVersionKind(TrafficPolicyGVK)
+		tp[key] = t
+	}
+	if len(t.Spec.TargetRefs) == 0 && routeName != "" {
+		t.Spec.TargetRefs = []shared.LocalPolicyTargetReferenceWithSectionName{{
+			LocalPolicyTargetReference: shared.LocalPolicyTargetReference{
+				Group: gatewayv1.Group("gateway.networking.k8s.io"),
+				Kind:  gatewayv1.Kind("HTTPRoute"),
+				Name:  gatewayv1.ObjectName(routeName),
+			},
+		}}
+	}
+	return t
+}
+
 // applyExtAuthPolicy projects the ExtAuth IR policy into a GatewayExtension
 // and ExtAuthPolicy in TrafficPolicy.
 //
@@ -130,9 +199,9 @@ func parseAuthURL(raw string, ingressNS string) (*parsedAuthURL, error) {
 //   - An ExtAuthPolicy is added to TrafficPolicy that references the GatewayExtension.
 func applyExtAuthPolicy(
 	pol emitterir.Policy,
-	ingressName, namespace string,
-	tp map[string]*kgateway.TrafficPolicy,
-	gatewayExtensions map[string]*kgateway.GatewayExtension,
+	ingressName, routeName, namespace string,
+	tp map[types.NamespacedName]*kgateway.TrafficPolicy,
+	gatewayExtensions map[types.NamespacedName]*kgateway.GatewayExtension,
 ) bool {
 	if pol.ExtAuth == nil || pol.ExtAuth.AuthURL == "" {
 		return false
@@ -188,7 +257,7 @@ func applyExtAuthPolicy(
 	ge.SetGroupVersionKind(GatewayExtensionGVK)
 
 	// Add ExtAuthPolicy to TrafficPolicy.
-	t := ensureTrafficPolicy(tp, ingressName, namespace)
+	t := ensureIngressTrafficPolicy(tp, ingressName, namespace, routeName)
 
 	t.Spec.ExtAuth = &kgateway.ExtAuthPolicy{
 		ExtensionRef: &shared.NamespacedObjectReference{
@@ -197,7 +266,7 @@ func applyExtAuthPolicy(
 		},
 	}
 
-	gatewayExtensions[ingressName] = ge
+	gatewayExtensions[types.NamespacedName{Namespace: namespace, Name: ge.Name}] = ge
 	return true
 }
 
@@ -209,14 +278,14 @@ func applyExtAuthPolicy(
 //   - If AuthType is "auth-file" (default), also set spec.basicAuth.secretRef.key to "auth".
 func applyBasicAuthPolicy(
 	pol emitterir.Policy,
-	ingressName, namespace string,
-	tp map[string]*kgateway.TrafficPolicy,
+	ingressName, routeName, namespace string,
+	tp map[types.NamespacedName]*kgateway.TrafficPolicy,
 ) bool {
 	if pol.BasicAuth == nil || pol.BasicAuth.SecretName == "" {
 		return false
 	}
 
-	t := ensureTrafficPolicy(tp, ingressName, namespace)
+	t := ensureIngressTrafficPolicy(tp, ingressName, namespace, routeName)
 	secretRef := &kgateway.SecretReference{
 		Name: gatewayv1.ObjectName(pol.BasicAuth.SecretName),
 	}

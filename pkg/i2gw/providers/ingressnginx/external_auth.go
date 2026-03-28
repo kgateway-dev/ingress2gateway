@@ -20,10 +20,8 @@ import (
 	"strings"
 
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	networkingv1 "k8s.io/api/networking/v1"
-	"k8s.io/apimachinery/pkg/types"
 )
 
 const (
@@ -102,20 +100,20 @@ func splitAndTrimCSV(value string) []string {
 	return values
 }
 
-// applyAuthToEmitterIR keeps auth annotation parsing aligned with the newer ingress-nginx
-// EmitterIR bridge helpers. The legacy provider-specific auth policy wiring no longer matches
-// the current refactor, so until dedicated EmitterIR auth fields are added we surface a warning
-// once per source Ingress instead of leaving broken dead code in place.
+// applyAuthToEmitterIR projects ingress-nginx auth annotations into the
+// emitter-neutral per-ingress policy map used by custom emitters.
 func (p *Provider) applyAuthToEmitterIR(pIR providerir.ProviderIR, eIR *emitterir.EmitterIR) {
-	warnedIngresses := make(map[types.NamespacedName]struct{})
-
 	for key, pRouteCtx := range pIR.HTTPRoutes {
-		if _, ok := eIR.HTTPRoutes[key]; !ok {
+		eRouteCtx, ok := eIR.HTTPRoutes[key]
+		if !ok {
 			continue
 		}
 
 		for ruleIdx := range pRouteCtx.HTTPRoute.Spec.Rules {
 			if ruleIdx >= len(pRouteCtx.RuleBackendSources) {
+				continue
+			}
+			if ruleIdx >= len(eRouteCtx.Spec.Rules) {
 				continue
 			}
 
@@ -124,21 +122,40 @@ func (p *Provider) applyAuthToEmitterIR(pIR providerir.ProviderIR, eIR *emitteri
 				continue
 			}
 
-			if parseExtAuthConfig(ing) == nil && parseBasicAuthConfig(ing) == nil {
+			extAuth := parseExtAuthConfig(ing)
+			basicAuth := parseBasicAuthConfig(ing)
+			if extAuth == nil && basicAuth == nil {
 				continue
 			}
 
-			ingKey := types.NamespacedName{Namespace: ing.Namespace, Name: ing.Name}
-			if _, warned := warnedIngresses[ingKey]; warned {
-				continue
+			if eRouteCtx.PoliciesBySourceIngressName == nil {
+				eRouteCtx.PoliciesBySourceIngressName = make(map[string]emitterir.Policy)
 			}
 
-			p.notify(
-				notifications.WarningNotification,
-				"Ingress-NGINX auth annotations were detected, but the refactored EmitterIR bridge does not yet project external-auth/basic-auth configuration. Please verify the generated output manually.",
-				ing,
-			)
-			warnedIngresses[ingKey] = struct{}{}
+			policy := eRouteCtx.PoliciesBySourceIngressName[ing.Name]
+			if extAuth != nil {
+				policy.ExtAuth = &emitterir.ExtAuthPolicy{
+					AuthURL:         extAuth.authURL,
+					ResponseHeaders: append([]string(nil), extAuth.responseHeaders...),
+				}
+			}
+			if basicAuth != nil {
+				policy.BasicAuth = &emitterir.BasicAuthPolicy{
+					SecretName: basicAuth.secretName,
+					AuthType:   basicAuth.authType,
+				}
+			}
+
+			for backendIdx := range eRouteCtx.Spec.Rules[ruleIdx].BackendRefs {
+				policy = policy.AddRuleBackendSources([]emitterir.PolicyIndex{{
+					Rule:    ruleIdx,
+					Backend: backendIdx,
+				}})
+			}
+
+			eRouteCtx.PoliciesBySourceIngressName[ing.Name] = policy
 		}
+
+		eIR.HTTPRoutes[key] = eRouteCtx
 	}
 }
