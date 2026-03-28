@@ -72,6 +72,10 @@ const (
 
 	// SSL Redirect annotation
 	SSLRedirectAnnotation = "nginx.ingress.kubernetes.io/ssl-redirect"
+
+	// SSL Passthrough annotation
+	SSLPassthroughAnnotation = "nginx.ingress.kubernetes.io/ssl-passthrough"
+
 	// CORS annotations
 	EnableCorsAnnotation       = "nginx.ingress.kubernetes.io/enable-cors"
 	CorsAllowOriginAnnotation  = "nginx.ingress.kubernetes.io/cors-allow-origin"
@@ -142,6 +146,7 @@ var parsedAnnotations = map[string]struct{}{
 	BackendProtocolAnnotation:       {},
 	UseRegexAnnotation:              {},
 	SSLRedirectAnnotation:           {},
+	SSLPassthroughAnnotation:        {},
 	EnableCorsAnnotation:            {},
 	CorsAllowOriginAnnotation:       {},
 	CorsAllowHeadersAnnotation:      {},
