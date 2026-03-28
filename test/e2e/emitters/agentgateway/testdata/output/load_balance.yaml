@@ -2,7 +2,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
+    gateway.networking.k8s.io/generator: ingress2gateway-v0.5.0-rc1-53-g7c171dc
   name: nginx
   namespace: default
 spec:
@@ -17,8 +17,8 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
-  name: lb-localhost-lb-localdev-me
+    gateway.networking.k8s.io/generator: ingress2gateway-v0.5.0-rc1-53-g7c171dc
+  name: grpc-services-test-grpc-example-com
   namespace: default
 spec:
   hostnames:

@@ -17,6 +17,7 @@ limitations under the License.
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -24,6 +25,9 @@ import (
 
 // kubeconfig indicates kubeconfig file location.
 var kubeconfig string
+
+// noColor disables ANSI color codes in the output.
+var noColor bool
 
 func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
@@ -36,12 +40,17 @@ func newRootCmd() *cobra.Command {
 
 	rootCmd.PersistentFlags().StringVar(&kubeconfig, "kubeconfig", "",
 		`The kubeconfig file to use when talking to the cluster. If the flag is not set, a set of standard locations can be searched for an existing kubeconfig file.`)
+	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false,
+		`Disable ANSI color codes in the output.`)
 	return rootCmd
 }
 
 func getKubeconfig() {
 	if kubeconfig != "" {
-		os.Setenv("KUBECONFIG", kubeconfig)
+		if err := os.Setenv("KUBECONFIG", kubeconfig); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to set KUBECONFIG: %v\n", err)
+			os.Exit(1)
+		}
 	}
 }
 

@@ -17,6 +17,8 @@ limitations under the License.
 package kgateway
 
 import (
+	"time"
+
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
@@ -195,7 +197,9 @@ func applySessionAffinityPolicy(
 		}
 
 		if sessionAffinity.CookieExpires != nil {
-			cookieHashPolicy.TTL = sessionAffinity.CookieExpires
+			cookieHashPolicy.TTL = &metav1.Duration{
+				Duration: time.Duration(*sessionAffinity.CookieExpires) * time.Second,
+			}
 		}
 
 		if sessionAffinity.CookieSecure != nil {
@@ -223,6 +227,30 @@ func applySessionAffinityPolicy(
 	}
 
 	return true
+}
+
+// EmitSessionAffinity projects per-route session affinity policy intent into
+// Kgateway BackendConfigPolicies. This runs before load balancing so ring-hash
+// affinity takes precedence over round-robin when both are present.
+func (e *Emitter) EmitSessionAffinity(ir emitterir.EmitterIR) {
+	for httpRouteKey, httpRouteCtx := range ir.HTTPRoutes {
+		if len(httpRouteCtx.PoliciesBySourceIngressName) == 0 {
+			continue
+		}
+
+		for _, pol := range httpRouteCtx.PoliciesBySourceIngressName {
+			if pol.SessionAffinity == nil {
+				continue
+			}
+			pol.RuleBackendSources = uniquePolicyIndices(pol.RuleBackendSources)
+			applySessionAffinityPolicy(
+				pol,
+				httpRouteKey,
+				httpRouteCtx,
+				e.builderMap.BackendConfigPolicies,
+			)
+		}
+	}
 }
 
 // applyAccessLogPolicy projects the EnableAccessLog IR policy into one or more
@@ -299,4 +327,34 @@ func applyAccessLogPolicy(
 	}
 
 	return true
+}
+
+// EmitAccessLog projects per-route access log policy intent into Kgateway
+// HTTPListenerPolicies targeting the parent Gateway.
+func (e *Emitter) EmitAccessLog(ir emitterir.EmitterIR) {
+	for httpRouteKey, httpRouteCtx := range ir.HTTPRoutes {
+		for ruleIdx, accessLog := range httpRouteCtx.EnableAccessLogByRuleIdx {
+			if accessLog == nil || !accessLog.Enabled || ruleIdx < 0 || ruleIdx >= len(httpRouteCtx.Spec.Rules) {
+				continue
+			}
+
+			coverage := make([]emitterir.PolicyIndex, 0, len(httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs))
+			for backendIdx := range httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs {
+				coverage = append(coverage, emitterir.PolicyIndex{
+					Rule:    ruleIdx,
+					Backend: backendIdx,
+				})
+			}
+
+			applyAccessLogPolicy(
+				emitterir.Policy{
+					EnableAccessLog:    ptr.To(true),
+					RuleBackendSources: coverage,
+				},
+				httpRouteKey,
+				httpRouteCtx,
+				e.builderMap.HTTPListenerPolicies,
+			)
+		}
+	}
 }

@@ -26,6 +26,56 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// EmitRateLimit projects provider-neutral per-rule rate limit intent into
+// section-scoped Kgateway TrafficPolicies.
+func (e *Emitter) EmitRateLimit(ir emitterir.EmitterIR) {
+	for _, ctx := range ir.HTTPRoutes {
+		for idx, rl := range ctx.RateLimitByRuleIdx {
+			if rl == nil || idx < 0 || idx >= len(ctx.Spec.Rules) || rl.Limit <= 0 {
+				continue
+			}
+
+			var (
+				maxTokens     int32
+				tokensPerFill int32
+				fillInterval  metav1.Duration
+			)
+
+			burstMult := rl.BurstMultiplier
+			if burstMult <= 0 {
+				burstMult = 1
+			}
+
+			switch rl.Unit {
+			case emitterir.RateLimitUnitRPS:
+				tokensPerFill = rl.Limit
+				maxTokens = rl.Limit * burstMult
+				fillInterval = metav1.Duration{Duration: time.Second}
+			case emitterir.RateLimitUnitRPM:
+				tokensPerFill = rl.Limit
+				maxTokens = rl.Limit * burstMult
+				fillInterval = metav1.Duration{Duration: time.Minute}
+			default:
+				continue
+			}
+
+			sectionName := e.getSectionName(ctx, idx)
+			trafficPolicy := e.getOrBuildTrafficPolicy(ctx, sectionName, idx)
+			if trafficPolicy.Spec.RateLimit == nil {
+				trafficPolicy.Spec.RateLimit = &kgateway.RateLimit{}
+			}
+			if trafficPolicy.Spec.RateLimit.Local == nil {
+				trafficPolicy.Spec.RateLimit.Local = &kgateway.LocalRateLimitPolicy{}
+			}
+			trafficPolicy.Spec.RateLimit.Local.TokenBucket = &kgateway.TokenBucket{
+				MaxTokens:     maxTokens,
+				TokensPerFill: int32Ptr(tokensPerFill),
+				FillInterval:  fillInterval,
+			}
+		}
+	}
+}
+
 // applyBufferPolicy projects the buffer-related policy IR into a Kgateway TrafficPolicy,
 // returning true if it modified/created a TrafficPolicy for this ingress.
 //
@@ -63,6 +113,8 @@ func applyBufferPolicy(
 	}
 	return true
 }
+
+func int32Ptr(v int32) *int32 { return &v }
 
 // applyRateLimitPolicy projects the rate limit policy IR into a Kgateway TrafficPolicy.
 // returning true if it modified/created a TrafficPolicy for this ingress.
@@ -129,6 +181,7 @@ func applyRateLimitPolicy(
 	return true
 }
 
+// TODO: remove this. ingress-nginx timeouts are TCP timeouts, not HTTP timeouts.
 // applyTimeoutPolicy projects the timeout-related policy IR into a Kgateway TrafficPolicy,
 // returning true if it modified/created a TrafficPolicy for this ingress.
 //

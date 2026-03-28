@@ -1,5 +1,5 @@
 /*
-Copyright 2023 The Kubernetes Authors.
+Copyright 2025 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,165 +17,264 @@ limitations under the License.
 package ingressnginx
 
 import (
+	"fmt"
+	"reflect"
 	"strings"
 
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
-
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 )
 
-const (
-	nginxProxySSLSecret = "nginx.ingress.kubernetes.io/proxy-ssl-secret"
-	nginxProxySSLVerify = "nginx.ingress.kubernetes.io/proxy-ssl-verify"
-	nginxProxySSLName   = "nginx.ingress.kubernetes.io/proxy-ssl-name"
-	// nginxProxySSLServerName = "nginx.ingress.kubernetes.io/proxy-ssl-server-name" // Not relevant to Gateway API
-)
+func backendTLSFeature(notify notifications.NotifyFunc, ingresses []networkingv1.Ingress, _ map[types.NamespacedName]map[string]int32, ir *providerir.ProviderIR) field.ErrorList {
+	var errList field.ErrorList
 
-// backendTLSFeature parses backend TLS annotations and stores them in the IR Policy.
-// The TLS configuration is then applied to kgateway BackendConfigPolicy resources
-// in the kgateway emitter.
-//
-// Semantics:
-//   - proxy-ssl-secret: Specifies a Secret with tls.crt, tls.key, and ca.crt in PEM format.
-//     Format: "namespace/secretName"
-//   - proxy-ssl-verify: Enables or disables verification of the proxied HTTPS server certificate.
-//     Values: "on" or "off" (default: "off")
-//   - proxy-ssl-name: Overrides the server name used to verify the certificate and passed via SNI.
-//     In kgateway BackendConfigPolicy, this maps to TLS configuration fields.
-//   - proxy-ssl-server-name: Not handled separately. SNI is enabled when hostname is set.
-func backendTLSFeature(
-	ingresses []networkingv1.Ingress,
-	servicePorts map[types.NamespacedName]map[string]int32,
-	ir *providerir.ProviderIR,
-) field.ErrorList {
-	var errs field.ErrorList
+	if ir.BackendTLSPolicies == nil {
+		ir.BackendTLSPolicies = make(map[types.NamespacedName]gatewayv1.BackendTLSPolicy)
+	}
 
-	// Per-Ingress parsed backend TLS policy.
-	perIngress := map[types.NamespacedName]*providerir.BackendTLSPolicy{}
-
-	for i := range ingresses {
-		ing := &ingresses[i]
-		anns := ing.Annotations
-		if anns == nil {
-			continue
-		}
-
-		// Check if proxy-ssl-secret is specified (required for backend TLS)
-		secretName := strings.TrimSpace(anns[nginxProxySSLSecret])
-		if secretName == "" {
-			continue
-		}
-
-		// Validate secret name format (should be "namespace/secretName" or just "secretName")
-		secretParts := strings.SplitN(secretName, "/", 2)
-		if len(secretParts) > 2 {
-			errs = append(errs, field.Invalid(
-				field.NewPath("ingress", ing.Namespace, ing.Name, "metadata", "annotations").Key(nginxProxySSLSecret),
-				secretName,
-				"proxy-ssl-secret must be in format 'secretName' or 'namespace/secretName'",
-			))
-			continue
-		}
-
-		key := types.NamespacedName{
-			Namespace: ing.Namespace,
-			Name:      ing.Name,
-		}
-
-		policy := &providerir.BackendTLSPolicy{
-			SecretName: secretName,
-			Verify:     false, // default: off
-		}
-
-		// Parse proxy-ssl-verify (values: "on" or "off")
-		if verifyRaw := strings.TrimSpace(anns[nginxProxySSLVerify]); verifyRaw != "" {
-			if strings.ToLower(verifyRaw) == "on" {
-				policy.Verify = true
+	// Sort route keys for deterministic output during conflict resolution
+	var routeKeys []types.NamespacedName
+	for k := range ir.HTTPRoutes {
+		routeKeys = append(routeKeys, k)
+	}
+	// Sort by Namespace, then Name
+	for i := 0; i < len(routeKeys)-1; i++ {
+		for j := i + 1; j < len(routeKeys); j++ {
+			if routeKeys[i].Namespace > routeKeys[j].Namespace || (routeKeys[i].Namespace == routeKeys[j].Namespace && routeKeys[i].Name > routeKeys[j].Name) {
+				routeKeys[i], routeKeys[j] = routeKeys[j], routeKeys[i]
 			}
-			// "off" is the default, so no action needed
 		}
-
-		// Parse proxy-ssl-name
-		// This maps to both SNI and hostname validation in Gateway API.
-		// In Gateway API, setting Hostname enables SNI automatically.
-		if hostname := strings.TrimSpace(anns[nginxProxySSLName]); hostname != "" {
-			policy.Hostname = hostname
-		}
-
-		// Note: proxy-ssl-server-name is not handled separately.
-		// In Gateway API, SNI is enabled by setting the Hostname field.
-		// If proxy-ssl-name is set, SNI is automatically enabled.
-
-		perIngress[key] = policy
 	}
 
-	if len(perIngress) == 0 {
-		return errs
+	for _, key := range routeKeys {
+		httpRouteContext := ir.HTTPRoutes[key]
+		for ruleIdx, backendSources := range httpRouteContext.RuleBackendSources {
+			if ruleIdx >= len(httpRouteContext.HTTPRoute.Spec.Rules) {
+				continue
+			}
+			rule := httpRouteContext.HTTPRoute.Spec.Rules[ruleIdx]
+
+			for backendIdx := range backendSources {
+
+				primaryIngress := getNonCanaryIngress(backendSources)
+				if primaryIngress == nil {
+					continue
+				}
+
+				if backendIdx >= len(rule.BackendRefs) {
+					continue
+				}
+				backendRef := rule.BackendRefs[backendIdx]
+
+				if backendRef.Kind != nil && *backendRef.Kind != "Service" {
+					continue
+				}
+				if backendRef.Group != nil && *backendRef.Group != "" && *backendRef.Group != "core" {
+					continue
+				}
+
+				backendProtocol := primaryIngress.Annotations[BackendProtocolAnnotation]
+				proxySSLVerify := primaryIngress.Annotations[ProxySSLVerifyAnnotation]
+				proxySSLSecret := primaryIngress.Annotations[ProxySSLSecretAnnotation]
+				proxySSLName := primaryIngress.Annotations[ProxySSLNameAnnotation]
+				proxySSLServerName := primaryIngress.Annotations[ProxySSLServerNameAnnotation]
+				proxySSLVerifyDepth := primaryIngress.Annotations[ProxySSLVerifyDepthAnnotation]
+				proxySSLProtocols := primaryIngress.Annotations[ProxySSLProtocolsAnnotation]
+
+				if backendProtocol != "HTTPS" && backendProtocol != "GRPCS" {
+					continue
+				}
+
+				if proxySSLVerifyDepth != "" {
+					notify(notifications.WarningNotification,
+						fmt.Sprintf("Ingress %s/%s specifies %s. Gateway API v1 BackendTLSPolicy does not support configuring verification depth.",
+							primaryIngress.Namespace, primaryIngress.Name, ProxySSLVerifyDepthAnnotation),
+						primaryIngress,
+					)
+				}
+				if proxySSLProtocols != "" {
+					notify(notifications.WarningNotification,
+						fmt.Sprintf("Ingress %s/%s specifies %s. Gateway API v1 BackendTLSPolicy does not support configuring specific TLS protocols.",
+							primaryIngress.Namespace, primaryIngress.Name, ProxySSLProtocolsAnnotation),
+						primaryIngress,
+					)
+				}
+
+				// Strict Validation Rules to emit a policy
+				var validationErrors []string
+
+				if proxySSLVerify != "on" {
+					validationErrors = append(validationErrors, fmt.Sprintf("%s must be strictly 'on'", ProxySSLVerifyAnnotation))
+				}
+				if proxySSLSecret == "" {
+					validationErrors = append(validationErrors, fmt.Sprintf("%s must be provided with a trusted CA certificate", ProxySSLSecretAnnotation))
+				}
+				if proxySSLServerName != "on" { // Default is off in nginx, so must be explicitly turned on for Gateway API compatibility
+					validationErrors = append(validationErrors, fmt.Sprintf("%s must be strictly 'on' (SNI is required)", ProxySSLServerNameAnnotation))
+				}
+				if proxySSLName == "" {
+					validationErrors = append(validationErrors, fmt.Sprintf("%s must be explicitly provided (defaulting to upstream_balancer is invalid)", ProxySSLNameAnnotation))
+				}
+
+				if len(validationErrors) > 0 {
+					notify(notifications.ErrorNotification,
+						fmt.Sprintf("Ingress %s/%s requested backend TLS but failed strict validation requirements to emit a BackendTLSPolicy: %s",
+							primaryIngress.Namespace, primaryIngress.Name, strings.Join(validationErrors, ", ")),
+						primaryIngress,
+					)
+					continue
+				}
+
+				serviceName := string(backendRef.Name)
+				namespace := httpRouteContext.HTTPRoute.Namespace
+				if backendRef.Namespace != nil {
+					namespace = string(*backendRef.Namespace)
+				}
+
+				policyName := fmt.Sprintf("%s-backend-tls", serviceName)
+				policyKey := types.NamespacedName{Namespace: namespace, Name: policyName}
+
+				// Check if we already created a policy for this service
+				existingPolicy, exists := ir.BackendTLSPolicies[policyKey]
+				var policy gatewayv1.BackendTLSPolicy
+				if exists {
+					policy = *existingPolicy.DeepCopy()
+				} else {
+					policy = common.CreateBackendTLSPolicy(namespace, policyName, serviceName)
+				}
+
+				// We know proxySSLName is not empty due to strict validation above
+				policy.Spec.Validation.Hostname = gatewayv1.PreciseHostname(proxySSLName)
+
+				// Handle CA Certificates.
+				caRefName := proxySSLSecret
+				if strings.Contains(caRefName, "/") {
+					parts := strings.SplitN(caRefName, "/", 2)
+					if len(parts) == 2 {
+						secretNamespace := parts[0]
+						caRefName = parts[1]
+
+						if secretNamespace != namespace {
+							notify(notifications.ErrorNotification,
+								fmt.Sprintf("Ingress %s/%s specifies backend TLS secret %s in a different namespace. BackendTLSPolicy only supports local references. Policy will not be generated.",
+									primaryIngress.Namespace, primaryIngress.Name, proxySSLSecret),
+								primaryIngress,
+							)
+							continue
+						}
+					}
+				}
+
+				// We know proxySSLVerify is "on" and proxySSLSecret is not empty due to strict validation above.
+				notify(notifications.WarningNotification,
+					fmt.Sprintf("Ingress %s/%s: mTLS will not be configured. The original Secret %q contains client certificates (tls.crt/tls.key) "+
+						"for mutual TLS authentication, but Gateway API BackendTLSPolicy does not support client certificate authentication. "+
+						"Only server CA verification will be configured.",
+						primaryIngress.Namespace, primaryIngress.Name, proxySSLSecret),
+					primaryIngress,
+				)
+				notify(notifications.InfoNotification,
+					fmt.Sprintf("Ingress %s/%s: The generated BackendTLSPolicy references a ConfigMap %q for CA certificate validation. "+
+						"You must create a ConfigMap named %q in namespace %q with the CA certificate from your Secret under the key \"ca.crt\".",
+						primaryIngress.Namespace, primaryIngress.Name, caRefName, caRefName, namespace),
+					primaryIngress,
+				)
+				policy.Spec.Validation.CACertificateRefs = []gatewayv1.LocalObjectReference{{
+					Group: "",
+					Kind:  "ConfigMap",
+					Name:  gatewayv1.ObjectName(caRefName),
+				}}
+				policy.Spec.Validation.WellKnownCACertificates = nil
+
+				if exists {
+					// Check for conflict using DeepEqual
+					if !reflect.DeepEqual(policy.Spec.Validation, existingPolicy.Spec.Validation) {
+						notify(notifications.WarningNotification,
+							fmt.Sprintf("Conflict detected for BackendTLSPolicy %s. Ingress %s/%s defines different TLS settings than a previously processed Ingress. Keeping the first one.",
+								policyName, primaryIngress.Namespace, primaryIngress.Name),
+							primaryIngress,
+						)
+					}
+					// If exists, we keep the existing one (first wins strategy)
+					continue
+				}
+
+				ir.BackendTLSPolicies[policyKey] = policy
+			}
+		}
 	}
 
-	// Map per-Ingress backend TLS policy onto HTTPRoute policies using RuleBackendSources.
-	ruleGroups := common.GetRuleGroups(ingresses)
+	return errList
+}
 
-	for _, rg := range ruleGroups {
-		routeKey := types.NamespacedName{
-			Namespace: rg.Namespace,
-			Name:      common.RouteName(rg.Name, rg.Host),
-		}
-
-		httpCtx, ok := ir.HTTPRoutes[routeKey]
+// applyBackendTLSToEmitterIR projects ingress-nginx backend TLS annotations into
+// emitter-neutral policy intent so custom emitters can translate them into
+// implementation-specific backend TLS configuration.
+func (p *Provider) applyBackendTLSToEmitterIR(pIR providerir.ProviderIR, eIR *emitterir.EmitterIR) {
+	for key, pRouteCtx := range pIR.HTTPRoutes {
+		eRouteCtx, ok := eIR.HTTPRoutes[key]
 		if !ok {
 			continue
 		}
 
-		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
-				Policies: map[string]providerir.Policy{},
+		for ruleIdx := range eRouteCtx.Spec.Rules {
+			if ruleIdx >= len(pRouteCtx.RuleBackendSources) {
+				continue
 			}
-		}
-		if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
-		}
+			if ruleIdx >= len(eRouteCtx.Spec.Rules) {
+				continue
+			}
 
-		for ruleIdx, backendSources := range httpCtx.RuleBackendSources {
-			for backendIdx, src := range backendSources {
-				if src.Ingress == nil {
+			sources := pRouteCtx.RuleBackendSources[ruleIdx]
+			rule := eRouteCtx.Spec.Rules[ruleIdx]
+			for backendIdx := range rule.BackendRefs {
+				if backendIdx >= len(sources) {
+					continue
+				}
+				source := sources[backendIdx]
+				if source.Ingress == nil {
 					continue
 				}
 
-				ingKey := types.NamespacedName{
-					Namespace: src.Ingress.Namespace,
-					Name:      src.Ingress.Name,
-				}
-
-				backendTLS := perIngress[ingKey]
-				if backendTLS == nil {
+				backendProtocol := strings.ToUpper(strings.TrimSpace(source.Ingress.Annotations[BackendProtocolAnnotation]))
+				if backendProtocol != "HTTPS" && backendProtocol != "GRPCS" {
 					continue
 				}
 
-				p := httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name]
-				if p.BackendTLS == nil {
-					// Deep copy the policy to avoid sharing references
-					backendTLSCopy := *backendTLS
-					p.BackendTLS = &backendTLSCopy
+				secretName := strings.TrimSpace(source.Ingress.Annotations[ProxySSLSecretAnnotation])
+				hostname := strings.TrimSpace(source.Ingress.Annotations[ProxySSLNameAnnotation])
+				verify := strings.EqualFold(strings.TrimSpace(source.Ingress.Annotations[ProxySSLVerifyAnnotation]), "on")
+
+				if secretName == "" && hostname == "" && !verify {
+					continue
 				}
 
-				// Dedupe (rule, backend) pairs.
-				p = p.AddRuleBackendSources([]providerir.PolicyIndex{
-					{
-						Rule:    ruleIdx,
-						Backend: backendIdx,
-					},
-				})
+				if eRouteCtx.PoliciesBySourceIngressName == nil {
+					eRouteCtx.PoliciesBySourceIngressName = make(map[string]emitterir.Policy)
+				}
 
-				httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name] = p
+				ingressName := source.Ingress.Name
+				policy := eRouteCtx.PoliciesBySourceIngressName[ingressName]
+				policy.BackendTLS = &emitterir.BackendTLSPolicy{
+					SecretName: secretName,
+					Verify:     verify,
+					Hostname:   hostname,
+				}
+				policy = policy.AddRuleBackendSources([]emitterir.PolicyIndex{{
+					Rule:    ruleIdx,
+					Backend: backendIdx,
+				}})
+				eRouteCtx.PoliciesBySourceIngressName[ingressName] = policy
 			}
 		}
 
-		ir.HTTPRoutes[routeKey] = httpCtx
+		eIR.HTTPRoutes[key] = eRouteCtx
 	}
-
-	return errs
 }

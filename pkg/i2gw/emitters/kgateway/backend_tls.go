@@ -17,8 +17,10 @@ limitations under the License.
 package kgateway
 
 import (
+	"sort"
 	"strings"
 
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
@@ -29,6 +31,40 @@ import (
 	"k8s.io/utils/ptr"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
+
+// EmitBackendTLS projects backend TLS policy intent into Kgateway BackendConfigPolicies
+// and suppresses core BackendTLSPolicy output for this emitter.
+func (e *Emitter) EmitBackendTLS(ir emitterir.EmitterIR, gwResources *i2gw.GatewayResources) {
+	for httpRouteKey, httpRouteCtx := range ir.HTTPRoutes {
+		if len(httpRouteCtx.PoliciesBySourceIngressName) == 0 {
+			continue
+		}
+
+		policyNames := make([]string, 0, len(httpRouteCtx.PoliciesBySourceIngressName))
+		for name := range httpRouteCtx.PoliciesBySourceIngressName {
+			policyNames = append(policyNames, name)
+		}
+		sort.Strings(policyNames)
+
+		for _, ingressName := range policyNames {
+			pol := httpRouteCtx.PoliciesBySourceIngressName[ingressName]
+			if pol.BackendTLS == nil {
+				continue
+			}
+
+			pol.RuleBackendSources = uniquePolicyIndices(pol.RuleBackendSources)
+			applyBackendTLSPolicy(
+				pol,
+				httpRouteKey,
+				httpRouteCtx,
+				e.builderMap.BackendConfigPolicies,
+			)
+		}
+	}
+
+	// kgateway uses BackendConfigPolicy instead of core Gateway API BackendTLSPolicy.
+	gwResources.BackendTLSPolicies = nil
+}
 
 // applyBackendTLSPolicy projects the BackendTLS IR policy into one or more
 // Kgateway BackendConfigPolicies.

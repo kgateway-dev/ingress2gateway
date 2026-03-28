@@ -33,6 +33,7 @@ spec:
     - path:
         type: PathPrefix
         value: /path/one
+    name: rule-0
 status:
   parents: []
 ---

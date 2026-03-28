@@ -4,7 +4,21 @@ This is a fork of the upstream [ingress2gateway](https://github.com/kubernetes-s
 that translates Ingress resources to Gateway API and [Kgateway](https://kgateway.dev/)-specific resources, e.g.
 [TrafficPolicy](https://kgateway.dev/docs/envoy/2.0.x/about/policies/trafficpolicy/).
 
-## Supported providers
+## Providers vs Emitters
+
+Ingress2gateway has two main components: **providers** and **emitters**.
+
+- **Providers** read Ingress resources and provider-specific CRDs, then convert
+  them into a generic intermediate representation (IR).
+- **Emitters** take that IR and produce the final Gateway API output. The default
+  `standard` emitter outputs core Gateway API resources (like `Gateway` and
+  `HTTPRoute`), while other emitters can additionally output resources tailored to
+  a specific Gateway API project (e.g. `EnvoyGateway` `BackendTrafficPolicy`
+  or `GKE` `HealthCheckPolicy`).
+
+For a detailed look at the architecture, see [docs/emitters.md](docs/emitters.md).
+
+### Supported Providers
 
 * [ingress-nginx](pkg/i2gw/providers/ingressnginx/README.md)
 
@@ -36,9 +50,9 @@ Alternatively, you can download the binary at the [releases page](https://github
 
    * Install Git: Make sure Git is installed on your system to clone the project
      repository.
-   * Install Go: Make sure the go language is installed on your system. You can
-     download it from the official website (https://golang.org/dl/) and follow the
-     installation instructions.
+   * Install Go 1.25.5 or later: Make sure the Go language is installed on your
+     system. You can download it from the official website
+     (https://golang.org/dl/) and follow the installation instructions.
 
 1. Clone the project repository
 
@@ -50,6 +64,12 @@ Alternatively, you can download the binary at the [releases page](https://github
 
    ```shell
    make build
+   ```
+
+1. Install the binary to your system
+
+   ```shell
+   go install .
    ```
 
 ## Usage
@@ -72,6 +92,20 @@ The above command will:
 ## Options
 
 ### `print` command
+
+| Flag           | Short | Default Value           | Required | Description                                                  |
+| -------------- | ----- | ----------------------- | -------- | ------------------------------------------------------------ |
+| all-namespaces | -A    | false                   | No       | If present, list the requested object(s) across all namespaces. Namespace in the current context is ignored even if specified with --namespace. |
+| allow-experimental-gw-api | | false              | No       | If present, include Experimental Gateway API fields (e.g. URLRewrite) in the output. |
+| emitter        |       | standard                | No       | The emitter to use for generating Gateway API resources.      |
+| input-file     |       |                         | No       | Path to the manifest file(s). When set, the tool will read ingresses from the file(s) instead of reading from the cluster. Supports yaml and json. Can be specified multiple times. |
+| kubeconfig     |       |                         | No       | The kubeconfig file to use when talking to the cluster. If the flag is not set, a set of standard locations can be searched for an existing kubeconfig file. |
+| namespace      | -n    |                         | No       | If present, the namespace scope for the invocation.           |
+| no-color       |       | false                   | No       | Disable ANSI color codes in the output.                       |
+| output         | -o    | yaml                    | No       | The output format. One of: yaml, json, kyaml.                 |
+| providers      |       |                         | Yes      | Comma-separated list of providers.                            |
+
+#### Provider-specific flags
 
 | Flag           | Default Value           | Required | Description                                                  |
 | -------------- | ----------------------- | -------- | ------------------------------------------------------------ |

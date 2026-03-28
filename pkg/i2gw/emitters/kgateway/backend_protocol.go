@@ -17,12 +17,61 @@ limitations under the License.
 package kgateway
 
 import (
+	"sort"
+
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	"k8s.io/apimachinery/pkg/types"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
+
+// EmitBackendProtocol projects backend-protocol intent into Kgateway Backends
+// and rewrites HTTPRoute backendRefs that should point at those Backends.
+func (e *Emitter) EmitBackendProtocol(ir emitterir.EmitterIR, gwResources *i2gw.GatewayResources) {
+	seenPatchNotifications := map[backendProtoPatchKey]struct{}{}
+
+	for httpRouteKey, httpRouteCtx := range ir.HTTPRoutes {
+		if len(httpRouteCtx.PoliciesBySourceIngressName) == 0 {
+			continue
+		}
+
+		policyNames := make([]string, 0, len(httpRouteCtx.PoliciesBySourceIngressName))
+		for name := range httpRouteCtx.PoliciesBySourceIngressName {
+			policyNames = append(policyNames, name)
+		}
+		sort.Strings(policyNames)
+
+		for _, ingressName := range policyNames {
+			pol := httpRouteCtx.PoliciesBySourceIngressName[ingressName]
+			if pol.BackendProtocol == nil {
+				continue
+			}
+
+			pol.RuleBackendSources = uniquePolicyIndices(pol.RuleBackendSources)
+
+			emitBackendProtocolPatchNotifications(
+				e.notify,
+				pol,
+				ingressName,
+				httpRouteKey,
+				httpRouteCtx,
+				seenPatchNotifications,
+			)
+			applyBackendProtocol(
+				pol,
+				ingressName,
+				httpRouteKey,
+				&httpRouteCtx,
+				e.builderMap.Backends,
+			)
+		}
+
+		ir.HTTPRoutes[httpRouteKey] = httpRouteCtx
+		gwResources.HTTPRoutes[httpRouteKey] = httpRouteCtx.HTTPRoute
+	}
+}
 
 // applyBackendProtocol projects backend protocol metadata on IR Backends into
 // typed Kgateway Backend CRs and rewrites HTTPRoute backendRefs to reference

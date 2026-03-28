@@ -8,14 +8,14 @@ metadata:
 spec:
   gatewayClassName: kgateway
   listeners:
-  - hostname: myservicea.foo.org
-    name: myservicea-foo-org-http
-    port: 80
-    protocol: HTTP
-  - hostname: myserviceb.foo.org
-    name: myserviceb-foo-org-http
-    port: 80
-    protocol: HTTP
+    - hostname: myservicea.foo.org
+      name: myservicea-foo-org-http
+      port: 80
+      protocol: HTTP
+    - hostname: myserviceb.foo.org
+      name: myserviceb-foo-org-http
+      port: 80
+      protocol: HTTP
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -26,30 +26,26 @@ metadata:
   namespace: default
 spec:
   hostnames:
-  - myservicea.foo.org
+    - myservicea.foo.org
   parentRefs:
-  - name: nginx
+    - name: nginx
   rules:
-  - backendRefs:
-    - filters:
-      - extensionRef:
-          group: gateway.kgateway.dev
-          kind: TrafficPolicy
-          name: ingress-myservicea1-rewrite-0
-        type: ExtensionRef
-      name: myservicea
-      port: 80
-    matches:
-    - path:
-        type: RegularExpression
-        value: ^/foo/(.*)
-  - backendRefs:
-    - name: myservicea
-      port: 80
-    matches:
-    - path:
-        type: PathPrefix
-        value: /v1.+
+    - backendRefs:
+        - name: myservicea
+          port: 80
+      matches:
+        - path:
+            type: RegularExpression
+            value: (?i)/foo/(.*).*
+      name: rule-0
+    - backendRefs:
+        - name: myservicea
+          port: 80
+      matches:
+        - path:
+            type: RegularExpression
+            value: (?i)/v1.+.*
+      name: rule-1
 status:
   parents: []
 ---
@@ -62,35 +58,41 @@ metadata:
   namespace: default
 spec:
   hostnames:
-  - myserviceb.foo.org
+    - myserviceb.foo.org
   parentRefs:
-  - name: nginx
+    - name: nginx
   rules:
-  - backendRefs:
-    - name: myserviceb
-      port: 80
-    filters:
-    - type: URLRewrite
-      urlRewrite:
-        path:
-          replaceFullPath: /rewritten
-          type: ReplaceFullPath
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
+    - backendRefs:
+        - name: myserviceb
+          port: 80
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              replaceFullPath: /rewritten
+              type: ReplaceFullPath
+      matches:
+        - path:
+            type: RegularExpression
+            value: (?i)/.*
+      name: rule-0
 status:
   parents: []
 ---
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: TrafficPolicy
 metadata:
-  name: ingress-myservicea1-rewrite-0
+  name: ingress-myservicea1-myservicea-foo-org-0
   namespace: default
 spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: ingress-myservicea1-myservicea-foo-org
+      sectionName: rule-0
   urlRewrite:
     pathRegex:
-      pattern: ^/foo/(.*)
+      pattern: (?i)/foo/(.*).*
       substitution: /$1
 status:
   ancestors: null

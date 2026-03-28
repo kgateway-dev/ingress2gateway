@@ -70,6 +70,7 @@ spec:
         - path:
             type: PathPrefix
             value: /
+      name: rule-0
 status:
   parents: []
 ---
@@ -93,5 +94,6 @@ spec:
         - path:
             type: PathPrefix
             value: /
+      name: rule-0
 status:
   parents: []

@@ -70,6 +70,7 @@ func applyBasicAuthPolicy(
 // emitBasicAuthSecretNotifications emits an INFO notification whenever the agentgateway emitter
 // projects BasicAuth into an AgentgatewayPolicy to warn users about theSecret key expectations.
 func emitBasicAuthSecretNotifications(
+	notify notifications.NotifyFunc,
 	pol emitterir.Policy,
 	sourceIngressName string,
 	routeNamespace string,
@@ -104,8 +105,5 @@ IMPORTANT: Secret key expectations differ by dataplane:
 		pol.BasicAuth.SecretName,
 	)
 
-	notifications.NotificationAggr.DispatchNotification(
-		notifications.NewNotification(notifications.InfoNotification, msg),
-		"ingress-nginx",
-	)
+	notify(notifications.InfoNotification, msg)
 }

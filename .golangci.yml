@@ -7,48 +7,103 @@ run:
   modules-download-mode: readonly
   allow-parallel-runners: false
 linters:
-  # Start from no linters and explicitly enable what you care about.
-  default: none
+  default: standard
   enable:
     - revive
     - govet
     - misspell
+    # bugs presets
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - contextcheck
+    - durationcheck
+    - errcheck
+    - errchkjson
+    - errorlint
+    - exhaustive
+    - gocheckcompilerdirectives
+    - gochecksumtype
+    - gosec
+    - gosmopolitan
+    - loggercheck
+    - makezero
+    - musttag
+    - nilerr
+    - nilnesserr
+    - noctx
+    - protogetter
+    - reassign
+    - recvcheck
+    - rowserrcheck
+    - spancheck
+    - sqlclosecheck
+    - staticcheck
+    - testifylint
+    - zerologlint
+    # unused presets
+    - ineffassign
+    - unparam
     - unused
-  # Settings for linters (v2: moved here from `linters-settings`)
   settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
     govet:
-      shadow: true
+      # report about shadowed variables
+      enable:
+        - shadow
     misspell:
       locale: US
+    # (rkatz) - Added as we have a couple of APIs conversion (eg Istio, Kong) that convert uint->int and there's no solution
     gosec:
       excludes:
         - G115
-    revive:
-      rules:
-        - name: package-comments
-          disabled: true
-        - name: var-naming
-          disabled: true
+  exclusions:
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+    rules:
+      # Exclude some linters from running on tests files.
+      - path: '_test\.go'
+        linters:
+          - gocyclo
+          - errcheck
+          - dupl
+      # Exclude gosec G104 (unhandled errors) from test files
+      - path: '_test\.go'
+        linters:
+          - gosec
+        text: "G104"
+      # Allow underscores in emitter package names
+      - path: pkg/i2gw/emitters/
+        linters:
+          - revive
+        text: "var-naming: don't use an underscore in package name"
+      - path: '(.+)\.go$'
+        text: "Using the variable on range scope `tc` in function literal"
+      # Allow capitalized error messages
+      - linters:
+          - staticcheck
+        text: "ST1005:"
+      # Allow embedded field, currently this style is used in many places
+      - linters:
+          - staticcheck
+        text: "QF1008:"
+
 formatters:
-  # In v2, gofmt/goimports live under "formatters", not "linters.enable"
   enable:
     - gofmt
     - goimports
   settings:
     gofmt:
+      # simplify code: gofmt with `-s` option, true by default
       simplify: true
-issues:
-  exclude-rules:
-    # Same as before: skip some linters on *_test.go
-    - path: _test\.go
-      linters:
-        - gocyclo
-        - errcheck
-        - dupl
-    # Allow underscores in emitter package names
-    - path: pkg/i2gw/emitters/
-      linters:
-        - revive
-      text: "var-naming: don't use an underscore in package name"
-  exclude:
-    - Using the variable on range scope `tc` in function literal
+  exclusions:
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

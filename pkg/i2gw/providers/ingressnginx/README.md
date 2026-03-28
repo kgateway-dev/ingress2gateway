@@ -5,7 +5,7 @@ implementation-specific resources or user-facing notifications depending on the 
 
 ## Ingress Class Name
 
-To specify the name of the Ingress class to select, use `--ingress-nginx-ingress-class=ingress-nginx` (default to 'nginx').
+To specify the name of the Ingress class to select, use `--ingress-nginx-ingress-class=ingress-nginx` (defaults to `nginx`).
 
 ## IR Model
 

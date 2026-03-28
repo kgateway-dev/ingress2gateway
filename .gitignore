@@ -31,3 +31,7 @@ go.work
 .vscode/
 
 .DS_Store
+
+kind-kubeconfig
+e2e/kind.yaml
+bin

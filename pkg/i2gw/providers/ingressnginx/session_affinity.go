@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Kubernetes Authors.
+Copyright The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,217 +17,216 @@ limitations under the License.
 package ingressnginx
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
-
 	networkingv1 "k8s.io/api/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-const (
-	nginxAffinityAnnotation              = "nginx.ingress.kubernetes.io/affinity"
-	nginxSessionCookiePathAnnotation     = "nginx.ingress.kubernetes.io/session-cookie-path"
-	nginxSessionCookieDomainAnnotation   = "nginx.ingress.kubernetes.io/session-cookie-domain"
-	nginxSessionCookieSameSiteAnnotation = "nginx.ingress.kubernetes.io/session-cookie-samesite"
-	nginxSessionCookieExpiresAnnotation  = "nginx.ingress.kubernetes.io/session-cookie-expires"
-	nginxSessionCookieMaxAgeAnnotation   = "nginx.ingress.kubernetes.io/session-cookie-max-age"
-	nginxSessionCookieSecureAnnotation   = "nginx.ingress.kubernetes.io/session-cookie-secure"
-	nginxSessionCookieNameAnnotation     = "nginx.ingress.kubernetes.io/session-cookie-name"
-)
-
-// sessionAffinityFeature parses session affinity annotations and stores them in the IR Policy.
-//
-// Semantics:
-//   - The affinity annotation enables session affinity (only "cookie" type is supported).
-//   - Session cookie annotations configure the cookie properties.
-//   - We normalize cookie expires to metav1.Duration and attach it per-Ingress, then map to
-//     specific (rule, backend) pairs via RuleBackendSources.
-func sessionAffinityFeature(
-	ingresses []networkingv1.Ingress,
-	_ map[types.NamespacedName]map[string]int32,
-	ir *providerir.ProviderIR,
-) field.ErrorList {
-	var errs field.ErrorList
-
-	// Per-Ingress parsed session affinity policy.
-	perIngress := map[types.NamespacedName]*providerir.SessionAffinityPolicy{}
-
-	for i := range ingresses {
-		ing := &ingresses[i]
-		anns := ing.Annotations
-		if anns == nil {
-			continue
-		}
-
-		// Check if affinity is enabled
-		affinityType := strings.TrimSpace(anns[nginxAffinityAnnotation])
-		if affinityType == "" || affinityType != "cookie" {
-			// Only cookie affinity is supported
-			continue
-		}
-
-		key := types.NamespacedName{
-			Namespace: ing.Namespace,
-			Name:      ing.Name,
-		}
-
-		policy := &providerir.SessionAffinityPolicy{
-			CookieName: "INGRESSCOOKIE", // Default cookie name used by NGINX
-		}
-
-		// Parse cookie name (if specified)
-		if cookieName := strings.TrimSpace(anns[nginxSessionCookieNameAnnotation]); cookieName != "" {
-			policy.CookieName = cookieName
-		}
-
-		// Parse cookie path
-		if cookiePath := strings.TrimSpace(anns[nginxSessionCookiePathAnnotation]); cookiePath != "" {
-			policy.CookiePath = cookiePath
-		}
-
-		// Parse cookie domain
-		if cookieDomain := strings.TrimSpace(anns[nginxSessionCookieDomainAnnotation]); cookieDomain != "" {
-			policy.CookieDomain = cookieDomain
-		}
-
-		// Parse cookie SameSite
-		if cookieSameSite := strings.TrimSpace(anns[nginxSessionCookieSameSiteAnnotation]); cookieSameSite != "" {
-			// Validate SameSite values
-			if cookieSameSite == "None" || cookieSameSite == "Lax" || cookieSameSite == "Strict" {
-				policy.CookieSameSite = cookieSameSite
-			} else {
-				errs = append(errs, field.Invalid(
-					field.NewPath("ingress", ing.Namespace, ing.Name, "metadata", "annotations").Key(nginxSessionCookieSameSiteAnnotation),
-					cookieSameSite,
-					"session-cookie-samesite must be one of: None, Lax, Strict",
-				))
+func sessionAffinityFeature(notify notifications.NotifyFunc, _ []networkingv1.Ingress, _ map[types.NamespacedName]map[string]int32, ir *providerir.ProviderIR) field.ErrorList {
+	// Iterate over all HTTPRoutes to find backend services and apply generic SessionAffinity
+	for _, httpRouteCtx := range ir.HTTPRoutes {
+		for ruleIdx := range httpRouteCtx.Spec.Rules {
+			if ruleIdx >= len(httpRouteCtx.RuleBackendSources) {
 				continue
 			}
-		}
-
-		// Parse cookie expires (TTL) - max-age takes precedence over expires
-		parseDuration := func(annotationValue string) (*metav1.Duration, error) {
-			// value is in seconds, e.g. "3600"
-			d, err := time.ParseDuration(annotationValue + "s")
-			if err != nil {
-				return nil, err
-			}
-			return &metav1.Duration{Duration: d}, nil
-		}
-
-		// Parse session-cookie-max-age first (takes precedence)
-		if cookieMaxAgeRaw := strings.TrimSpace(anns[nginxSessionCookieMaxAgeAnnotation]); cookieMaxAgeRaw != "" {
-			duration, err := parseDuration(cookieMaxAgeRaw)
-			if err != nil {
-				errs = append(errs, field.Invalid(
-					field.NewPath("ingress", ing.Namespace, ing.Name, "metadata", "annotations").Key(nginxSessionCookieMaxAgeAnnotation),
-					cookieMaxAgeRaw,
-					"failed to parse session-cookie-max-age",
-				))
+			sources := httpRouteCtx.RuleBackendSources[ruleIdx]
+			if len(sources) == 0 {
 				continue
 			}
-			policy.CookieExpires = duration
-		} else if cookieExpiresRaw := strings.TrimSpace(anns[nginxSessionCookieExpiresAnnotation]); cookieExpiresRaw != "" {
-			// Only parse expires if max-age is not set
-			duration, err := parseDuration(cookieExpiresRaw)
-			if err != nil {
-				errs = append(errs, field.Invalid(
-					field.NewPath("ingress", ing.Namespace, ing.Name, "metadata", "annotations").Key(nginxSessionCookieExpiresAnnotation),
-					cookieExpiresRaw,
-					"failed to parse session-cookie-expires",
-				))
+
+			// We need to find the backend service for this rule to attach the policy.
+			// Currently, we just look at the BackendRefs.
+			// Note: This logic assumes we can map back to the service.
+			// Ingress-Nginx usually maps path -> backend service.
+			// We check the Ingress sources for the annotation.
+
+			var affinityType string
+			var cookieTTL *int64
+			var sourceIngress *networkingv1.Ingress
+
+			for _, source := range sources {
+				if val, ok := source.Ingress.Annotations[AffinityAnnotation]; ok && val == "cookie" {
+					affinityType = "Cookie"
+					sourceIngress = source.Ingress
+
+					// Check for Max Age (Expires)
+					if ttlVal, ok := source.Ingress.Annotations[SessionCookieExpiresAnnotation]; ok {
+						if ttl, err := strconv.ParseInt(ttlVal, 10, 64); err == nil {
+							cookieTTL = &ttl
+						}
+					}
+
+					break
+				}
+			}
+
+			if affinityType == "" {
 				continue
 			}
-			policy.CookieExpires = duration
-		}
 
-		// Parse cookie secure
-		if cookieSecureRaw := strings.TrimSpace(anns[nginxSessionCookieSecureAnnotation]); cookieSecureRaw != "" {
-			secure, err := strconv.ParseBool(cookieSecureRaw)
-			if err != nil {
-				errs = append(errs, field.Invalid(
-					field.NewPath("ingress", ing.Namespace, ing.Name, "metadata", "annotations").Key(nginxSessionCookieSecureAnnotation),
-					cookieSecureRaw,
-					"failed to parse session-cookie-secure (must be true or false)",
-				))
-				continue
+			// Build metadata following the same pattern as IPRangeControl:
+			// source is namespace/name, paths list all parsed annotations.
+			source := fmt.Sprintf("%s/%s", sourceIngress.Namespace, sourceIngress.Name)
+			message := "Session affinity is not supported"
+			paths := []*field.Path{
+				field.NewPath(sourceIngress.Namespace, sourceIngress.Name, "metadata", "annotations", fmt.Sprintf("%q", AffinityAnnotation)),
 			}
-			policy.CookieSecure = &secure
-		}
+			if cookieTTL != nil {
+				paths = append(paths, field.NewPath(sourceIngress.Namespace, sourceIngress.Name, "metadata", "annotations", fmt.Sprintf("%q", SessionCookieExpiresAnnotation)))
+			}
+			metadata := emitterir.NewExtensionFeatureMetadata(source, paths, message)
 
-		perIngress[key] = policy
+			// Apply to all backend refs in this rule?
+			// Session Affinity is per Backend Service.
+			// We need to update the ServiceIR for the referenced services.
+
+			for _, backendRef := range httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs {
+				refName := string(backendRef.Name)
+
+				svcKey := types.NamespacedName{
+					Namespace: httpRouteCtx.HTTPRoute.Namespace, // assumption: same namespace
+					Name:      refName,
+				}
+
+				if svc, ok := ir.Services[svcKey]; ok {
+					if svc.SessionAffinity == nil {
+						svc.SessionAffinity = &emitterir.SessionAffinity{}
+					}
+
+					svc.SessionAffinity.Type = affinityType
+					svc.SessionAffinity.CookieTTLSec = cookieTTL
+					svc.SessionAffinity.Metadata = metadata
+
+					// Update the map
+					ir.Services[svcKey] = svc
+				} else {
+					// Service doesn't exist yet, create it
+					svc = providerir.ProviderSpecificServiceIR{
+						SessionAffinity: &emitterir.SessionAffinity{
+							Metadata:     metadata,
+							Type:         affinityType,
+							CookieTTLSec: cookieTTL,
+						},
+					}
+					ir.Services[svcKey] = svc
+				}
+			}
+		}
 	}
+	return nil
+}
 
-	if len(perIngress) == 0 {
-		return errs
-	}
-
-	// Map per-Ingress session affinity policy onto HTTPRoute policies using RuleBackendSources.
-	ruleGroups := common.GetRuleGroups(ingresses)
-
-	for _, rg := range ruleGroups {
-		routeKey := types.NamespacedName{
-			Namespace: rg.Namespace,
-			Name:      common.RouteName(rg.Name, rg.Host),
-		}
-
-		httpCtx, ok := ir.HTTPRoutes[routeKey]
+// applySessionAffinityToEmitterIR projects ingress-nginx cookie affinity annotations into
+// emitter-neutral per-route policy intent for emitters like kgateway.
+func (p *Provider) applySessionAffinityToEmitterIR(pIR providerir.ProviderIR, eIR *emitterir.EmitterIR) {
+	for key, pRouteCtx := range pIR.HTTPRoutes {
+		eRouteCtx, ok := eIR.HTTPRoutes[key]
 		if !ok {
 			continue
 		}
 
-		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
-				Policies: map[string]providerir.Policy{},
+		for ruleIdx := range eRouteCtx.Spec.Rules {
+			if ruleIdx >= len(pRouteCtx.RuleBackendSources) {
+				continue
 			}
-		}
-		if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
-		}
+			if ruleIdx >= len(eRouteCtx.Spec.Rules) {
+				continue
+			}
 
-		for ruleIdx, backendSources := range httpCtx.RuleBackendSources {
-			for backendIdx, src := range backendSources {
-				if src.Ingress == nil {
+			sources := pRouteCtx.RuleBackendSources[ruleIdx]
+			rule := eRouteCtx.Spec.Rules[ruleIdx]
+
+			for backendIdx := range rule.BackendRefs {
+				if backendIdx >= len(sources) {
 					continue
 				}
 
-				ingKey := types.NamespacedName{
-					Namespace: src.Ingress.Namespace,
-					Name:      src.Ingress.Name,
+				source := sources[backendIdx]
+				if source.Ingress == nil {
+					continue
 				}
 
-				sessionAffinity := perIngress[ingKey]
+				sessionAffinity, parsedAnnotations := parseIngressNginxSessionAffinity(source.Ingress)
 				if sessionAffinity == nil {
 					continue
 				}
 
-				p := httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name]
-				if p.SessionAffinity == nil {
-					// Deep copy the policy to avoid sharing references
-					sessionAffinityCopy := *sessionAffinity
-					p.SessionAffinity = &sessionAffinityCopy
+				if eRouteCtx.PoliciesBySourceIngressName == nil {
+					eRouteCtx.PoliciesBySourceIngressName = make(map[string]emitterir.Policy)
 				}
 
-				// Dedupe (rule, backend) pairs.
-				p = p.AddRuleBackendSources([]providerir.PolicyIndex{
-					{
-						Rule:    ruleIdx,
-						Backend: backendIdx,
-					},
-				})
+				ingressName := source.Ingress.Name
+				policy := eRouteCtx.PoliciesBySourceIngressName[ingressName]
+				policy.SessionAffinity = sessionAffinity
+				policy = policy.AddRuleBackendSources([]emitterir.PolicyIndex{{
+					Rule:    ruleIdx,
+					Backend: backendIdx,
+				}})
+				eRouteCtx.PoliciesBySourceIngressName[ingressName] = policy
 
-				httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name] = p
+				_ = parsedAnnotations
 			}
 		}
 
-		ir.HTTPRoutes[routeKey] = httpCtx
+		eIR.HTTPRoutes[key] = eRouteCtx
+	}
+}
+
+func parseIngressNginxSessionAffinity(ing *networkingv1.Ingress) (*emitterir.SessionAffinityPolicy, []string) {
+	if ing == nil {
+		return nil, nil
+	}
+	if !strings.EqualFold(strings.TrimSpace(ing.Annotations[AffinityAnnotation]), "cookie") {
+		return nil, nil
 	}
 
-	return errs
+	parsedAnnotations := []string{AffinityAnnotation}
+	policy := &emitterir.SessionAffinityPolicy{
+		CookieName: "INGRESSCOOKIE",
+	}
+
+	if v := strings.TrimSpace(ing.Annotations[SessionCookieNameAnnotation]); v != "" {
+		policy.CookieName = v
+		parsedAnnotations = append(parsedAnnotations, SessionCookieNameAnnotation)
+	}
+	if v := strings.TrimSpace(ing.Annotations[SessionCookiePathAnnotation]); v != "" {
+		policy.CookiePath = v
+		parsedAnnotations = append(parsedAnnotations, SessionCookiePathAnnotation)
+	}
+	if v := strings.TrimSpace(ing.Annotations[SessionCookieDomainAnnotation]); v != "" {
+		policy.CookieDomain = v
+		parsedAnnotations = append(parsedAnnotations, SessionCookieDomainAnnotation)
+	}
+	if v := strings.TrimSpace(ing.Annotations[SessionCookieSameSiteAnnotation]); v != "" {
+		policy.CookieSameSite = v
+		parsedAnnotations = append(parsedAnnotations, SessionCookieSameSiteAnnotation)
+	}
+	if v := strings.TrimSpace(ing.Annotations[SessionCookieSecureAnnotation]); v != "" {
+		if secure, err := strconv.ParseBool(v); err == nil {
+			policy.CookieSecure = &secure
+			parsedAnnotations = append(parsedAnnotations, SessionCookieSecureAnnotation)
+		}
+	}
+
+	ttlRaw := strings.TrimSpace(ing.Annotations[SessionCookieMaxAgeAnnotation])
+	ttlAnnotation := SessionCookieMaxAgeAnnotation
+	if ttlRaw == "" {
+		ttlRaw = strings.TrimSpace(ing.Annotations[SessionCookieExpiresAnnotation])
+		ttlAnnotation = SessionCookieExpiresAnnotation
+	}
+	if ttlRaw != "" {
+		if ttl, err := strconv.ParseInt(ttlRaw, 10, 64); err == nil {
+			policy.CookieExpires = &ttl
+			parsedAnnotations = append(parsedAnnotations, ttlAnnotation)
+		}
+	}
+
+	return policy, parsedAnnotations
 }

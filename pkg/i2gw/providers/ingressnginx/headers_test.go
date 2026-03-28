@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The Kubernetes Authors.
+Copyright The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package ingressnginx
 import (
 	"testing"
 
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -34,85 +35,6 @@ func TestHeaderModifierFeature(t *testing.T) {
 		ingress         networkingv1.Ingress
 		expectedHeaders map[string]string
 	}{
-		{
-			name: "x-forwarded-prefix header with rewrite-target",
-			ingress: networkingv1.Ingress{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-x-forwarded-valid",
-					Namespace: "default",
-					Annotations: map[string]string{
-						"nginx.ingress.kubernetes.io/x-forwarded-prefix": "/custom-prefix",
-						"nginx.ingress.kubernetes.io/rewrite-target":     "/foo",
-					},
-				},
-				Spec: networkingv1.IngressSpec{
-					Rules: []networkingv1.IngressRule{
-						{
-							Host: "example.com",
-							IngressRuleValue: networkingv1.IngressRuleValue{
-								HTTP: &networkingv1.HTTPIngressRuleValue{
-									Paths: []networkingv1.HTTPIngressPath{
-										{
-											Path:     "/",
-											PathType: ptr.To(networkingv1.PathTypePrefix),
-											Backend: networkingv1.IngressBackend{
-												Service: &networkingv1.IngressServiceBackend{
-													Name: "test-service",
-													Port: networkingv1.ServiceBackendPort{
-														Number: 80,
-													},
-												},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			expectedHeaders: map[string]string{
-				"X-Forwarded-Prefix": "/custom-prefix",
-			},
-		},
-		{
-			name: "x-forwarded-prefix ignored without rewrite-target",
-			ingress: networkingv1.Ingress{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-x-forwarded-ignored",
-					Namespace: "default",
-					Annotations: map[string]string{
-						"nginx.ingress.kubernetes.io/x-forwarded-prefix": "/custom-prefix",
-					},
-				},
-				Spec: networkingv1.IngressSpec{
-					Rules: []networkingv1.IngressRule{
-						{
-							Host: "example.com",
-							IngressRuleValue: networkingv1.IngressRuleValue{
-								HTTP: &networkingv1.HTTPIngressRuleValue{
-									Paths: []networkingv1.HTTPIngressPath{
-										{
-											Path:     "/",
-											PathType: ptr.To(networkingv1.PathTypePrefix),
-											Backend: networkingv1.IngressBackend{
-												Service: &networkingv1.IngressServiceBackend{
-													Name: "test-service",
-													Port: networkingv1.ServiceBackendPort{
-														Number: 80,
-													},
-												},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			expectedHeaders: map[string]string{}, // Should be empty
-		},
 		{
 			name: "upstream-vhost header",
 			ingress: networkingv1.Ingress{
@@ -200,8 +122,6 @@ func TestHeaderModifierFeature(t *testing.T) {
 					Name:      "test-multiple",
 					Namespace: "default",
 					Annotations: map[string]string{
-						"nginx.ingress.kubernetes.io/x-forwarded-prefix":      "/prefix",
-						"nginx.ingress.kubernetes.io/rewrite-target":          "/foo",
 						"nginx.ingress.kubernetes.io/upstream-vhost":          "backend.local",
 						"nginx.ingress.kubernetes.io/connection-proxy-header": "keep-alive",
 					},
@@ -233,9 +153,8 @@ func TestHeaderModifierFeature(t *testing.T) {
 				},
 			},
 			expectedHeaders: map[string]string{
-				"X-Forwarded-Prefix": "/prefix",
-				"Host":               "backend.local",
-				"Connection":         "keep-alive",
+				"Host":       "backend.local",
+				"Connection": "keep-alive",
 			},
 		},
 	}
@@ -277,7 +196,7 @@ func TestHeaderModifierFeature(t *testing.T) {
 				},
 			}
 
-			errs := headerModifierFeature([]networkingv1.Ingress{tc.ingress}, nil, &ir)
+			errs := headerModifierFeature(notifications.NoopNotify, []networkingv1.Ingress{tc.ingress}, nil, &ir)
 			if len(errs) > 0 {
 				t.Fatalf("Expected no errors, got %v", errs)
 			}

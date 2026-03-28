@@ -23,6 +23,7 @@ import (
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitters/utils"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 
 	agentgatewayv1alpha1 "github.com/agentgateway/agentgateway/controller/api/v1alpha1/agentgateway"
 	"github.com/agentgateway/agentgateway/controller/api/v1alpha1/shared"
@@ -32,17 +33,20 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-const gatewayClassName = "agentgateway"
+const emitterName = "agentgateway"
 
 func init() {
-	i2gw.EmitterConstructorByName["agentgateway"] = NewEmitter
+	i2gw.EmitterConstructorByName[emitterName] = NewEmitter
 }
 
-type Emitter struct{}
+type Emitter struct {
+	notify notifications.NotifyFunc
+}
 
-// NewEmitter returns a new instance of AgentgatewayEmitter.
-func NewEmitter(_ *i2gw.EmitterConf) i2gw.Emitter {
-	return &Emitter{}
+func NewEmitter(conf *i2gw.EmitterConf) i2gw.Emitter {
+	return &Emitter{
+		notify: conf.Report.Notifier(emitterName),
+	}
 }
 
 // Emit converts EmitterIR to Gateway API resources plus agentgateway-specific extensions.
@@ -55,7 +59,7 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 	// Set GatewayClassName to "agentgateway" for all Gateways
 	for key := range gatewayResources.Gateways {
 		gateway := gatewayResources.Gateways[key]
-		gateway.Spec.GatewayClassName = gatewayClassName
+		gateway.Spec.GatewayClassName = emitterName
 		gatewayResources.Gateways[key] = gateway
 	}
 
@@ -184,6 +188,7 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 				touched = true
 				// Emit an INFO notification with guidance about Secret key expectations.
 				emitBasicAuthSecretNotifications(
+					e.notify,
 					pol,
 					polSourceIngressName,
 					httpRouteKey.Namespace,

@@ -36,14 +36,16 @@ spec:
     matches:
     - path:
         type: RegularExpression
-        value: ^/path/one
+        value: (?i)/path/one.*
+    name: rule-0
   - backendRefs:
     - name: myservicea
       port: 80
     matches:
     - path:
         type: RegularExpression
-        value: ^/path/two
+        value: (?i)/path/two.*
+    name: rule-1
 status:
   parents: []
 ---
@@ -67,6 +69,7 @@ spec:
     - path:
         type: PathPrefix
         value: /
+    name: rule-0
 status:
   parents: []
 ---

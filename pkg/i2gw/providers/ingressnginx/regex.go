@@ -1,0 +1,87 @@
+/*
+Copyright The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package ingressnginx
+
+import (
+	"strconv"
+
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/utils/ptr"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+)
+
+func regexHosts(ingresses []networkingv1.Ingress) map[string]struct{} {
+	hostsWithRegex := make(map[string]struct{})
+
+	for _, ingress := range ingresses {
+		val := ingress.Annotations[CanaryAnnotation]
+		isCanary, _ := strconv.ParseBool(val)
+		if isCanary {
+			continue
+		}
+		useRegex, _ := strconv.ParseBool(ingress.Annotations[UseRegexAnnotation])
+		hasRewriteTarget := ingress.Annotations[RewriteTargetAnnotation] != ""
+		if !useRegex && !hasRewriteTarget {
+			continue
+		}
+
+		for _, rule := range ingress.Spec.Rules {
+			if rule.Host != "" {
+				hostsWithRegex[rule.Host] = struct{}{}
+			}
+		}
+	}
+	return hostsWithRegex
+}
+
+// regexFeature converts ingress-nginx regex-driving annotations
+// to Gateway API HTTPRoute RegularExpression path match.
+func regexFeature(notify notifications.NotifyFunc, ingresses []networkingv1.Ingress, _ map[types.NamespacedName]map[string]int32, ir *providerir.ProviderIR) field.ErrorList {
+	var errs field.ErrorList
+
+	hostsWithRegex := regexHosts(ingresses)
+
+	for _, httpRouteCtx := range ir.HTTPRoutes {
+		hasRegex := false
+		for _, host := range httpRouteCtx.Spec.Hostnames {
+			if _, found := hostsWithRegex[string(host)]; found {
+				hasRegex = true
+				break
+			}
+		}
+		if !hasRegex {
+			continue
+		}
+
+		for i, rule := range httpRouteCtx.Spec.Rules {
+			for j, path := range rule.Matches {
+				if path.Path != nil {
+					// Ingress nginx regex path matches are prefix matches by default
+					httpRouteCtx.Spec.Rules[i].Matches[j].Path.Type = ptr.To[gatewayv1.PathMatchType](gatewayv1.PathMatchRegularExpression)
+					// All engines I could find support (?i) (other than javascript).
+					httpRouteCtx.Spec.Rules[i].Matches[j].Path.Value = ptr.To("(?i)" + *httpRouteCtx.Spec.Rules[i].Matches[j].Path.Value + ".*")
+				}
+			}
+		}
+		notify(notifications.InfoNotification, "Using case-insensitive regex path matches. You may want to change this.", &httpRouteCtx.HTTPRoute)
+	}
+	return errs
+}

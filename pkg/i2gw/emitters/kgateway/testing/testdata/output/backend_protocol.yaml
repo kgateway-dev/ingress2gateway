@@ -37,6 +37,7 @@ spec:
     - path:
         type: PathPrefix
         value: /
+    name: rule-0
   - backendRefs:
     - name: myservicea
       port: 80
@@ -44,6 +45,7 @@ spec:
     - path:
         type: PathPrefix
         value: /2
+    name: rule-1
 status:
   parents: []
 ---
@@ -68,6 +70,7 @@ spec:
     - path:
         type: PathPrefix
         value: /
+    name: rule-0
 status:
   parents: []
 ---

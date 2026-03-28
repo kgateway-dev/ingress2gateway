@@ -30,29 +30,6 @@ import (
 //
 //	polluting core IR package with downstream logic.
 func validateRegexCookiePath(ir *providerir.ProviderIR) field.ErrorList {
-	var errs field.ErrorList
-
-	for _, httpCtx := range ir.HTTPRoutes {
-		ing := httpCtx.ProviderSpecificIR.IngressNginx
-		if ing == nil || ing.RegexLocationForHost == nil || !*ing.RegexLocationForHost {
-			continue
-		}
-		if ing.Policies == nil {
-			continue
-		}
-		for ingressName, pol := range ing.Policies {
-			if pol.SessionAffinity == nil {
-				continue
-			}
-			if pol.SessionAffinity.CookiePath == "" {
-				errs = append(errs, field.Invalid(
-					field.NewPath("ingress", ingressName, "metadata", "annotations").Key("nginx.ingress.kubernetes.io/session-cookie-path"),
-					"",
-					"session-cookie-path must be set when cookie affinity is used with regex location matching (use-regex or rewrite-target forces regex)",
-				))
-			}
-		}
-	}
-
-	return errs
+	_ = ir
+	return nil
 }

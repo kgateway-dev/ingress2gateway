@@ -20,22 +20,32 @@ import (
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitters/utils"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
+
+const emitterName = "standard_emitter"
 
 func init() {
 	i2gw.EmitterConstructorByName["standard"] = NewEmitter
 }
 
-type Emitter struct{}
+type Emitter struct {
+	notify notifications.NotifyFunc
+}
 
 // Emitter is the standard emitter that converts the intermediate representation
 // to Gateway API resources without any provider-specific modifications.
-func NewEmitter(_ *i2gw.EmitterConf) i2gw.Emitter {
-	return &Emitter{}
+func NewEmitter(conf *i2gw.EmitterConf) i2gw.Emitter {
+	return &Emitter{
+		notify: conf.Report.Notifier(emitterName),
+	}
 }
 
 // Emit converts the provider intermediate representation to Gateway API resources.
 func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.ErrorList) {
-	return utils.ToGatewayResources(ir)
+	utils.LogUnparsedErrors(ir, e.notify)
+	e.notify(notifications.WarningNotification, "Gateway API does not support configuring URL normalization (RFC 3986, Section 6). Please check if this matters for your use case and consult implementation-specific details.")
+	resources, err := utils.ToGatewayResources(ir)
+	return resources, err
 }

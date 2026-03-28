@@ -1,5 +1,5 @@
 /*
-Copyright 2023 The Kubernetes Authors.
+Copyright 2025 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,132 +17,157 @@ limitations under the License.
 package ingressnginx
 
 import (
+	"fmt"
 	"strings"
 
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
-
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-const backendProtocolAnnotation = "nginx.ingress.kubernetes.io/backend-protocol"
+// createBackendTLSPolicies inspects ingresses for backend-protocol annotations
+// and creates BackendTLSPolicies if HTTPS or GRPCS is specified.
+func createBackendTLSPolicies(_ notifications.NotifyFunc, ingresses []networkingv1.Ingress, servicePorts map[types.NamespacedName]map[string]int32, _ *providerir.ProviderIR) field.ErrorList {
+	ruleGroups := common.GetRuleGroups(ingresses)
+	var errList field.ErrorList
 
-// backendProtocolFeature is a FeatureParser that projects the
-// backend-protocol annotation into the ingress-nginx ProviderSpecificIR.
-//
-// Semantics:
-//   - Only GRPC/GRPCS are currently supported and are mapped to Policy.BackendProtocol = grpc.
-//   - HTTP/HTTPS/AUTO_HTTP are treated as the default HTTP/1 behavior and do not set BackendProtocol.
-//   - FCGI (and any other unknown values) are reported as invalid.
-//   - Coverage is recorded via Policy.RuleBackendSources so the emitter can apply protocol selection
-//     only to the specific backends contributed by the annotated Ingress.
-func backendProtocolFeature(
-	ingresses []networkingv1.Ingress,
-	_ map[types.NamespacedName]map[string]int32,
-	ir *providerir.ProviderIR,
-) field.ErrorList {
-	var errs field.ErrorList
+	for _, rg := range ruleGroups {
+		// Determine protocol for this rule group (host).
+		var protocolType string
 
-	// Per-Ingress backend protocol derived from backend-protocol.
-	ingressProtocols := make(map[types.NamespacedName]providerir.BackendProtocol, len(ingresses))
-
-	for i := range ingresses {
-		ing := &ingresses[i]
-		if ing.Annotations == nil {
-			continue
+		for _, rule := range rg.Rules {
+			if val, ok := rule.Ingress.Annotations[BackendProtocolAnnotation]; ok {
+				if val != "" {
+					protocolType = strings.ToUpper(val)
+					break
+				}
+			}
 		}
 
-		raw, ok := ing.Annotations[backendProtocolAnnotation]
+		// Handle HTTPS and GRPCS (TLS Policy)
+		if protocolType == "HTTPS" || protocolType == "GRPCS" {
+			// We iterate the Rules in the Group to find backends
+			for _, rule := range rg.Rules {
+				for _, path := range rule.IngressRule.HTTP.Paths {
+					backendRef, err := common.ToBackendRef(rg.Namespace, path.Backend, servicePorts, field.NewPath("backend"))
+					if err != nil {
+						errList = append(errList, err)
+						continue
+					}
+					serviceName := string(backendRef.Name)
+					if serviceName == "" {
+						continue
+					}
+				}
+			}
+		}
+	}
+	return errList
+}
+
+// applyBackendProtocolToEmitterIR projects ingress-nginx backend-protocol intent into
+// the emitter-neutral policy map used by custom emitters like kgateway and agentgateway.
+//
+// We intentionally keep GRPC upstreams as HTTPRoutes and let emitters decide how to
+// project the upstream protocol. When service-upstream is also enabled, we populate
+// per-backend host/port metadata so emitters can generate implementation-specific
+// Backend resources and rewrite backendRefs.
+func (p *Provider) applyBackendProtocolToEmitterIR(pIR providerir.ProviderIR, eIR *emitterir.EmitterIR) {
+	for key, pRouteCtx := range pIR.HTTPRoutes {
+		eRouteCtx, ok := eIR.HTTPRoutes[key]
 		if !ok {
 			continue
 		}
 
-		value := strings.TrimSpace(strings.ToUpper(raw))
-		if value == "" {
-			continue
-		}
-
-		ingKey := types.NamespacedName{Namespace: ing.Namespace, Name: ing.Name}
-
-		switch value {
-		case "GRPC", "GRPCS":
-			ingressProtocols[ingKey] = providerir.BackendProtocolGRPC
-		case "HTTP", "HTTPS", "AUTO_HTTP":
-			// Default HTTP/1.x behavior; nothing to emit into IR here.
-			continue
-		default:
-			// Values like FCGI/AJP are not supported in Kgateway/Envoy today.
-			errs = append(errs, field.Invalid(
-				field.NewPath("ingress", ing.Namespace, ing.Name, "metadata", "annotations").Key(backendProtocolAnnotation),
-				raw,
-				`unsupported backend-protocol; only "GRPC" and "GRPCS" are mapped by the Kgateway emitter`,
-			))
-			continue
-		}
-	}
-
-	if len(ingressProtocols) == 0 {
-		return errs
-	}
-
-	// Map per-Ingress protocol onto HTTPRoute IR using RuleBackendSources.
-	for httpKey, httpCtx := range ir.HTTPRoutes {
-		// Group backend indices by source Ingress (namespace/name).
-		srcByIngress := map[types.NamespacedName][]providerir.PolicyIndex{}
-
-		for ruleIdx, perRule := range httpCtx.RuleBackendSources {
-			for backendIdx, src := range perRule {
-				if src.Ingress == nil {
-					continue
-				}
-				ingressKey := types.NamespacedName{
-					Namespace: src.Ingress.Namespace,
-					Name:      src.Ingress.Name,
-				}
-				srcByIngress[ingressKey] = append(
-					srcByIngress[ingressKey],
-					providerir.PolicyIndex{Rule: ruleIdx, Backend: backendIdx},
-				)
+		for ruleIdx := range eRouteCtx.Spec.Rules {
+			if ruleIdx >= len(pRouteCtx.RuleBackendSources) {
+				continue
 			}
-		}
-
-		if len(srcByIngress) == 0 {
-			continue
-		}
-
-		// Ensure provider-specific IR is initialized.
-		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
-				Policies: map[string]providerir.Policy{},
-			}
-		} else if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
-		}
-
-		for ingressKey, idxs := range srcByIngress {
-			proto, ok := ingressProtocols[ingressKey]
-			if !ok {
+			if ruleIdx >= len(eRouteCtx.Spec.Rules) {
 				continue
 			}
 
-			// NOTE: Provider policies are keyed by Ingress name.
-			ingressName := ingressKey.Name
+			rule := eRouteCtx.Spec.Rules[ruleIdx]
+			sources := pRouteCtx.RuleBackendSources[ruleIdx]
 
-			existing := httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingressName]
+			for backendIdx := range rule.BackendRefs {
+				if backendIdx >= len(sources) {
+					continue
+				}
+				source := sources[backendIdx]
+				if source.Ingress == nil {
+					continue
+				}
 
-			pCopy := proto
-			existing.BackendProtocol = &pCopy
+				rawProtocol, ok := source.Ingress.Annotations[BackendProtocolAnnotation]
+				if !ok {
+					continue
+				}
 
-			// Record coverage so the emitter can apply protocol selection to the right backends.
-			existing = existing.AddRuleBackendSources(idxs)
+				protocol, supported := parseBackendProtocol(strings.TrimSpace(rawProtocol))
+				if !supported {
+					continue
+				}
 
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingressName] = existing
+				if eRouteCtx.PoliciesBySourceIngressName == nil {
+					eRouteCtx.PoliciesBySourceIngressName = make(map[string]emitterir.Policy)
+				}
+
+				ingressName := source.Ingress.Name
+				policy := eRouteCtx.PoliciesBySourceIngressName[ingressName]
+				policy.BackendProtocol = protocol
+				policy = policy.AddRuleBackendSources([]emitterir.PolicyIndex{{
+					Rule:    ruleIdx,
+					Backend: backendIdx,
+				}})
+
+				if serviceUpstreamEnabled(source.Ingress) {
+					backendRef := rule.BackendRefs[backendIdx].BackendRef
+					if backendRef.Name != "" && backendRef.Port != nil {
+						if policy.Backends == nil {
+							policy.Backends = make(map[types.NamespacedName]emitterir.Backend)
+						}
+
+						svcName := string(backendRef.Name)
+						backendKey := types.NamespacedName{
+							Namespace: key.Namespace,
+							Name:      svcName + "-service-upstream",
+						}
+						policy.Backends[backendKey] = emitterir.Backend{
+							Namespace: key.Namespace,
+							Name:      backendKey.Name,
+							Host:      fmt.Sprintf("%s.%s.svc.cluster.local", svcName, key.Namespace),
+							Port:      int32(*backendRef.Port),
+							Protocol:  protocol,
+						}
+					}
+				}
+
+				eRouteCtx.PoliciesBySourceIngressName[ingressName] = policy
+			}
 		}
 
-		// Write back mutated HTTPRouteContext into IR.
-		ir.HTTPRoutes[httpKey] = httpCtx
+		eIR.HTTPRoutes[key] = eRouteCtx
 	}
+}
 
-	return errs
+func parseBackendProtocol(raw string) (*emitterir.BackendProtocol, bool) {
+	switch strings.ToUpper(raw) {
+	case string(emitterir.BackendProtocolGRPC):
+		protocol := emitterir.BackendProtocolGRPC
+		return &protocol, true
+	default:
+		return nil, false
+	}
+}
+
+func serviceUpstreamEnabled(ing *networkingv1.Ingress) bool {
+	if ing == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(ing.Annotations["nginx.ingress.kubernetes.io/service-upstream"]), "true")
 }

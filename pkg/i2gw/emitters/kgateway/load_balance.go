@@ -26,6 +26,35 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
+// EmitLoadBalancing projects per-rule load balancing IR into Kgateway BackendConfigPolicies.
+func (e *Emitter) EmitLoadBalancing(ir emitterir.EmitterIR) {
+	for httpRouteKey, httpRouteCtx := range ir.HTTPRoutes {
+		for ruleIdx, lb := range httpRouteCtx.LoadBalancingByRuleIdx {
+			if lb == nil || ruleIdx < 0 || ruleIdx >= len(httpRouteCtx.Spec.Rules) {
+				continue
+			}
+
+			coverage := make([]emitterir.PolicyIndex, 0, len(httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs))
+			for backendIdx := range httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs {
+				coverage = append(coverage, emitterir.PolicyIndex{
+					Rule:    ruleIdx,
+					Backend: backendIdx,
+				})
+			}
+
+			applyLoadBalancingPolicy(
+				emitterir.Policy{
+					LoadBalancing:      lb,
+					RuleBackendSources: coverage,
+				},
+				httpRouteKey,
+				httpRouteCtx,
+				e.builderMap.BackendConfigPolicies,
+			)
+		}
+	}
+}
+
 // applyLoadBalancingPolicy projects the LoadBalancing IR policy into one or more
 // Kgateway BackendConfigPolicies.
 //

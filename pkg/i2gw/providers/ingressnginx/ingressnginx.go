@@ -19,9 +19,11 @@ package ingressnginx
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
@@ -45,22 +47,40 @@ type Provider struct {
 	storage                *storage
 	resourceReader         *resourceReader
 	resourcesToIRConverter *resourcesToIRConverter
+	notify                 notifications.NotifyFunc
 }
 
 // NewProvider constructs and returns the ingress-nginx implementation of i2gw.Provider.
 func NewProvider(conf *i2gw.ProviderConf) i2gw.Provider {
+	notify := conf.Report.Notifier(Name)
+
 	return &Provider{
 		storage:                newResourcesStorage(),
 		resourceReader:         newResourceReader(conf),
-		resourcesToIRConverter: newResourcesToIRConverter(),
+		resourcesToIRConverter: newResourcesToIRConverter(notify),
+		notify:                 notify,
 	}
 }
 
 // ToIR converts stored Ingress-Nginx API entities to emitterir.IR
 // including the ingress-nginx specific features.
 func (p *Provider) ToIR() (emitterir.EmitterIR, field.ErrorList) {
-	pIR, errs := p.resourcesToIRConverter.convert(p.storage)
-	return providerir.ToEmitterIR(pIR), errs
+	pIR, errs := p.resourcesToIRConverter.convert(p.notify, p.storage)
+	eIR := providerir.ToEmitterIR(pIR)
+	applyRewriteTargetToEmitterIR(p.storage.Ingresses.List(), pIR, &eIR)
+	p.applyIPRangeControlToEmitterIR(pIR, &eIR)
+	p.applyTimeoutsToEmitterIR(pIR, &eIR)
+	p.applyCorsToEmitterIR(pIR, &eIR)
+	p.applyBodySizeToEmitterIR(pIR, &eIR)
+	p.applyRateLimitToEmitterIR(pIR, &eIR)
+	p.applySessionAffinityToEmitterIR(pIR, &eIR)
+	p.applyLoadBalancingToEmitterIR(pIR, &eIR)
+	p.applyAccessLogToEmitterIR(pIR, &eIR)
+	p.applyAuthToEmitterIR(pIR, &eIR)
+	p.applyBackendTLSToEmitterIR(pIR, &eIR)
+	p.applyBackendProtocolToEmitterIR(pIR, &eIR)
+	p.addSSLAndTrailingSlashRedirects(p.storage.Ingresses.List(), &pIR, &eIR)
+	return eIR, errs
 }
 
 func (p *Provider) ReadResourcesFromCluster(ctx context.Context) error {
@@ -73,8 +93,8 @@ func (p *Provider) ReadResourcesFromCluster(ctx context.Context) error {
 	return nil
 }
 
-func (p *Provider) ReadResourcesFromFile(_ context.Context, filename string) error {
-	storage, err := p.resourceReader.readResourcesFromFile(filename)
+func (p *Provider) ReadResourcesFromFile(_ context.Context, reader io.Reader) error {
+	storage, err := p.resourceReader.readResourcesFromFile(reader)
 	if err != nil {
 		return fmt.Errorf("failed to read resources from file: %w", err)
 	}

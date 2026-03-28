@@ -22,10 +22,38 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
+
+// ExtensionFeatureMetadata holds metadata about an Ingress extension feature, such as its source and any failure message if the feature is not supported.
+type ExtensionFeatureMetadata struct {
+	source         string
+	paths          []*field.Path
+	failureMessage string
+}
+
+func (e *ExtensionFeatureMetadata) Source() string {
+	return e.source
+}
+
+func (e *ExtensionFeatureMetadata) Paths() []*field.Path {
+	return e.paths
+}
+
+func (e *ExtensionFeatureMetadata) FailureMessage() string {
+	return e.failureMessage
+}
+
+func NewExtensionFeatureMetadata(source string, paths []*field.Path, failureMessage string) ExtensionFeatureMetadata {
+	return ExtensionFeatureMetadata{
+		source:         source,
+		paths:          paths,
+		failureMessage: failureMessage,
+	}
+}
 
 // EmitterIR holds specifications of Gateway Objects for supporting Ingress extensions,
 // annotations, and proprietary API features not supported as Gateway core
@@ -44,7 +72,27 @@ type EmitterIR struct {
 	BackendTLSPolicies map[types.NamespacedName]BackendTLSPolicyContext
 	ReferenceGrants    map[types.NamespacedName]ReferenceGrantContext
 
+	Services map[types.NamespacedName]ServiceContext
+
 	GceServices map[types.NamespacedName]gce.ServiceIR
+}
+
+type SessionAffinity struct {
+	Metadata     ExtensionFeatureMetadata
+	Type         string
+	CookieTTLSec *int64
+}
+
+type ServiceContext struct {
+	SessionAffinity *SessionAffinity
+}
+
+func (s *ServiceContext) UnparsedExtensions() []*ExtensionFeatureMetadata {
+	var unparsedExtensions []*ExtensionFeatureMetadata
+	if s.SessionAffinity != nil {
+		unparsedExtensions = append(unparsedExtensions, &s.SessionAffinity.Metadata)
+	}
+	return unparsedExtensions
 }
 
 type GatewayContext struct {
@@ -56,35 +104,262 @@ type GatewayContext struct {
 
 type HTTPRouteContext struct {
 	gatewayv1.HTTPRoute
+	// RuleBackendSources[i][j] is the source of the jth backend in the ith
+	// element of HTTPRoute.Spec.Rules.
+	RuleBackendSources [][]BackendSource
 
-	// PoliciesBySourceIngressName stores feature policy data keyed by source Ingress name.
+	// PoliciesBySourceIngressName tracks ingress-nginx policy intent keyed by
+	// source Ingress name.
 	PoliciesBySourceIngressName map[string]Policy
 
-	// RegexLocationForHost is true when regex location matching should be used for the route host.
-	RegexLocationForHost *bool
-
-	// RegexForcedByUseRegex is true when RegexLocationForHost is driven by use-regex annotation.
+	// RegexLocationForHost indicates whether regex path matching was enabled for
+	// any ingress contributing to this merged host-group route.
+	RegexLocationForHost  *bool
 	RegexForcedByUseRegex bool
+	RegexForcedByRewrite  bool
 
-	// RegexForcedByRewrite is true when RegexLocationForHost is driven by rewrite-target annotation.
-	RegexForcedByRewrite bool
+	// TCPTimeoutsByRuleIdx holds provider TCP-level timeouts by HTTPRoute rule index.
+	TCPTimeoutsByRuleIdx map[int]*TCPTimeouts
 
-	// RuleBackendSources tracks the source Ingress resources for each backend.
-	RuleBackendSources [][]BackendSource
+	// PathRewriteByRuleIdx maps HTTPRoute rule indices to path rewrite intent.
+	// This is provider-neutral and applied by the common emitter.
+	PathRewriteByRuleIdx map[int]*PathRewrite
+
+	// BodySizeByRuleIdx maps HTTPRoute rule indices to body size intent.
+	// This is provider-neutral and applied by each custom emitter.
+	BodySizeByRuleIdx map[int]*BodySize
+
+	// RateLimitByRuleIdx maps HTTPRoute rule indices to rate limit intent.
+	// This is provider-neutral and applied by each custom emitter.
+	RateLimitByRuleIdx map[int]*RateLimitPolicy
+
+	// LoadBalancingByRuleIdx maps HTTPRoute rule indices to load balancing intent.
+	// This is provider-neutral and applied by each custom emitter.
+	LoadBalancingByRuleIdx map[int]*BackendLoadBalancingPolicy
+
+	// EnableAccessLogByRuleIdx maps HTTPRoute rule indices to access log intent.
+	// This is provider-neutral and applied by each custom emitter.
+	EnableAccessLogByRuleIdx map[int]*AccessLog
+
+	// CorsPolicyByRuleIdx maps HTTPRoute rule indices to CORS policy intent.
+	// This map is populated by providers that support CORS (e.g., via annotations) and is
+	// applied by the CommonEmitter. This separation allows the CORS logic to be provider-neutral
+	// and consistently applied across different providers, subject to feature gating.
+	CorsPolicyByRuleIdx map[int]*CORSConfig
+
+	// IPRangeControlByRuleIdx maps HTTPRoute rule indices to IP range control intent.
+	// This is provider-neutral and applied by each custom emitter.
+	IPRangeControlByRuleIdx map[int]*IPRangeControl
 }
 
-// BackendSource tracks the source Ingress resource that contributed
-// a specific BackendRef to an HTTPRoute rule.
+func (h *HTTPRouteContext) UnparsedExtensions() []*ExtensionFeatureMetadata {
+	var unparsedExtensions []*ExtensionFeatureMetadata
+	for _, x := range h.BodySizeByRuleIdx {
+		if x != nil {
+			unparsedExtensions = append(unparsedExtensions, &x.Metadata)
+		}
+	}
+	for _, x := range h.RateLimitByRuleIdx {
+		if x != nil {
+			unparsedExtensions = append(unparsedExtensions, &x.Metadata)
+		}
+	}
+	for _, x := range h.LoadBalancingByRuleIdx {
+		if x != nil {
+			unparsedExtensions = append(unparsedExtensions, &x.Metadata)
+		}
+	}
+	for _, x := range h.EnableAccessLogByRuleIdx {
+		if x != nil {
+			unparsedExtensions = append(unparsedExtensions, &x.Metadata)
+		}
+	}
+	for _, x := range h.IPRangeControlByRuleIdx {
+		if x != nil {
+			unparsedExtensions = append(unparsedExtensions, &x.Metadata)
+		}
+	}
+	for _, x := range h.PathRewriteByRuleIdx {
+		if x != nil {
+			unparsedExtensions = append(unparsedExtensions, &x.Metadata)
+		}
+	}
+	return unparsedExtensions
+}
+
+// TCPTimeouts holds TCP-level timeout configuration for a single HTTPRoute rule.
+type TCPTimeouts struct {
+	Connect *gatewayv1.Duration
+	Read    *gatewayv1.Duration
+	Write   *gatewayv1.Duration
+}
+
+// BackendSource tracks the source Ingress resource that contributed a specific
+// BackendRef to an HTTPRoute rule.
 type BackendSource struct {
-	// Source Ingress that contributed this backend
-	Ingress *networkingv1.Ingress
-
-	// Exactly one of Path or DefaultBackend must be non-nil.
-	// Path points to the specific HTTPIngressPath that contributed this backend.
-	Path *networkingv1.HTTPIngressPath
-
-	// DefaultBackend points to the Ingress's spec.defaultBackend that contributed this backend.
+	Ingress        *networkingv1.Ingress
+	Path           *networkingv1.HTTPIngressPath
 	DefaultBackend *networkingv1.IngressBackend
+}
+
+type PolicyIndex struct {
+	Rule    int
+	Backend int
+}
+
+// PathRewrite represents provider-neutral path rewrite intent.
+// For now it only supports full-path replacement; more fields may be added later.
+type PathRewrite struct {
+	Metadata        ExtensionFeatureMetadata
+	ReplaceFullPath string
+	// Headers to add on path rewrite.
+	Headers                     map[string]string
+	RegexCaptureGroupReferences bool
+}
+
+// BodySize represents provider-neutral body size intent.
+type BodySize struct {
+	Metadata   ExtensionFeatureMetadata
+	BufferSize *resource.Quantity
+	MaxSize    *resource.Quantity
+}
+
+type RateLimitUnit string
+
+const (
+	RateLimitUnitRPS RateLimitUnit = "rps"
+	RateLimitUnitRPM RateLimitUnit = "rpm"
+)
+
+// RateLimitPolicy represents provider-neutral rate limit intent.
+type RateLimitPolicy struct {
+	Metadata        ExtensionFeatureMetadata
+	Limit           int32
+	Unit            RateLimitUnit
+	BurstMultiplier int32
+}
+
+type AccessLog struct {
+	Metadata ExtensionFeatureMetadata
+	Enabled  bool
+}
+
+// IPRangeControl represents provider-neutral IP range control intent.
+type IPRangeControl struct {
+	Metadata  ExtensionFeatureMetadata
+	AllowList []string
+	DenyList  []string
+}
+
+type CORSConfig struct {
+	gatewayv1.HTTPCORSFilter
+}
+
+type CorsPolicy struct {
+	Enable           bool
+	AllowOrigin      []string
+	AllowCredentials *bool
+	AllowHeaders     []string
+	ExposeHeaders    []string
+	AllowMethods     []string
+	MaxAge           *int32
+}
+
+type ExtAuthPolicy struct {
+	AuthURL         string
+	ResponseHeaders []string
+}
+
+type BasicAuthPolicy struct {
+	SecretName string
+	AuthType   string
+}
+
+type SessionAffinityPolicy struct {
+	CookieName     string
+	CookiePath     string
+	CookieDomain   string
+	CookieSameSite string
+	CookieExpires  *int64
+	CookieSecure   *bool
+}
+
+type LoadBalancingStrategy string
+
+const (
+	LoadBalancingStrategyRoundRobin LoadBalancingStrategy = "round_robin"
+)
+
+type BackendLoadBalancingPolicy struct {
+	Metadata ExtensionFeatureMetadata
+	Strategy LoadBalancingStrategy
+}
+
+type BackendTLSPolicy struct {
+	SecretName string
+	Verify     bool
+	Hostname   string
+}
+
+type BackendProtocol string
+
+const (
+	BackendProtocolGRPC BackendProtocol = "GRPC"
+)
+
+type Backend struct {
+	Namespace string
+	Name      string
+	Port      int32
+	Host      string
+	Protocol  *BackendProtocol
+}
+
+type Policy struct {
+	ClientBodyBufferSize *resource.Quantity
+	ProxyBodySize        *resource.Quantity
+	Cors                 *CorsPolicy
+	RateLimit            *RateLimitPolicy
+	ProxySendTimeout     *metav1.Duration
+	ProxyReadTimeout     *metav1.Duration
+	ProxyConnectTimeout  *metav1.Duration
+	EnableAccessLog      *bool
+	ExtAuth              *ExtAuthPolicy
+	BasicAuth            *BasicAuthPolicy
+	SessionAffinity      *SessionAffinityPolicy
+	LoadBalancing        *BackendLoadBalancingPolicy
+	BackendTLS           *BackendTLSPolicy
+	BackendProtocol      *BackendProtocol
+	SSLRedirect          *bool
+	RewriteTarget        *string
+	UseRegexPaths        *bool
+	RuleBackendSources   []PolicyIndex
+	Backends             map[types.NamespacedName]Backend
+}
+
+func (p Policy) AddRuleBackendSources(idxs []PolicyIndex) Policy {
+	if len(idxs) == 0 {
+		return p
+	}
+
+	seen := make(map[PolicyIndex]struct{}, len(p.RuleBackendSources)+len(idxs))
+	deduped := make([]PolicyIndex, 0, len(p.RuleBackendSources)+len(idxs))
+	for _, idx := range p.RuleBackendSources {
+		if _, ok := seen[idx]; ok {
+			continue
+		}
+		seen[idx] = struct{}{}
+		deduped = append(deduped, idx)
+	}
+	for _, idx := range idxs {
+		if _, ok := seen[idx]; ok {
+			continue
+		}
+		seen[idx] = struct{}{}
+		deduped = append(deduped, idx)
+	}
+	p.RuleBackendSources = deduped
+	return p
 }
 
 type GatewayClassContext struct {
@@ -114,184 +389,3 @@ type BackendTLSPolicyContext struct {
 type ReferenceGrantContext struct {
 	gatewayv1beta1.ReferenceGrant
 }
-
-// PolicyIndex identifies a (rule, backend) pair within a merged HTTPRoute.
-type PolicyIndex struct {
-	Rule    int
-	Backend int
-}
-
-// CorsPolicy defines a CORS policy extracted from annotations.
-type CorsPolicy struct {
-	Enable           bool
-	AllowOrigin      []string
-	AllowCredentials *bool
-	AllowHeaders     []string
-	ExposeHeaders    []string
-	AllowMethods     []string
-	MaxAge           *int32
-}
-
-// ExtAuthPolicy defines an external auth policy extracted from annotations.
-type ExtAuthPolicy struct {
-	AuthURL         string
-	ResponseHeaders []string
-}
-
-// BasicAuthPolicy defines a basic auth policy extracted from annotations.
-type BasicAuthPolicy struct {
-	SecretName string
-	AuthType   string
-}
-
-// SessionAffinityPolicy defines a session affinity policy extracted from annotations.
-type SessionAffinityPolicy struct {
-	CookieName     string
-	CookiePath     string
-	CookieDomain   string
-	CookieSameSite string
-	CookieExpires  *metav1.Duration
-	CookieSecure   *bool
-}
-
-// BackendTLSPolicy defines a backend TLS policy extracted from annotations.
-type BackendTLSPolicy struct {
-	SecretName string
-	Verify     bool
-	Hostname   string
-}
-
-// Policy describes per-Ingress policy knobs projected by providers.
-type Policy struct {
-	ClientBodyBufferSize *resource.Quantity
-	ProxyBodySize        *resource.Quantity
-	Cors                 *CorsPolicy
-	RateLimit            *RateLimitPolicy
-	ProxySendTimeout     *metav1.Duration
-	ProxyReadTimeout     *metav1.Duration
-	ProxyConnectTimeout  *metav1.Duration
-	EnableAccessLog      *bool
-	ExtAuth              *ExtAuthPolicy
-	BasicAuth            *BasicAuthPolicy
-	SessionAffinity      *SessionAffinityPolicy
-	LoadBalancing        *BackendLoadBalancingPolicy
-	BackendTLS           *BackendTLSPolicy
-	BackendProtocol      *BackendProtocol
-	SSLRedirect          *bool
-	RewriteTarget        *string
-	UseRegexPaths        *bool
-
-	// RuleBackendSources lists covered (rule, backend) pairs in the merged HTTPRoute.
-	RuleBackendSources []PolicyIndex
-
-	// Backends holds all proxied backends that cannot be rendered as a standard k8s service.
-	Backends map[types.NamespacedName]Backend
-
-	// ruleBackendIndexSet is an internal helper used to deduplicate RuleBackendSources entries.
-	ruleBackendIndexSet map[PolicyIndex]struct{}
-}
-
-// BackendProtocol defines the L7 protocol used to talk to a Backend.
-type BackendProtocol string
-
-// BackendProtocolGRPC is the gRPC protocol.
-const BackendProtocolGRPC BackendProtocol = "grpc"
-
-// Backend defines a proxied backend that cannot be rendered as a standard k8s Service.
-type Backend struct {
-	Namespace string
-	Name      string
-	Port      int32
-	Host      string
-	Protocol  *BackendProtocol
-}
-
-// RateLimitUnit defines the unit of rate limiting.
-type RateLimitUnit string
-
-const (
-	// RateLimitUnitRPS defines rate limit in requests per second.
-	RateLimitUnitRPS RateLimitUnit = "rps"
-	// RateLimitUnitRPM defines rate limit in requests per minute.
-	RateLimitUnitRPM RateLimitUnit = "rpm"
-)
-
-// RateLimitPolicy defines a rate limiting policy derived from annotations.
-type RateLimitPolicy struct {
-	Limit           int32
-	Unit            RateLimitUnit
-	BurstMultiplier int32
-}
-
-// LoadBalancingStrategy represents upstream load-balancing mode.
-type LoadBalancingStrategy string
-
-// LoadBalancingStrategyRoundRobin is the supported round_robin strategy.
-const LoadBalancingStrategyRoundRobin LoadBalancingStrategy = "round_robin"
-
-// BackendLoadBalancingPolicy defines backend load-balancing policy.
-type BackendLoadBalancingPolicy struct {
-	Strategy LoadBalancingStrategy
-}
-
-// AddRuleBackendSources returns a copy of p with idxs added to RuleBackendSources,
-// ensuring each (rule, backend) pair is unique.
-func (p Policy) AddRuleBackendSources(idxs []PolicyIndex) Policy {
-	pCopy := p
-
-	if len(pCopy.RuleBackendSources) > 0 && pCopy.ruleBackendIndexSet == nil {
-		pCopy.ruleBackendIndexSet = make(map[PolicyIndex]struct{}, len(pCopy.RuleBackendSources))
-		for _, existing := range pCopy.RuleBackendSources {
-			pCopy.ruleBackendIndexSet[existing] = struct{}{}
-		}
-	}
-	if pCopy.ruleBackendIndexSet == nil {
-		pCopy.ruleBackendIndexSet = make(map[PolicyIndex]struct{})
-	}
-
-	for _, idx := range idxs {
-		if _, exists := pCopy.ruleBackendIndexSet[idx]; exists {
-			continue
-		}
-		pCopy.RuleBackendSources = append(pCopy.RuleBackendSources, idx)
-		pCopy.ruleBackendIndexSet[idx] = struct{}{}
-	}
-
-	return pCopy
-}
-
-// Backward-compatibility aliases for older ingress-nginx-prefixed names.
-
-type IngressNginxPolicy = Policy
-
-type IngressNginxPolicyIndex = PolicyIndex
-
-type IngressNginxCorsPolicy = CorsPolicy
-
-type IngressNginxExtAuthPolicy = ExtAuthPolicy
-
-type IngressNginxBasicAuthPolicy = BasicAuthPolicy
-
-type IngressNginxSessionAffinityPolicy = SessionAffinityPolicy
-
-type IngressNginxBackendTLSPolicy = BackendTLSPolicy
-
-type IngressNginxBackendProtocol = BackendProtocol
-
-const IngressNginxBackendProtocolGRPC = BackendProtocolGRPC
-
-type IngressNginxBackend = Backend
-
-type IngressNginxRateLimitUnit = RateLimitUnit
-
-const IngressNginxRateLimitUnitRPS = RateLimitUnitRPS
-
-const IngressNginxRateLimitUnitRPM = RateLimitUnitRPM
-
-type IngressNginxRateLimitPolicy = RateLimitPolicy
-
-type IngressNginxLoadBalancingStrategy = LoadBalancingStrategy
-
-const IngressNginxLoadBalancingStrategyRoundRobin = LoadBalancingStrategyRoundRobin
-
-type IngressNginxBackendLoadBalancingPolicy = BackendLoadBalancingPolicy
