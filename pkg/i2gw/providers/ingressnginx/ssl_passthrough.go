@@ -34,6 +34,7 @@ const (
 	sslPassthroughAnnotation = "nginx.ingress.kubernetes.io/ssl-passthrough"
 )
 
+// TODO: wire this up.
 // sslPassthroughFeature extracts the "ssl-passthrough" annotation and converts
 // HTTPRoutes to TLSRoutes with TLS passthrough Gateway listeners.
 // When ssl-passthrough is enabled, TLS termination happens at the backend service
