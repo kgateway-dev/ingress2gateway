@@ -78,6 +78,7 @@ func (p *Provider) ToIR() (emitterir.EmitterIR, field.ErrorList) {
 	p.applyAccessLogToEmitterIR(pIR, &eIR)
 	p.applyAuthToEmitterIR(pIR, &eIR)
 	p.applyBackendTLSToEmitterIR(pIR, &eIR)
+	p.applyServiceUpstreamToEmitterIR(pIR, &eIR)
 	p.applyBackendProtocolToEmitterIR(pIR, &eIR)
 	p.addSSLAndTrailingSlashRedirects(p.storage.Ingresses.List(), &pIR, &eIR)
 	return eIR, errs

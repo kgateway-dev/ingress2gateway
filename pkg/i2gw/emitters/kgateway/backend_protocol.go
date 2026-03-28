@@ -27,8 +27,8 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// EmitBackendProtocol projects backend-protocol intent into Kgateway Backends
-// and rewrites HTTPRoute backendRefs that should point at those Backends.
+// EmitBackendProtocol applies service-upstream/backend-protocol backend rewrites
+// and projects backend protocol intent into Kgateway Backends.
 func (e *Emitter) EmitBackendProtocol(ir emitterir.EmitterIR, gwResources *i2gw.GatewayResources) {
 	seenPatchNotifications := map[backendProtoPatchKey]struct{}{}
 
@@ -45,11 +45,22 @@ func (e *Emitter) EmitBackendProtocol(ir emitterir.EmitterIR, gwResources *i2gw.
 
 		for _, ingressName := range policyNames {
 			pol := httpRouteCtx.PoliciesBySourceIngressName[ingressName]
-			if pol.BackendProtocol == nil {
+			if len(pol.Backends) == 0 {
 				continue
 			}
 
 			pol.RuleBackendSources = uniquePolicyIndices(pol.RuleBackendSources)
+			applyServiceUpstream(
+				pol,
+				ingressName,
+				httpRouteKey,
+				&httpRouteCtx,
+				e.builderMap.Backends,
+			)
+
+			if pol.BackendProtocol == nil {
+				continue
+			}
 
 			emitBackendProtocolPatchNotifications(
 				e.notify,

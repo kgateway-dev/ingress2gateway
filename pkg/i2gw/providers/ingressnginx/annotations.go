@@ -67,6 +67,9 @@ const (
 	// Backend protocol annotation
 	BackendProtocolAnnotation = "nginx.ingress.kubernetes.io/backend-protocol"
 
+	// Service upstream annotation
+	ServiceUpstreamAnnotation = "nginx.ingress.kubernetes.io/service-upstream"
+
 	// Regex
 	UseRegexAnnotation = "nginx.ingress.kubernetes.io/use-regex"
 
@@ -144,6 +147,7 @@ var parsedAnnotations = map[string]struct{}{
 	LoadBalanceAnnotation:           {},
 	EnableAccessLogAnnotation:       {},
 	BackendProtocolAnnotation:       {},
+	ServiceUpstreamAnnotation:       {},
 	UseRegexAnnotation:              {},
 	SSLRedirectAnnotation:           {},
 	SSLPassthroughAnnotation:        {},
