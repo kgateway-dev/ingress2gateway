@@ -89,7 +89,7 @@ func (p *Provider) parseIngressNginxRateLimit(ing *networkingv1.Ingress) (*emitt
 
 	if val, ok := ing.Annotations[LimitRPSAnnotation]; ok && val != "" {
 		parsedAnnotations = append(parsedAnnotations, LimitRPSAnnotation)
-		parsed, err := strconv.Atoi(val)
+		parsed, err := strconv.ParseInt(val, 10, 32)
 		if err != nil || parsed <= 0 {
 			p.notify(
 				notifications.WarningNotification,
@@ -106,7 +106,7 @@ func (p *Provider) parseIngressNginxRateLimit(ing *networkingv1.Ingress) (*emitt
 	if !hasLimit {
 		if val, ok := ing.Annotations[LimitRPMAnnotation]; ok && val != "" {
 			parsedAnnotations = append(parsedAnnotations, LimitRPMAnnotation)
-			parsed, err := strconv.Atoi(val)
+			parsed, err := strconv.ParseInt(val, 10, 32)
 			if err != nil || parsed <= 0 {
 				p.notify(
 					notifications.WarningNotification,
@@ -127,7 +127,7 @@ func (p *Provider) parseIngressNginxRateLimit(ing *networkingv1.Ingress) (*emitt
 
 	if val, ok := ing.Annotations[LimitBurstMultiplierAnnotation]; ok && val != "" {
 		parsedAnnotations = append(parsedAnnotations, LimitBurstMultiplierAnnotation)
-		parsed, err := strconv.Atoi(val)
+		parsed, err := strconv.ParseInt(val, 10, 32)
 		if err != nil || parsed <= 0 {
 			p.notify(
 				notifications.WarningNotification,

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
@@ -96,8 +97,10 @@ func parseAuthURL(raw string, ingressNS string) (*parsedAuthURL, error) {
 	// Port
 	var port int32
 	if portStr != "" {
-		var parsed int
-		fmt.Sscanf(portStr, "%d", &parsed)
+		parsed, perr := strconv.ParseInt(portStr, 10, 32)
+		if perr != nil || parsed < 1 || parsed > 65535 {
+			return nil, fmt.Errorf("invalid port in auth-url %q", portStr)
+		}
 		port = int32(parsed)
 	} else {
 		switch u.Scheme {

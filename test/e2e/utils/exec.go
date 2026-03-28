@@ -48,6 +48,7 @@ func Run(ctx context.Context, bin string, args ...string) error {
 
 // RunIngress2Gateway runs ingress2gateway against the input file and returns the generated YAML output.
 func RunIngress2Gateway(ctx context.Context, emitter, root, inputFile string) ([]byte, error) {
+	//nolint:gosec // G204: e2e invokes the local ingress2gateway module with fixed argv shape.
 	cmd := exec.CommandContext(
 		ctx,
 		"go", "run", ".",
@@ -72,6 +73,7 @@ func RunIngress2Gateway(ctx context.Context, emitter, root, inputFile string) ([
 func Kubectl(ctx context.Context, kubeContext string, args ...string) (string, error) {
 	base := []string{"--context", kubeContext}
 	base = append(base, args...)
+	//nolint:gosec // G204: kubectl is invoked with caller-controlled args in test tooling.
 	cmd := exec.CommandContext(ctx, "kubectl", base...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -91,7 +93,7 @@ func Kubectl(ctx context.Context, kubeContext string, args ...string) (string, e
 func MustKubectl(ctx context.Context, kubeContext string, args ...string) {
 	out, err := Kubectl(ctx, kubeContext, args...)
 	if err != nil {
-		panic(fmt.Errorf("kubectl failed: %v\n%s", err, out))
+		panic(fmt.Errorf("kubectl failed: %w\n%s", err, out))
 	}
 }
 

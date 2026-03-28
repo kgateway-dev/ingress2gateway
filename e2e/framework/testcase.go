@@ -315,7 +315,6 @@ func (env *TestEnv) Run(tc *TestCase) {
 		env.restConfig,
 		getGateways(res),
 		env.Namespace,
-		tc.GatewayImplementation,
 		testCaseNeedsHTTPS(tc),
 	)
 	t.Cleanup(func() {
@@ -382,7 +381,6 @@ func setUpGatewayPortForwarding(
 	restConfig *rest.Config,
 	gateways map[types.NamespacedName]gwapiv1.Gateway,
 	appNS string,
-	gwImpl string,
 	useHTTPS bool,
 ) ([]*portForwarder, map[string]addresses) {
 	var pfs []*portForwarder

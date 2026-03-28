@@ -25,13 +25,12 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/validation/field"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 const (
-	sslPassthroughAnnotation = "nginx.ingress.kubernetes.io/ssl-passthrough"
+	sslPassthroughAnnotation = "nginx.ingress.kubernetes.io/ssl-passthrough" //nolint:gosec // G101: annotation key, not a credential
 )
 
 // TODO: wire this up.
@@ -41,12 +40,9 @@ const (
 // rather than at the ingress controller, requiring TLSRoute instead of HTTPRoute.
 func sslPassthroughFeature(
 	ingresses []networkingv1.Ingress,
-	servicePorts map[types.NamespacedName]map[string]int32,
+	_ map[types.NamespacedName]map[string]int32,
 	ir *providerir.ProviderIR,
-) field.ErrorList {
-
-	var errs field.ErrorList
-
+) {
 	// Track ingresses with ssl-passthrough enabled
 	passthroughIngresses := make(map[types.NamespacedName]bool)
 
@@ -65,7 +61,7 @@ func sslPassthroughFeature(
 	}
 
 	if len(passthroughIngresses) == 0 {
-		return errs
+		return
 	}
 
 	// Get rule groups to map ingresses to HTTPRoutes
@@ -279,5 +275,4 @@ func sslPassthroughFeature(
 		}
 	}
 
-	return errs
 }

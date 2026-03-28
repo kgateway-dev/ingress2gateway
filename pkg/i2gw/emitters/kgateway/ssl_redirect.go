@@ -58,13 +58,14 @@ func splitHTTPRouteForSSLRedirect(
 	}
 
 	for _, listener := range gatewayCtx.Spec.Listeners {
-		if listener.Protocol == gatewayv1.HTTPProtocolType {
+		switch listener.Protocol {
+		case gatewayv1.HTTPProtocolType:
 			// Check if hostname matches
 			if hostname == "" || (listener.Hostname != nil && string(*listener.Hostname) == hostname) {
 				name := listener.Name
 				httpListenerName = &name
 			}
-		} else if listener.Protocol == gatewayv1.HTTPSProtocolType {
+		case gatewayv1.HTTPSProtocolType:
 			// Check if hostname matches
 			if hostname == "" || (listener.Hostname != nil && string(*listener.Hostname) == hostname) {
 				name := listener.Name

@@ -30,8 +30,8 @@ const (
 	authURLAnnotation             = "nginx.ingress.kubernetes.io/auth-url"
 	authResponseHeadersAnnotation = "nginx.ingress.kubernetes.io/auth-response-headers"
 	authTypeAnnotation            = "nginx.ingress.kubernetes.io/auth-type"
-	authSecretAnnotation          = "nginx.ingress.kubernetes.io/auth-secret"
-	authSecretTypeAnnotation      = "nginx.ingress.kubernetes.io/auth-secret-type"
+	authSecretAnnotation          = "nginx.ingress.kubernetes.io/auth-secret"      //nolint:gosec // G101: annotation key, not a credential
+	authSecretTypeAnnotation      = "nginx.ingress.kubernetes.io/auth-secret-type" //nolint:gosec // G101: annotation key, not a credential
 )
 
 type extAuthConfig struct {

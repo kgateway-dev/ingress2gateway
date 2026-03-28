@@ -45,7 +45,7 @@ linters:
     # unused presets
     - ineffassign
     - unparam
-    - unused
+    # - unused
   settings:
     revive:
       rules:

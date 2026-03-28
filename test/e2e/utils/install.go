@@ -419,6 +419,7 @@ func CreateTLSSecret(ctx context.Context, kubeContext, secretName, hostname stri
 	)
 
 	// Create Kubernetes secret from the certificate files
+	//nolint:gosec // G204: e2e builds a fixed kubectl argv from temp cert paths.
 	cmd := exec.CommandContext(ctx, "kubectl",
 		"--context", kubeContext,
 		"create", "secret", "tls", secretName,

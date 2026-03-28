@@ -89,6 +89,9 @@ func applyRegexPathMatchingForHost(
 				re = "^" + val + "$"
 			case gatewayv1.PathMatchPathPrefix:
 				re = "^" + val
+			case gatewayv1.PathMatchRegularExpression:
+				// TODO: handle this case.
+				continue
 			default:
 				continue
 			}
