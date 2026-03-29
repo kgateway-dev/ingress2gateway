@@ -33,6 +33,7 @@ spec:
     - path:
         type: PathPrefix
         value: /
+    name: rule-0
 status:
   parents: []
 ---
@@ -52,4 +53,3 @@ spec:
     name: basic-auth-localhost-basic-auth-localdev-me
 status:
   ancestors: null
-

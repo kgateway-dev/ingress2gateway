@@ -18,21 +18,23 @@ spec:
     protocol: HTTPS
     tls:
       certificateRefs:
-      - name: ssl-redirect-tls
+      - group: ""
+        kind: Secret
+        name: ssl-redirect-tls
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   annotations:
     gateway.networking.k8s.io/generator: ingress2gateway-dev
-  name: ssl-redirect-localhost-ssl-redirect-localdev-me-https
+  name: ssl-redirect-localhost-ssl-redirect-localdev-me
   namespace: default
 spec:
   hostnames:
   - ssl-redirect.localdev.me
   parentRefs:
   - name: nginx
-    sectionName: ssl-redirect-localdev-me-https
+    port: 443
   rules:
   - backendRefs:
     - name: echo-backend
@@ -41,6 +43,7 @@ spec:
     - path:
         type: PathPrefix
         value: /
+    name: rule-0
 status:
   parents: []
 ---
@@ -49,23 +52,23 @@ kind: HTTPRoute
 metadata:
   annotations:
     gateway.networking.k8s.io/generator: ingress2gateway-dev
-  name: ssl-redirect-localhost-ssl-redirect-localdev-me-http-redirect
+  name: ssl-redirect-localhost-ssl-redirect-localdev-me-http
   namespace: default
 spec:
   hostnames:
   - ssl-redirect.localdev.me
   parentRefs:
   - name: nginx
-    sectionName: ssl-redirect-localdev-me-http
+    port: 80
   rules:
   - filters:
     - requestRedirect:
         scheme: https
-        statusCode: 301
+        statusCode: 308
       type: RequestRedirect
     matches:
     - path:
         type: PathPrefix
         value: /
 status:
-  parents: []
+  parents: null

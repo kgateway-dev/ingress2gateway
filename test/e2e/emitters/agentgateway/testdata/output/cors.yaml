@@ -28,6 +28,33 @@ spec:
     - name: echo-backend
       port: 8080
     filters:
+    - cors:
+        allowCredentials: true
+        allowHeaders:
+        - DNT
+        - Keep-Alive
+        - User-Agent
+        - X-Requested-With
+        - If-Modified-Since
+        - Cache-Control
+        - Content-Type
+        - Range
+        - Authorization
+        allowMethods:
+        - GET
+        - PUT
+        - POST
+        - DELETE
+        - PATCH
+        - OPTIONS
+        allowOrigins:
+        - https://example.com
+        - https://another.com
+        exposeHeaders:
+        - '*'
+        - X-CustomResponseHeader
+        maxAge: 1728000
+      type: CORS
     - responseHeaderModifier:
         remove:
         - Access-Control-Allow-Origin
@@ -41,6 +68,7 @@ spec:
     - path:
         type: PathPrefix
         value: /
+    name: rule-0
 status:
   parents: []
 ---
@@ -55,11 +83,30 @@ spec:
     name: ingress-cors-b-cors-localdev-me
   traffic:
     cors:
+      allowCredentials: true
+      allowHeaders:
+      - DNT
+      - Keep-Alive
+      - User-Agent
+      - X-Requested-With
+      - If-Modified-Since
+      - Cache-Control
+      - Content-Type
+      - Range
+      - Authorization
+      allowMethods:
+      - GET
+      - PUT
+      - POST
+      - DELETE
+      - PATCH
+      - OPTIONS
       allowOrigins:
       - https://example.com
       - https://another.com
       exposeHeaders:
       - '*'
       - X-CustomResponseHeader
+      maxAge: 1728000
 status:
   ancestors: null
