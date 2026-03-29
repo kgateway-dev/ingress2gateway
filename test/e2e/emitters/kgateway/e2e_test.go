@@ -243,13 +243,13 @@ func TestSSLRedirect(t *testing.T) {
 		},
 	})
 
-	// Test HTTP redirect (301) through Gateway
+	// Test HTTP redirect (308) through Gateway
 	testutils.MakeHTTPRequestEventually(t, kubeContext, testutils.HTTPRequestConfig{
 		HostHeader:          host,
 		Address:             gwAddr,
 		Port:                "",
 		Path:                "/",
-		ExpectedStatusCodes: []int{301},
+		ExpectedStatusCodes: []int{308},
 		Timeout:             5 * time.Second,
 		UnfollowRedirect:    true,
 		SNI:                 host,
