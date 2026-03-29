@@ -114,7 +114,7 @@ KEEP_KIND_CLUSTER=false go test ./test/e2e/emitters/agentgateway -v -run TestIng
 | Variable | Default | Description |
 |---|---:|---|
 | `INGRESS_NGINX_VERSION` | `v1.14.1` | used in URL `controller-${VERSION}` |
-| `GATEWAY_API_VERSION` | `v1.4.0` | applies `experimental-install.yaml` |
+| `GATEWAY_API_VERSION` | `v1.5.1` | applies `experimental-install.yaml` |
 | `METALLB_VERSION` | `v0.15.3` | applies `metallb-native.yaml` |
 | `AGENTGATEWAY_VERSION` | (derived) | overrides Helm chart version. If unset, version is derived from `go.mod` and normalized for agentgateway release naming |
 
