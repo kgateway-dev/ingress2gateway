@@ -1,31 +1,3 @@
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: BackendConfigPolicy
-metadata:
-  name: myservicea-backend-config
-  namespace: default
-spec:
-  connectTimeout: 30s
-  targetRefs:
-    - group: ""
-      kind: Service
-      name: myservicea
-status:
-  ancestors: null
----
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: BackendConfigPolicy
-metadata:
-  name: myserviceb-backend-config
-  namespace: default
-spec:
-  connectTimeout: 2m0s
-  targetRefs:
-    - group: ""
-      kind: Service
-      name: myserviceb
-status:
-  ancestors: null
----
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -66,6 +38,8 @@ spec:
             type: PathPrefix
             value: /
       name: rule-0
+      timeouts:
+        request: 7m30s
     - backendRefs:
         - name: myservicea
           port: 80
@@ -74,6 +48,8 @@ spec:
             type: PathPrefix
             value: /2
       name: rule-1
+      timeouts:
+        request: 10m0s
 status:
   parents: []
 ---
@@ -98,42 +74,10 @@ spec:
             type: PathPrefix
             value: /
       name: rule-0
+      timeouts:
+        request: 20m0s
 status:
   parents: []
----
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: TrafficPolicy
-metadata:
-  name: ingress-myservicea1-myservicea-foo-org-0
-  namespace: default
-spec:
-  targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: ingress-myservicea1-myservicea-foo-org
-      sectionName: rule-0
-  timeouts:
-    request: 30s
-    streamIdle: 45s
-status:
-  ancestors: null
----
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: TrafficPolicy
-metadata:
-  name: ingress-myservicea1-myservicea-foo-org-1
-  namespace: default
-spec:
-  targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: ingress-myservicea1-myservicea-foo-org
-      sectionName: rule-1
-  timeouts:
-    request: 1m0s
-    streamIdle: 1m0s
-status:
-  ancestors: null
 ---
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: TrafficPolicy
@@ -147,22 +91,5 @@ spec:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
       name: ingress-myserviceb-myserviceb-foo-org
-status:
-  ancestors: null
----
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: TrafficPolicy
-metadata:
-  name: ingress-myserviceb-myserviceb-foo-org-0
-  namespace: default
-spec:
-  targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: ingress-myserviceb-myserviceb-foo-org
-      sectionName: rule-0
-  timeouts:
-    request: 1m30s
-    streamIdle: 1m30s
 status:
   ancestors: null
