@@ -157,7 +157,7 @@ spec:
 
 func InstallGatewayAPICRDs(ctx context.Context, kubeContext, version string) {
 	ver := EnvOrDefault("GATEWAY_API_VERSION", version)
-	url := fmt.Sprintf("https://github.com/kgateway-dev/gateway-api/releases/download/%s/experimental-install.yaml", ver)
+	url := fmt.Sprintf("https://github.com/kubernetes-sigs/gateway-api/releases/download/%s/experimental-install.yaml", ver)
 
 	log.Printf("Installing Gateway API CRDs %s (experimental)", ver)
 	MustKubectl(ctx, kubeContext, "apply", "--server-side=true", "-f", url)
