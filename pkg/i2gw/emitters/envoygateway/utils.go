@@ -22,6 +22,11 @@ import (
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 )
 
+const (
+	// RouteRuleAllIndex is used to indicate a policy applies to all rules in an HTTPRoute.
+	RouteRuleAllIndex = -1
+)
+
 func MergeBodySizeIR(ctx *emitterir.HTTPRouteContext) {
 	if len(ctx.BodySizeByRuleIdx) != len(ctx.Spec.Rules) {
 		return

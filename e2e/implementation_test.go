@@ -35,7 +35,6 @@ func TestImplementations(t *testing.T) {
 		name string
 	}{
 		{name: implementation.KgatewayName},
-		{name: implementation.EnvoyGatewayName},
 		{name: implementation.AgentgatewayName},
 	}
 
