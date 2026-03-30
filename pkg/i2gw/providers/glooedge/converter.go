@@ -21,10 +21,10 @@ import (
 	"regexp"
 
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type resourcesToIRConverter struct {
@@ -105,18 +105,19 @@ func basicRoutingFeature(storage *storage, ir *providerir.ProviderIR) field.Erro
 				}
 
 				// Add backend ref from upstream
-				if route.RouteAction.Single.Upstream.Name != "" {backendRef := gatewayv1.HTTPBackendRef{
-		BackendRef: gatewayv1.BackendRef{
-			BackendObjectReference: gatewayv1.BackendObjectReference{
-				Name: gatewayv1.ObjectName(route.RouteAction.Single.Upstream.Name),
-			},
-		},
-	}
-	if route.RouteAction.Single.Upstream.Namespace != "" {
-		backendRef.BackendRef.Namespace = ptrTo(gatewayv1.Namespace(route.RouteAction.Single.Upstream.Namespace))
-	}
-	rule.BackendRefs = []gatewayv1.HTTPBackendRef{backendRef}
-}
+				if route.RouteAction.Single.Upstream.Name != "" {
+					backendRef := gatewayv1.HTTPBackendRef{
+						BackendRef: gatewayv1.BackendRef{
+							BackendObjectReference: gatewayv1.BackendObjectReference{
+								Name: gatewayv1.ObjectName(route.RouteAction.Single.Upstream.Name),
+							},
+						},
+					}
+					if route.RouteAction.Single.Upstream.Namespace != "" {
+						backendRef.BackendRef.Namespace = ptrTo(gatewayv1.Namespace(route.RouteAction.Single.Upstream.Namespace))
+					}
+					rule.BackendRefs = []gatewayv1.HTTPBackendRef{backendRef}
+				}
 
 				httpRouteContext.HTTPRoute.Spec.Rules = append(httpRouteContext.HTTPRoute.Spec.Rules, rule)
 				httpRouteContext.RuleBackendSources = append(httpRouteContext.RuleBackendSources, []providerir.BackendSource{})
