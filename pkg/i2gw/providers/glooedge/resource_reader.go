@@ -22,7 +22,6 @@ import (
 
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
 )
 
 type resourceReader struct {
