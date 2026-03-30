@@ -76,24 +76,6 @@ func (e *Emitter) EmitCors(ir emitterir.EmitterIR, gwResources *i2gw.GatewayReso
 	}
 }
 
-// applyCorsPolicy projects the CORS policy IR into a Kgateway TrafficPolicy,
-// returning true if it modified/created a TrafficPolicy for the given ingress.
-func applyCorsPolicy(
-	pol emitterir.Policy,
-	ingressName, namespace string,
-	tp map[string]*kgateway.TrafficPolicy,
-) bool {
-	filter := buildCorsFilter(pol.Cors)
-	if filter == nil {
-		return false
-	}
-
-	t := ensureTrafficPolicy(tp, ingressName, namespace)
-	t.Spec.Cors = &kgateway.CorsPolicy{HTTPCORSFilter: filter}
-
-	return true
-}
-
 func corsConfigToPolicy(cfg *emitterir.CORSConfig) *emitterir.CorsPolicy {
 	if cfg == nil {
 		return nil

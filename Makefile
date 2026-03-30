@@ -48,7 +48,7 @@ help:
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-17s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: all
-all: vet fmt build test-all;$(info $(M)...Begin to test, verify and build this project.) @ ## Test, verify and build this project.
+all: vet fmt verify build test-all;$(info $(M)...Begin to test, verify and build this project.) @ ## Test, verify and build this project.
 
 # Run go fmt against code
 .PHONY: fmt

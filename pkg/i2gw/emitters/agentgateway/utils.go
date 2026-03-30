@@ -17,8 +17,6 @@ limitations under the License.
 package agentgateway
 
 import (
-	"fmt"
-
 	agentgatewayv1alpha1 "github.com/agentgateway/agentgateway/controller/api/v1alpha1/agentgateway"
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,20 +29,6 @@ const (
 	// routeRuleAllIndex is used to indicate a policy applies to all rules in an HTTPRoute.
 	routeRuleAllIndex = -1
 )
-
-func lookupSectionName(rc *emitterir.HTTPRouteContext, idx int) *gatewayv1.SectionName {
-	if idx != routeRuleAllIndex && idx < len(rc.Spec.Rules) {
-		return rc.Spec.Rules[idx].Name
-	}
-	return nil
-}
-
-func formatRuleInfo(rc *emitterir.HTTPRouteContext, idx int) string {
-	if name := lookupSectionName(rc, idx); name != nil {
-		return fmt.Sprintf(" rule %s", *name)
-	}
-	return ""
-}
 
 // uniquePolicyIndices returns a slice of PolicyIndex values with duplicates
 // removed. Uniqueness is defined by the (Rule, Backend) pair.

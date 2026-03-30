@@ -34,7 +34,7 @@ func KgatewayVersionFromGoMod(ctx context.Context) (string, error) {
 	if goModPath == "" || goModPath == os.DevNull {
 		return "", fmt.Errorf("GOMOD not set (are you running in module mode?)")
 	}
-	b, err := os.ReadFile(goModPath)
+	b, err := os.ReadFile(goModPath) //nolint:gosec
 	if err != nil {
 		return "", err
 	}

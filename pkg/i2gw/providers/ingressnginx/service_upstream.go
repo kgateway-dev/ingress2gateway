@@ -21,21 +21,10 @@ import (
 	"strings"
 
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/validation/field"
 )
-
-func serviceUpstreamFeature(
-	_ notifications.NotifyFunc,
-	_ []networkingv1.Ingress,
-	_ map[types.NamespacedName]map[string]int32,
-	_ *providerir.ProviderIR,
-) field.ErrorList {
-	return nil
-}
 
 // applyServiceUpstreamToEmitterIR projects service-upstream backend metadata into
 // emitter-neutral per-route policy state so custom emitters can materialize

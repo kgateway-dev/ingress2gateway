@@ -77,7 +77,7 @@ const (
 	SSLRedirectAnnotation = "nginx.ingress.kubernetes.io/ssl-redirect"
 
 	// SSL Passthrough annotation
-	SSLPassthroughAnnotation = "nginx.ingress.kubernetes.io/ssl-passthrough"
+	SSLPassthroughAnnotation = "nginx.ingress.kubernetes.io/ssl-passthrough" //nolint:gosec // This is an annotation key, not a secret
 
 	// CORS annotations
 	EnableCorsAnnotation       = "nginx.ingress.kubernetes.io/enable-cors"

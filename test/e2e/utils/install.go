@@ -448,7 +448,7 @@ func CreateBasicAuthCombinedSecret(ctx context.Context, kubeContext, secretName 
 	}
 
 	// Same htpasswd line for both keys. (This is base64 for: user:{SHA}...)
-	htpasswdB64 := "dXNlcjp7U0hBfVc2cGg1TW01UHo4R2dpVUxiUGd6RzM3bWo5Zz0="
+	htpasswdB64 := "dXNlcjp7U0hBfVc2cGg1TW01UHo4R2dpVUxiUGd6RzM3bWo5Zz0=" //nolint:gosec
 
 	secretYAML := `
 apiVersion: v1

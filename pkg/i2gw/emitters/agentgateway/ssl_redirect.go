@@ -71,6 +71,8 @@ func splitHTTPRouteForSSLRedirect(
 				name := listener.Name
 				httpsListenerName = &name
 			}
+		case gatewayv1.TLSProtocolType, gatewayv1.TCPProtocolType, gatewayv1.UDPProtocolType:
+			continue
 		}
 	}
 

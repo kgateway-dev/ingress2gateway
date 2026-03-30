@@ -23,8 +23,8 @@ import (
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
