@@ -41,8 +41,8 @@ spec:
               type: ReplaceFullPath
       matches:
         - path:
-            type: RegularExpression
-            value: (?i)/.*
+            type: PathPrefix
+            value: /
       name: rule-0
 status:
   parents: []

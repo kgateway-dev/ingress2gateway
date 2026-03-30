@@ -37,8 +37,8 @@ spec:
           type: ReplaceFullPath
     matches:
     - path:
-        type: RegularExpression
-        value: (?i)/before/rewrite.*
+        type: PathPrefix
+        value: /before/rewrite
     name: rule-0
 status:
   parents: []

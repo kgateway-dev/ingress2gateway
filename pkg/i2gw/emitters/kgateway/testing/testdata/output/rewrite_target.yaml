@@ -41,16 +41,16 @@ spec:
               type: ReplaceFullPath
       matches:
         - path:
-            type: RegularExpression
-            value: (?i)/.*
+            type: PathPrefix
+            value: /
       name: rule-0
     - backendRefs:
         - name: myservicea
           port: 80
       matches:
         - path:
-            type: RegularExpression
-            value: (?i)/2.*
+            type: PathPrefix
+            value: /2
       name: rule-1
 status:
   parents: []

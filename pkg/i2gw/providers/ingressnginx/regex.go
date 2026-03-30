@@ -18,6 +18,7 @@ package ingressnginx
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
@@ -38,8 +39,8 @@ func regexHosts(ingresses []networkingv1.Ingress) map[string]struct{} {
 			continue
 		}
 		useRegex, _ := strconv.ParseBool(ingress.Annotations[UseRegexAnnotation])
-		hasRewriteTarget := ingress.Annotations[RewriteTargetAnnotation] != ""
-		if !useRegex && !hasRewriteTarget {
+		rewriteTargetUsesCaptureGroups := strings.Contains(ingress.Annotations[RewriteTargetAnnotation], "$")
+		if !useRegex && !rewriteTargetUsesCaptureGroups {
 			continue
 		}
 
