@@ -33,7 +33,7 @@ type VirtualHost struct {
 }
 
 type Route struct {
-	Matchers   []Matcher
+	Matchers    []Matcher
 	RouteAction RouteAction
 }
 
