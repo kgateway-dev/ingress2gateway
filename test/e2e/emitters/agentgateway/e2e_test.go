@@ -74,7 +74,7 @@ func TestMain(m *testing.M) {
 
 // e2eTestSetup handles common setup for e2e tests and returns the context, gateway address, host, and ingress address.
 // The caller is responsible for cleanup and test-specific validation.
-func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, string, string, string, string) {
+func e2eTestSetup(t *testing.T, inputFile, outputFile string) (string, string, string, string) {
 	if !e2eSetupComplete {
 		t.Fatalf("e2e setup did not complete")
 	}
@@ -132,8 +132,8 @@ func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 	}
 
 	// Verify expected output file exists for comparison.
-	if _, err := os.Stat(outPath); err != nil {
-		t.Fatalf("expected output file missing: %s (%v)", outPath, err)
+	if _, statErr := os.Stat(outPath); statErr != nil {
+		t.Fatalf("expected output file missing: %s (%v)", outPath, statErr)
 	}
 
 	// Run ingress2gateway to generate output from input, compare with expected output,
@@ -149,8 +149,8 @@ func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 		if _, delErr := testutils.Kubectl(ctx, kubeContext, "delete", "-f", generatedOutPath, "--ignore-not-found=true", "--wait=true", "--timeout=2m"); delErr != nil {
 			t.Logf("failed to delete generated output resources: %v", delErr)
 		}
-		if err := os.Remove(generatedOutPath); err != nil {
-			t.Logf("failed to remove generated output temp file %q: %v", generatedOutPath, err)
+		if rmErr := os.Remove(generatedOutPath); rmErr != nil {
+			t.Logf("failed to remove generated output temp file %q: %v", generatedOutPath, rmErr)
 		}
 	})
 
@@ -190,11 +190,11 @@ func e2eTestSetup(t *testing.T, inputFile, outputFile string) (context.Context, 
 		}
 	}
 
-	return ctx, gwAddr, host, hostHeader, ingressIP
+	return gwAddr, host, hostHeader, ingressIP
 }
 
 func TestBasic(t *testing.T) {
-	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "basic.yaml", "basic.yaml")
+	gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "basic.yaml", "basic.yaml")
 
 	// Test HTTP connectivity via Ingress
 	testutils.MakeHTTPRequestEventually(t, kubeContext, testutils.HTTPRequestConfig{
@@ -231,7 +231,7 @@ func TestBackendProtocol(t *testing.T) {
 		}
 	})
 
-	_, gwAddr, host, _, _ := e2eTestSetup(t, "backend_protocol.yaml", "backend_protocol.yaml")
+	gwAddr, host, _, _ := e2eTestSetup(t, "backend_protocol.yaml", "backend_protocol.yaml")
 
 	// Validate end-to-end gRPC traffic via Gateway when backend-protocol is projected.
 	testutils.MakeGRPCRequestEventually(t, testutils.GRPCRequestConfig{
@@ -245,7 +245,7 @@ func TestBackendProtocol(t *testing.T) {
 }
 
 func TestLoadBalance(t *testing.T) {
-	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "load_balance.yaml", "load_balance.yaml")
+	gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "load_balance.yaml", "load_balance.yaml")
 
 	// Test HTTP connectivity via Ingress
 	testutils.MakeHTTPRequestEventually(t, kubeContext, testutils.HTTPRequestConfig{
@@ -274,7 +274,7 @@ func TestLoadBalance(t *testing.T) {
 }
 
 func TestRateLimit(t *testing.T) {
-	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "rate_limit.yaml", "rate_limit.yaml")
+	gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "rate_limit.yaml", "rate_limit.yaml")
 
 	// Test HTTP connectivity via Ingress
 	testutils.MakeHTTPRequestEventually(t, kubeContext, testutils.HTTPRequestConfig{
@@ -300,7 +300,7 @@ func TestRateLimit(t *testing.T) {
 }
 
 func TestTimeouts(t *testing.T) {
-	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "timeouts.yaml", "timeouts.yaml")
+	gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "timeouts.yaml", "timeouts.yaml")
 
 	// Test HTTP connectivity via Ingress
 	testutils.MakeHTTPRequestEventually(t, kubeContext, testutils.HTTPRequestConfig{
@@ -326,7 +326,7 @@ func TestTimeouts(t *testing.T) {
 }
 
 func TestBasicAuth(t *testing.T) {
-	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "basic_auth.yaml", "basic_auth.yaml")
+	gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "basic_auth.yaml", "basic_auth.yaml")
 
 	username := "user"
 	password := "password"
@@ -394,7 +394,7 @@ func TestBasicAuth(t *testing.T) {
 }
 
 func TestExternalAuth(t *testing.T) {
-	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "external_auth.yaml", "external_auth.yaml")
+	gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "external_auth.yaml", "external_auth.yaml")
 
 	// Test unauthenticated request → expect 401 via Ingress
 	testutils.MakeHTTPRequestEventually(t, kubeContext, testutils.HTTPRequestConfig{
@@ -462,7 +462,7 @@ func TestExternalAuth(t *testing.T) {
 }
 
 func TestCORS(t *testing.T) {
-	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "cors.yaml", "cors.yaml")
+	gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "cors.yaml", "cors.yaml")
 
 	// Test HTTP connectivity via Ingress
 	testutils.MakeHTTPRequestEventually(t, kubeContext, testutils.HTTPRequestConfig{
@@ -533,7 +533,7 @@ func TestCORS(t *testing.T) {
 }
 
 func TestRewriteTarget(t *testing.T) {
-	_, gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "rewrite_target.yaml", "rewrite_target.yaml")
+	gwAddr, host, ingressHostHeader, ingressIP := e2eTestSetup(t, "rewrite_target.yaml", "rewrite_target.yaml")
 
 	// Must match "test/e2e/emitters/agentgateway/testdata/output/rewrite_target.yaml".
 	reqPath := "/before/rewrite"

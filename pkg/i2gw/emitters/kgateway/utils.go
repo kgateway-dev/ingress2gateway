@@ -18,12 +18,6 @@ package kgateway
 
 import (
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
-
-	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
-	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 // uniquePolicyIndices returns a slice of PolicyIndex values with duplicates
@@ -44,44 +38,4 @@ func uniquePolicyIndices(indices []emitterir.PolicyIndex) []emitterir.PolicyInde
 		out = append(out, idx)
 	}
 	return out
-}
-
-// ensureTrafficPolicy returns the TrafficPolicy for the given ingressName,
-// creating and initializing it if needed.
-func ensureTrafficPolicy(
-	tp map[string]*kgateway.TrafficPolicy,
-	ingressName, namespace string,
-) *kgateway.TrafficPolicy {
-	if existing, ok := tp[ingressName]; ok {
-		return existing
-	}
-
-	newTP := &kgateway.TrafficPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      ingressName,
-			Namespace: namespace,
-		},
-		Spec: kgateway.TrafficPolicySpec{},
-	}
-	newTP.SetGroupVersionKind(TrafficPolicyGVK)
-
-	tp[ingressName] = newTP
-	return newTP
-}
-
-func numRules(hr gatewayv1.HTTPRoute) int {
-	n := 0
-	for _, r := range hr.Spec.Rules {
-		n += len(r.BackendRefs)
-	}
-	return n
-}
-
-// toUnstructured converts a runtime.Object to unstructured.Unstructured
-func toUnstructured(obj runtime.Object) (*unstructured.Unstructured, error) {
-	unstructuredObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
-	if err != nil {
-		return nil, err
-	}
-	return &unstructured.Unstructured{Object: unstructuredObj}, nil
 }

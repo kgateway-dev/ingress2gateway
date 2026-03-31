@@ -28,16 +28,20 @@ import (
 	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
 )
 
-func DecodeObjects(path string) ([]unstructured.Unstructured, error) {
+func DecodeObjects(path string) (objs []unstructured.Unstructured, err error) {
+	//nolint:gosec // G304: path comes from test fixtures / temp files under the module.
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	dec := k8syaml.NewYAMLOrJSONDecoder(f, 4096)
 
-	var objs []unstructured.Unstructured
 	for {
 		var raw map[string]any
 		if err := dec.Decode(&raw); err != nil {
@@ -126,15 +130,15 @@ func GetIngressNginxControllerAddress(ctx context.Context, kubeContext string) (
 	return "", fmt.Errorf("no ip/hostname in ingress-nginx-controller service status")
 }
 
-func hasTopLevelCondition(u unstructured.Unstructured, typ, status string) bool {
+func hasTopLevelCondition(u unstructured.Unstructured, typ string) bool {
 	conds, found, _ := unstructured.NestedSlice(u.Object, "status", "conditions")
 	if !found {
 		return false
 	}
-	return anyConditionEquals(conds, typ, status)
+	return anyConditionEquals(conds, typ, "True")
 }
 
-func hasRouteParentCondition(u unstructured.Unstructured, typ, status string) bool {
+func hasRouteParentCondition(u unstructured.Unstructured, typ string) bool {
 	parents, found, _ := unstructured.NestedSlice(u.Object, "status", "parents")
 	if !found {
 		return false
@@ -148,7 +152,7 @@ func hasRouteParentCondition(u unstructured.Unstructured, typ, status string) bo
 		if !found {
 			continue
 		}
-		if anyConditionEquals(conds, typ, status) {
+		if anyConditionEquals(conds, typ, "True") {
 			return true
 		}
 	}

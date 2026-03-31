@@ -32,7 +32,8 @@ spec:
     matches:
     - path:
         type: RegularExpression
-        value: ^/path/one
+        value: (?i)/path/one.*
+    name: rule-0
   - backendRefs:
     - name: echo-backend
       port: 8080
@@ -44,7 +45,8 @@ spec:
           type: ReplaceFullPath
     matches:
     - path:
-        type: PathPrefix
-        value: /before/rewrite
+        type: RegularExpression
+        value: (?i)/before/rewrite.*
+    name: rule-1
 status:
   parents: []

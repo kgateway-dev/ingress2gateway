@@ -48,13 +48,13 @@ func WaitForOutputReadiness(t *testing.T, ctx context.Context, kubeContext strin
 		name := gc.GetName()
 		for time.Now().Before(deadline) {
 			u, err := getUnstructured(ctx, kubeContext, "gatewayclass", "", name)
-			if err == nil && hasTopLevelCondition(u, "Accepted", "True") {
+			if err == nil && hasTopLevelCondition(u, "Accepted") {
 				break
 			}
 			time.Sleep(2 * time.Second)
 		}
 		u, err := getUnstructured(ctx, kubeContext, "gatewayclass", "", name)
-		if err != nil || !hasTopLevelCondition(u, "Accepted", "True") {
+		if err != nil || !hasTopLevelCondition(u, "Accepted") {
 			t.Fatalf("GatewayClass/%s not Accepted=True (err=%v)", name, err)
 		}
 	}
@@ -68,7 +68,7 @@ func WaitForOutputReadiness(t *testing.T, ctx context.Context, kubeContext strin
 
 		for time.Now().Before(deadline) {
 			u, err := getUnstructured(ctx, kubeContext, "gateway", ns, name)
-			if err == nil && hasTopLevelCondition(u, "Accepted", "True") && hasTopLevelCondition(u, "Programmed", "True") {
+			if err == nil && hasTopLevelCondition(u, "Accepted") && hasTopLevelCondition(u, "Programmed") {
 				break
 			}
 			time.Sleep(2 * time.Second)
@@ -77,7 +77,7 @@ func WaitForOutputReadiness(t *testing.T, ctx context.Context, kubeContext strin
 		if err != nil {
 			t.Fatalf("Gateway/%s get: %v", name, err)
 		}
-		if !hasTopLevelCondition(u, "Accepted", "True") || !hasTopLevelCondition(u, "Programmed", "True") {
+		if !hasTopLevelCondition(u, "Accepted") || !hasTopLevelCondition(u, "Programmed") {
 			t.Fatalf("Gateway/%s not ready: need Accepted=True and Programmed=True", name)
 		}
 	}
@@ -91,7 +91,7 @@ func WaitForOutputReadiness(t *testing.T, ctx context.Context, kubeContext strin
 
 		for time.Now().Before(deadline) {
 			u, err := getUnstructured(ctx, kubeContext, "httproute", ns, name)
-			if err == nil && hasRouteParentCondition(u, "Accepted", "True") && hasRouteParentCondition(u, "ResolvedRefs", "True") {
+			if err == nil && hasRouteParentCondition(u, "Accepted") && hasRouteParentCondition(u, "ResolvedRefs") {
 				break
 			}
 			time.Sleep(2 * time.Second)
@@ -100,7 +100,7 @@ func WaitForOutputReadiness(t *testing.T, ctx context.Context, kubeContext strin
 		if err != nil {
 			t.Fatalf("HTTPRoute/%s get: %v", name, err)
 		}
-		if !hasRouteParentCondition(u, "Accepted", "True") || !hasRouteParentCondition(u, "ResolvedRefs", "True") {
+		if !hasRouteParentCondition(u, "Accepted") || !hasRouteParentCondition(u, "ResolvedRefs") {
 			t.Fatalf("HTTPRoute/%s not ready: need parents[].conditions Accepted=True and ResolvedRefs=True", name)
 		}
 	}
@@ -114,7 +114,7 @@ func WaitForOutputReadiness(t *testing.T, ctx context.Context, kubeContext strin
 
 		for time.Now().Before(deadline) {
 			u, err := getUnstructured(ctx, kubeContext, "tlsroute", ns, name)
-			if err == nil && hasRouteParentCondition(u, "Accepted", "True") && hasRouteParentCondition(u, "ResolvedRefs", "True") {
+			if err == nil && hasRouteParentCondition(u, "Accepted") && hasRouteParentCondition(u, "ResolvedRefs") {
 				break
 			}
 			time.Sleep(2 * time.Second)
@@ -123,7 +123,7 @@ func WaitForOutputReadiness(t *testing.T, ctx context.Context, kubeContext strin
 		if err != nil {
 			t.Fatalf("TLSRoute/%s get: %v", name, err)
 		}
-		if !hasRouteParentCondition(u, "Accepted", "True") || !hasRouteParentCondition(u, "ResolvedRefs", "True") {
+		if !hasRouteParentCondition(u, "Accepted") || !hasRouteParentCondition(u, "ResolvedRefs") {
 			t.Fatalf("TLSRoute/%s not ready: need parents[].conditions Accepted=True and ResolvedRefs=True", name)
 		}
 	}
@@ -209,7 +209,7 @@ func RequireStickySessionEventually(
 		ok := true
 
 		for i := 0; i < numRequests; i++ {
-			pod, code, _, err := podAndCodeFromClientWithCookie(t, hostHeader, scheme, address, port, path, cookieName, cookieValue)
+			pod, code, err := podAndCodeFromClientWithCookie(t, hostHeader, scheme, address, port, path, cookieName, cookieValue)
 			if err != nil || strings.TrimSpace(code) != "200" || pod == "" {
 				ok = false
 				break
@@ -273,7 +273,7 @@ func stablePodForCookie(
 ) (string, bool) {
 	var basePod string
 	for i := 0; i < numRequests; i++ {
-		pod, code, _, err := podAndCodeFromClientWithCookie(t, hostHeader, scheme, address, port, path, cookieName, cookieValue)
+		pod, code, err := podAndCodeFromClientWithCookie(t, hostHeader, scheme, address, port, path, cookieName, cookieValue)
 		if err != nil || strings.TrimSpace(code) != "200" || pod == "" {
 			return "", false
 		}
@@ -292,7 +292,7 @@ func podAndCodeFromClientWithCookie(
 	t *testing.T,
 	hostHeader, scheme, address, port, path string,
 	cookieName, cookieValue string,
-) (pod, code, out string, err error) {
+) (pod, code string, err error) {
 	t.Helper()
 
 	if port == "" {
@@ -314,7 +314,7 @@ func podAndCodeFromClientWithCookie(
 			Method: "GET",
 			Path:   path,
 		},
-		Response: gwhttp.Response{StatusCode: 200},
+		Response: gwhttp.Response{StatusCodes: []int{200}},
 	}
 
 	req := gwhttp.MakeRequest(t, &expected, gwAddr, strings.ToUpper(scheme), scheme)
@@ -333,15 +333,14 @@ func podAndCodeFromClientWithCookie(
 	rt := getRoundTripper()
 	cReq, cRes, err := rt.CaptureRoundTrip(req)
 	if err != nil {
-		return "", "000", fmt.Sprintf("request failed: %v", err), err
+		return "", "000", err
 	}
 
 	if cReq != nil {
 		pod = cReq.Pod
 	}
 	code = fmt.Sprintf("%d", cRes.StatusCode)
-	out = fmt.Sprintf("Status: %d, Protocol: %s, Pod: %s", cRes.StatusCode, cRes.Protocol, pod)
-	return pod, code, out, nil
+	return pod, code, nil
 }
 
 // GetKubernetesClient creates a Kubernetes client using the kubeconfig context.
@@ -421,10 +420,10 @@ func MakeHTTPRequestEventually(t *testing.T, kubeContext string, cfg HTTPRequest
 	if len(cfg.ExpectedStatusCodes) > 0 {
 		expected.Response.StatusCodes = cfg.ExpectedStatusCodes
 	} else if cfg.ExpectedStatusCode != 0 {
-		expected.Response.StatusCode = cfg.ExpectedStatusCode
+		expected.Response.StatusCodes = []int{cfg.ExpectedStatusCode}
 	} else {
 		// Default to 200 if not specified
-		expected.Response.StatusCode = 200
+		expected.Response.StatusCodes = []int{200}
 	}
 
 	rt := getRoundTripper()
@@ -551,7 +550,7 @@ func podAndCodeFromClient(t *testing.T, hostHeader, scheme, address, port, path 
 			Method: "GET",
 			Path:   path,
 		},
-		Response: gwhttp.Response{StatusCode: 200},
+		Response: gwhttp.Response{StatusCodes: []int{200}},
 	}
 
 	req := gwhttp.MakeRequest(t, &expected, gwAddr, strings.ToUpper(scheme), scheme)
@@ -602,7 +601,7 @@ func pathAndCodeFromClient(t *testing.T, hostHeader, scheme, address, port, path
 			Method: "GET",
 			Path:   path,
 		},
-		Response: gwhttp.Response{StatusCode: 200},
+		Response: gwhttp.Response{StatusCodes: []int{200}},
 	}
 
 	req := gwhttp.MakeRequest(t, &expected, gwAddr, strings.ToUpper(scheme), scheme)
@@ -702,11 +701,7 @@ func RequireResponseHeaderEventually(
 			RedirectRequest: cfg.RedirectRequest,
 		}
 
-		if len(expectedCodes) > 1 {
-			expected.Response.StatusCodes = expectedCodes
-		} else {
-			expected.Response.StatusCode = expectedCodes[0]
-		}
+		expected.Response.StatusCodes = expectedCodes
 
 		for k, v := range cfg.Headers {
 			expected.Request.Headers[k] = v

@@ -41,24 +41,45 @@ spec:
     - path:
         type: PathPrefix
         value: /
+    name: rule-0
 status:
   parents: []
 ---
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: TrafficPolicy
 metadata:
-  name: ingress-cors-b
+  name: ingress-cors-b-cors-localdev-me-0
 spec:
   cors:
+    allowCredentials: true
+    allowHeaders:
+    - DNT
+    - Keep-Alive
+    - User-Agent
+    - X-Requested-With
+    - If-Modified-Since
+    - Cache-Control
+    - Content-Type
+    - Range
+    - Authorization
+    allowMethods:
+    - GET
+    - PUT
+    - POST
+    - DELETE
+    - PATCH
+    - OPTIONS
     allowOrigins:
     - https://example.com
     - https://another.com
     exposeHeaders:
     - '*'
     - X-CustomResponseHeader
+    maxAge: 1728000
   targetRefs:
   - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: ingress-cors-b-cors-localdev-me
+    sectionName: rule-0
 status:
   ancestors: null

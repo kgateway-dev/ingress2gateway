@@ -1,51 +1,3 @@
-apiVersion: agentgateway.dev/v1alpha1
-kind: AgentgatewayPolicy
-metadata:
-  name: ingress-timeout-proxy-read
-  namespace: default
-spec:
-  targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: ingress-timeout-proxy-read-timeout-proxy-read-example-org
-  traffic:
-    timeouts:
-      request: 45s
-status:
-  ancestors: null
----
-apiVersion: agentgateway.dev/v1alpha1
-kind: AgentgatewayPolicy
-metadata:
-  name: ingress-timeout-proxy-send
-  namespace: default
-spec:
-  targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: ingress-timeout-proxy-send-timeout-proxy-send-example-org
-  traffic:
-    timeouts:
-      request: 1m0s
-status:
-  ancestors: null
----
-apiVersion: agentgateway.dev/v1alpha1
-kind: AgentgatewayPolicy
-metadata:
-  name: myservice-backend-connect-timeout
-  namespace: default
-spec:
-  backend:
-    tcp:
-      connectTimeout: 15s
-  targetRefs:
-    - group: ""
-      kind: Service
-      name: myservice
-status:
-  ancestors: null
----
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -85,6 +37,9 @@ spec:
         - path:
             type: PathPrefix
             value: /read
+      name: rule-0
+      timeouts:
+        request: 10m0s
 status:
   parents: []
 ---
@@ -108,5 +63,6 @@ spec:
         - path:
             type: PathPrefix
             value: /
+      name: rule-0
 status:
   parents: []

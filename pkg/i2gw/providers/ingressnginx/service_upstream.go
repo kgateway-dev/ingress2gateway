@@ -17,173 +17,89 @@ limitations under the License.
 package ingressnginx
 
 import (
+	"fmt"
 	"strings"
 
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-const serviceUpstreamAnnotation = "nginx.ingress.kubernetes.io/service-upstream"
-
-// serviceUpstreamFeature is a FeatureParser that projects the
-// nginx.ingress.kubernetes.io/service-upstream annotation into the
-// Ingress NGINX provider-specific IR by creating static Backends that
-// point to a single upstream (Service IP/port) rather than per-Endpoint
-// Pod IPs.
-//
-// It does NOT change the HTTPRoute here; instead it populates
-// Policy.Backends and Policy.RuleBackendSources, which an emitter
-// can later use to:
-//  1. Emit implementation-specific backend CRs, and
-//  2. Rewrite HTTPRoute backendRefs to reference those Backend CRs.
-func serviceUpstreamFeature(
-	ingresses []networkingv1.Ingress,
-	servicePorts map[types.NamespacedName]map[string]int32,
-	ir *providerir.ProviderIR,
-) field.ErrorList {
-	var errs field.ErrorList
-
-	// First, determine which Ingresses have service-upstream enabled.
-	//
-	// We follow the same pattern as loadBalancingFeature and key by Ingress
-	// name; HTTPRoutes are already namespaced, so we disambiguate via the
-	// HTTPRoute namespace later.
-	ingSvcUpstream := make(map[string]bool, len(ingresses))
-	for _, ing := range ingresses {
-		if ing.Annotations == nil {
-			continue
-		}
-		raw, ok := ing.Annotations[serviceUpstreamAnnotation]
+// applyServiceUpstreamToEmitterIR projects service-upstream backend metadata into
+// emitter-neutral per-route policy state so custom emitters can materialize
+// backend CRs and rewrite covered HTTPRoute backendRefs.
+func (p *Provider) applyServiceUpstreamToEmitterIR(pIR providerir.ProviderIR, eIR *emitterir.EmitterIR) {
+	for key, pRouteCtx := range pIR.HTTPRoutes {
+		eRouteCtx, ok := eIR.HTTPRoutes[key]
 		if !ok {
 			continue
 		}
-		value := strings.TrimSpace(strings.ToLower(raw))
-		if value == "true" {
-			ingSvcUpstream[ing.Name] = true
-		}
-	}
 
-	if len(ingSvcUpstream) == 0 {
-		return errs
-	}
-
-	// Walk all HTTPRoutes in the IR and project service-upstream Ingresses
-	// into provider-specific policies.
-	for key, httpCtx := range ir.HTTPRoutes {
-		// Group BackendSources by source Ingress name.
-		srcByIng := map[string][]providerir.PolicyIndex{}
-
-		for ruleIdx, perRule := range httpCtx.RuleBackendSources {
-			for backendIdx, src := range perRule {
-				if src.Ingress == nil {
-					continue
-				}
-				ingName := src.Ingress.Name
-				srcByIng[ingName] = append(
-					srcByIng[ingName],
-					providerir.PolicyIndex{Rule: ruleIdx, Backend: backendIdx},
-				)
-			}
-		}
-
-		if len(srcByIng) == 0 {
-			continue
-		}
-
-		// Ensure provider-specific IR is initialized.
-		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
-				Policies: map[string]providerir.Policy{},
-			}
-		} else if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
-		}
-
-		ingPolicies := httpCtx.ProviderSpecificIR.IngressNginx.Policies
-
-		for ingName, idxs := range srcByIng {
-			// Only process Ingresses that have service-upstream enabled.
-			if !ingSvcUpstream[ingName] {
+		for ruleIdx := range eRouteCtx.Spec.Rules {
+			if ruleIdx >= len(pRouteCtx.RuleBackendSources) || ruleIdx >= len(eRouteCtx.Spec.Rules) {
 				continue
 			}
 
-			pol := ingPolicies[ingName]
-			if pol.Backends == nil {
-				pol.Backends = map[types.NamespacedName]providerir.Backend{}
-			}
-
-			for _, idx := range idxs {
-				// Bounds checks.
-				if idx.Rule >= len(httpCtx.Spec.Rules) {
-					continue
-				}
-				rule := httpCtx.Spec.Rules[idx.Rule]
-				if idx.Backend >= len(rule.BackendRefs) {
-					continue
-				}
-				br := rule.BackendRefs[idx.Backend]
-
-				// Only rewrite core Service backends.
-				if br.Group != nil && string(*br.Group) != "" {
-					continue
-				}
-				if br.Kind != nil && string(*br.Kind) != "" && string(*br.Kind) != "Service" {
-					continue
-				}
-				if br.Name == "" {
+			sources := pRouteCtx.RuleBackendSources[ruleIdx]
+			rule := eRouteCtx.Spec.Rules[ruleIdx]
+			for backendIdx := range rule.BackendRefs {
+				if backendIdx >= len(sources) {
 					continue
 				}
 
-				svcKey := types.NamespacedName{
-					Namespace: key.Namespace,
-					Name:      string(br.Name),
-				}
-
-				// Resolve port.
-				var port int32
-				if br.Port != nil {
-					port = int32(*br.Port)
-				}
-
-				if port == 0 {
-					// Cannot determine port; skip this backendRef.
-					// TODO [danehans]: Emit a notification/warning.
+				source := sources[backendIdx]
+				if !serviceUpstreamEnabled(source.Ingress) {
 					continue
 				}
 
-				// Derive a stable Backend name; the emitter will create a Backend with this name.
-				backendName := svcKey.Name + "-service-upstream"
+				backendRef := rule.BackendRefs[backendIdx].BackendRef
+				if backendRef.Group != nil && *backendRef.Group != "" {
+					continue
+				}
+				if backendRef.Kind != nil && *backendRef.Kind != "Service" {
+					continue
+				}
+				if backendRef.Name == "" || backendRef.Port == nil {
+					continue
+				}
+
+				if eRouteCtx.PoliciesBySourceIngressName == nil {
+					eRouteCtx.PoliciesBySourceIngressName = make(map[string]emitterir.Policy)
+				}
+
+				ingressName := source.Ingress.Name
+				policy := eRouteCtx.PoliciesBySourceIngressName[ingressName]
+				if policy.Backends == nil {
+					policy.Backends = make(map[types.NamespacedName]emitterir.Backend)
+				}
+
 				backendKey := types.NamespacedName{
-					Namespace: svcKey.Namespace,
-					Name:      backendName,
+					Namespace: key.Namespace,
+					Name:      string(backendRef.Name) + "-service-upstream",
 				}
+				backend := policy.Backends[backendKey]
+				backend.Namespace = backendKey.Namespace
+				backend.Name = backendKey.Name
+				backend.Host = fmt.Sprintf("%s.%s.svc.cluster.local", backendRef.Name, key.Namespace)
+				backend.Port = int32(*backendRef.Port)
+				policy.Backends[backendKey] = backend
 
-				// Host: if you later add ClusterIP into the IR, set Backend.IP
-				// to that value instead. For now we use in-cluster DNS.
-				host := svcKey.Name + "." + svcKey.Namespace + ".svc.cluster.local"
-
-				pol.Backends[backendKey] = providerir.Backend{
-					Namespace: backendKey.Namespace,
-					Name:      backendKey.Name,
-					Port:      port,
-					Host:      host,
-				}
-			}
-
-			if len(pol.Backends) > 0 {
-				// Track which (rule, backend) indices this Policy applies to;
-				// the emitter will use this to rewrite backendRefs to Backend.
-				pol = pol.AddRuleBackendSources(idxs)
-				ingPolicies[ingName] = pol
+				policy = policy.AddRuleBackendSources([]emitterir.PolicyIndex{{
+					Rule:    ruleIdx,
+					Backend: backendIdx,
+				}})
+				eRouteCtx.PoliciesBySourceIngressName[ingressName] = policy
 			}
 		}
 
-		httpCtx.ProviderSpecificIR.IngressNginx.Policies = ingPolicies
-		// Write back mutated HTTPRouteContext into IR.
-		ir.HTTPRoutes[key] = httpCtx
+		eIR.HTTPRoutes[key] = eRouteCtx
 	}
+}
 
-	return errs
+func serviceUpstreamEnabled(ing *networkingv1.Ingress) bool {
+	if ing == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(ing.Annotations[ServiceUpstreamAnnotation]), "true")
 }

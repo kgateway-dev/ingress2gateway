@@ -18,19 +18,21 @@ package ingressnginx
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
 	apiv1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	"k8s.io/utils/ptr"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
@@ -138,6 +140,7 @@ func Test_ToIR(t *testing.T) {
 								},
 								Hostnames: []gatewayv1.Hostname{"echo.prod.mydomain.com"},
 								Rules: []gatewayv1.HTTPRouteRule{{
+									Name: ptrTo(gatewayv1.SectionName("rule-0")),
 									Matches: []gatewayv1.HTTPRouteMatch{{
 										Path: &gatewayv1.HTTPPathMatch{
 											Type:  &gPathPrefix,
@@ -266,6 +269,7 @@ func Test_ToIR(t *testing.T) {
 								},
 								Hostnames: []gatewayv1.Hostname{"echo.prod.mydomain.com"},
 								Rules: []gatewayv1.HTTPRouteRule{{
+									Name: ptrTo(gatewayv1.SectionName("rule-0")),
 									Matches: []gatewayv1.HTTPRouteMatch{{
 										Path: &gatewayv1.HTTPPathMatch{
 											Type:  &gPathPrefix,
@@ -337,15 +341,59 @@ func Test_ToIR(t *testing.T) {
 					},
 				},
 			},
-			expectedIR: providerir.ProviderIR{},
-			expectedErrors: field.ErrorList{
-				{
-					Type:     field.ErrorTypeInvalid,
-					Field:    "spec.rules[0].http.paths[0].pathType",
-					BadValue: ptr.To("ImplementationSpecific"),
-					Detail:   "implementationSpecific path type is not supported in generic translation, and your provider does not provide custom support to translate it",
+			expectedIR: providerir.ProviderIR{
+				Gateways: map[types.NamespacedName]providerir.GatewayContext{
+					{Namespace: "default", Name: "ingress-nginx"}: {
+						Gateway: gatewayv1.Gateway{
+							ObjectMeta: metav1.ObjectMeta{Name: "ingress-nginx", Namespace: "default"},
+							Spec: gatewayv1.GatewaySpec{
+								GatewayClassName: "ingress-nginx",
+								Listeners: []gatewayv1.Listener{{
+									Name:     "test-mydomain-com-http",
+									Port:     80,
+									Protocol: gatewayv1.HTTPProtocolType,
+									Hostname: ptrTo(gatewayv1.Hostname("test.mydomain.com")),
+								}},
+							},
+						},
+					},
+				},
+				HTTPRoutes: map[types.NamespacedName]providerir.HTTPRouteContext{
+					{Namespace: "default", Name: "implementation-specific-regex-test-mydomain-com"}: {
+						HTTPRoute: gatewayv1.HTTPRoute{
+							ObjectMeta: metav1.ObjectMeta{Name: "implementation-specific-regex-test-mydomain-com", Namespace: "default"},
+							Spec: gatewayv1.HTTPRouteSpec{
+								CommonRouteSpec: gatewayv1.CommonRouteSpec{
+									ParentRefs: []gatewayv1.ParentReference{{
+										Name: "ingress-nginx",
+									}},
+								},
+								Hostnames: []gatewayv1.Hostname{"test.mydomain.com"},
+								Rules: []gatewayv1.HTTPRouteRule{{
+									Name: ptrTo(gatewayv1.SectionName("rule-0")),
+									Matches: []gatewayv1.HTTPRouteMatch{{
+										Path: &gatewayv1.HTTPPathMatch{
+											Type:  &gPathPrefix,
+											Value: ptrTo("/~/echo/**/test"),
+										},
+									}},
+									BackendRefs: []gatewayv1.HTTPBackendRef{
+										{
+											BackendRef: gatewayv1.BackendRef{
+												BackendObjectReference: gatewayv1.BackendObjectReference{
+													Name: "test",
+													Port: ptrTo(gatewayv1.PortNumber(80)),
+												},
+											},
+										},
+									},
+								}},
+							},
+						},
+					},
 				},
 			},
+			expectedErrors: field.ErrorList{},
 		},
 		{
 			name: "multiple rules with TLS",
@@ -353,7 +401,12 @@ func Test_ToIR(t *testing.T) {
 				ingressNames: []types.NamespacedName{{Namespace: "default", Name: "example-ingress"}},
 				ingressObjects: map[types.NamespacedName]*networkingv1.Ingress{
 					{Namespace: "default", Name: "example-ingress"}: {
-						ObjectMeta: metav1.ObjectMeta{Name: "example-ingress", Namespace: "default"},
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "example-ingress", Namespace: "default",
+							Annotations: map[string]string{
+								"nginx.ingress.kubernetes.io/ssl-redirect": "false",
+							},
+						},
 						Spec: networkingv1.IngressSpec{
 							IngressClassName: ptrTo("nginx"),
 							TLS: []networkingv1.IngressTLS{{
@@ -438,7 +491,11 @@ func Test_ToIR(t *testing.T) {
 										Hostname: ptrTo(gatewayv1.Hostname("bar.example.com")),
 										TLS: &gatewayv1.ListenerTLSConfig{
 											CertificateRefs: []gatewayv1.SecretObjectReference{
-												{Name: "example-com"},
+												{
+													Group: ptrTo(gatewayv1.Group("")),
+													Kind:  ptrTo(gatewayv1.Kind("Secret")),
+													Name:  "example-com",
+												},
 											},
 										},
 									},
@@ -455,7 +512,11 @@ func Test_ToIR(t *testing.T) {
 										Hostname: ptrTo(gatewayv1.Hostname("foo.example.com")),
 										TLS: &gatewayv1.ListenerTLSConfig{
 											CertificateRefs: []gatewayv1.SecretObjectReference{
-												{Name: "example-com"},
+												{
+													Group: ptrTo(gatewayv1.Group("")),
+													Kind:  ptrTo(gatewayv1.Kind("Secret")),
+													Name:  "example-com",
+												},
 											},
 										},
 									},
@@ -476,6 +537,7 @@ func Test_ToIR(t *testing.T) {
 								},
 								Hostnames: []gatewayv1.Hostname{"bar.example.com"},
 								Rules: []gatewayv1.HTTPRouteRule{{
+									Name: ptrTo(gatewayv1.SectionName("rule-0")),
 									Matches: []gatewayv1.HTTPRouteMatch{{
 										Path: &gatewayv1.HTTPPathMatch{
 											Type:  &gPathPrefix,
@@ -508,6 +570,7 @@ func Test_ToIR(t *testing.T) {
 								Hostnames: []gatewayv1.Hostname{"foo.example.com"},
 								Rules: []gatewayv1.HTTPRouteRule{
 									{
+										Name: ptrTo(gatewayv1.SectionName("rule-0")),
 										Matches: []gatewayv1.HTTPRouteMatch{{
 											Path: &gatewayv1.HTTPPathMatch{
 												Type:  &gPathPrefix,
@@ -526,6 +589,7 @@ func Test_ToIR(t *testing.T) {
 										},
 									},
 									{
+										Name: ptrTo(gatewayv1.SectionName("rule-1")),
 										Matches: []gatewayv1.HTTPRouteMatch{{
 											Path: &gatewayv1.HTTPPathMatch{
 												Type:  &gPathPrefix,
@@ -688,6 +752,7 @@ func Test_ToIR(t *testing.T) {
 								},
 								Hostnames: []gatewayv1.Hostname{"bar.example.com"},
 								Rules: []gatewayv1.HTTPRouteRule{{
+									Name: ptrTo(gatewayv1.SectionName("rule-0")),
 									Matches: []gatewayv1.HTTPRouteMatch{{
 										Path: &gatewayv1.HTTPPathMatch{
 											Type:  &gPathPrefix,
@@ -730,6 +795,7 @@ func Test_ToIR(t *testing.T) {
 								Hostnames: []gatewayv1.Hostname{"foo.example.com"},
 								Rules: []gatewayv1.HTTPRouteRule{
 									{
+										Name: ptrTo(gatewayv1.SectionName("rule-0")),
 										Matches: []gatewayv1.HTTPRouteMatch{{
 											Path: &gatewayv1.HTTPPathMatch{
 												Type:  &gPathPrefix,
@@ -748,6 +814,7 @@ func Test_ToIR(t *testing.T) {
 										},
 									},
 									{
+										Name: ptrTo(gatewayv1.SectionName("rule-1")),
 										Matches: []gatewayv1.HTTPRouteMatch{{
 											Path: &gatewayv1.HTTPPathMatch{
 												Type:  &gPathPrefix,
@@ -887,6 +954,7 @@ func Test_ToIR(t *testing.T) {
 								Hostnames: []gatewayv1.Hostname{"api.example.com"},
 								Rules: []gatewayv1.HTTPRouteRule{
 									{
+										Name: ptrTo(gatewayv1.SectionName("rule-0")),
 										Matches: []gatewayv1.HTTPRouteMatch{{
 											Path: &gatewayv1.HTTPPathMatch{
 												Type:  &gPathPrefix,
@@ -916,6 +984,7 @@ func Test_ToIR(t *testing.T) {
 										},
 									},
 									{
+										Name: ptrTo(gatewayv1.SectionName("rule-1")),
 										Matches: []gatewayv1.HTTPRouteMatch{{
 											Path: &gatewayv1.HTTPPathMatch{
 												Type:  &gPathPrefix,
@@ -951,7 +1020,6 @@ func Test_ToIR(t *testing.T) {
 					},
 				},
 			},
-			expectedErrors: field.ErrorList{},
 		},
 	}
 
@@ -1002,10 +1070,196 @@ func Test_ToIR(t *testing.T) {
 					}
 				}
 			}
+
+			if len(ir.BackendTLSPolicies) != len(tc.expectedIR.BackendTLSPolicies) {
+				t.Errorf("Expected %d BackendTLSPolicies, got %d: %+v",
+					len(tc.expectedIR.BackendTLSPolicies), len(ir.BackendTLSPolicies), ir.BackendTLSPolicies)
+			} else {
+				for i, gotPolicy := range ir.BackendTLSPolicies {
+					wantPolicy := tc.expectedIR.BackendTLSPolicies[i]
+					wantPolicy.SetGroupVersionKind(
+						schema.GroupVersionKind{
+							Kind:    "BackendTLSPolicy",
+							Group:   gatewayv1.GroupVersion.Group,
+							Version: gatewayv1.GroupVersion.Version,
+						})
+					// gotPolicy is emitterir.BackendTLSPolicyContext, wantPolicy is gatewayv1.BackendTLSPolicy
+					if !apiequality.Semantic.DeepEqual(gotPolicy.BackendTLSPolicy, wantPolicy) {
+						t.Errorf("Expected BackendTLSPolicy %s to be %+v\n Got: %+v\n Diff: %s", i, wantPolicy, gotPolicy.BackendTLSPolicy, cmp.Diff(wantPolicy, gotPolicy.BackendTLSPolicy))
+					}
+				}
+			}
 		})
 	}
 }
 
 func ptrTo[T any](a T) *T {
 	return &a
+}
+
+func Test_TLSWarningForHostsWithoutCert(t *testing.T) {
+	iPrefix := networkingv1.PathTypePrefix
+
+	testCases := []struct {
+		name            string
+		ingresses       OrderedIngressMap
+		wantWarningHost string // host expected in warning, empty if no warning expected
+	}{
+		{
+			name: "host without TLS cert triggers warning",
+			ingresses: OrderedIngressMap{
+				ingressNames: []types.NamespacedName{{Namespace: "default", Name: "no-tls"}},
+				ingressObjects: map[types.NamespacedName]*networkingv1.Ingress{
+					{Namespace: "default", Name: "no-tls"}: {
+						ObjectMeta: metav1.ObjectMeta{Name: "no-tls", Namespace: "default"},
+						Spec: networkingv1.IngressSpec{
+							IngressClassName: ptrTo("nginx"),
+							Rules: []networkingv1.IngressRule{{
+								Host: "example.com",
+								IngressRuleValue: networkingv1.IngressRuleValue{
+									HTTP: &networkingv1.HTTPIngressRuleValue{
+										Paths: []networkingv1.HTTPIngressPath{{
+											Path:     "/",
+											PathType: &iPrefix,
+											Backend: networkingv1.IngressBackend{
+												Service: &networkingv1.IngressServiceBackend{
+													Name: "svc",
+													Port: networkingv1.ServiceBackendPort{Number: 80},
+												},
+											},
+										}},
+									},
+								},
+							}},
+						},
+					},
+				},
+			},
+			wantWarningHost: "example.com",
+		},
+		{
+			name: "host with TLS cert does not trigger warning",
+			ingresses: OrderedIngressMap{
+				ingressNames: []types.NamespacedName{{Namespace: "default", Name: "with-tls"}},
+				ingressObjects: map[types.NamespacedName]*networkingv1.Ingress{
+					{Namespace: "default", Name: "with-tls"}: {
+						ObjectMeta: metav1.ObjectMeta{Name: "with-tls", Namespace: "default"},
+						Spec: networkingv1.IngressSpec{
+							IngressClassName: ptrTo("nginx"),
+							TLS: []networkingv1.IngressTLS{{
+								Hosts:      []string{"example.com"},
+								SecretName: "example-cert",
+							}},
+							Rules: []networkingv1.IngressRule{{
+								Host: "example.com",
+								IngressRuleValue: networkingv1.IngressRuleValue{
+									HTTP: &networkingv1.HTTPIngressRuleValue{
+										Paths: []networkingv1.HTTPIngressPath{{
+											Path:     "/",
+											PathType: &iPrefix,
+											Backend: networkingv1.IngressBackend{
+												Service: &networkingv1.IngressServiceBackend{
+													Name: "svc",
+													Port: networkingv1.ServiceBackendPort{Number: 80},
+												},
+											},
+										}},
+									},
+								},
+							}},
+						},
+					},
+				},
+			},
+			wantWarningHost: "",
+		},
+		{
+			name: "host covered by TLS in another ingress does not trigger warning",
+			ingresses: OrderedIngressMap{
+				ingressNames: []types.NamespacedName{
+					{Namespace: "default", Name: "ing-no-tls"},
+					{Namespace: "default", Name: "ing-with-tls"},
+				},
+				ingressObjects: map[types.NamespacedName]*networkingv1.Ingress{
+					{Namespace: "default", Name: "ing-with-tls"}: {
+						ObjectMeta: metav1.ObjectMeta{Name: "ing-with-tls", Namespace: "default"},
+						Spec: networkingv1.IngressSpec{
+							IngressClassName: ptrTo("nginx"),
+							TLS: []networkingv1.IngressTLS{{
+								Hosts:      []string{"example.com"},
+								SecretName: "example-cert",
+							}},
+							Rules: []networkingv1.IngressRule{{
+								Host: "example.com",
+								IngressRuleValue: networkingv1.IngressRuleValue{
+									HTTP: &networkingv1.HTTPIngressRuleValue{
+										Paths: []networkingv1.HTTPIngressPath{{
+											Path:     "/foo",
+											PathType: &iPrefix,
+											Backend: networkingv1.IngressBackend{
+												Service: &networkingv1.IngressServiceBackend{
+													Name: "svc-foo",
+													Port: networkingv1.ServiceBackendPort{Number: 80},
+												},
+											},
+										}},
+									},
+								},
+							}},
+						},
+					},
+					{Namespace: "default", Name: "ing-no-tls"}: {
+						ObjectMeta: metav1.ObjectMeta{Name: "ing-no-tls", Namespace: "default"},
+						Spec: networkingv1.IngressSpec{
+							IngressClassName: ptrTo("nginx"),
+							Rules: []networkingv1.IngressRule{{
+								Host: "example.com",
+								IngressRuleValue: networkingv1.IngressRuleValue{
+									HTTP: &networkingv1.HTTPIngressRuleValue{
+										Paths: []networkingv1.HTTPIngressPath{{
+											Path:     "/bar",
+											PathType: &iPrefix,
+											Backend: networkingv1.IngressBackend{
+												Service: &networkingv1.IngressServiceBackend{
+													Name: "svc-bar",
+													Port: networkingv1.ServiceBackendPort{Number: 80},
+												},
+											},
+										}},
+									},
+								},
+							}},
+						},
+					},
+				},
+			},
+			wantWarningHost: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			report := notifications.NewReport(true)
+			provider := NewProvider(&i2gw.ProviderConf{Report: report})
+
+			nginxProvider := provider.(*Provider)
+			nginxProvider.storage.Ingresses = tc.ingresses
+
+			_, errs := provider.ToIR()
+			if len(errs) > 0 {
+				t.Fatalf("Unexpected errors: %v", errs)
+			}
+
+			rendered := report.Render()
+			if tc.wantWarningHost != "" {
+				if !strings.Contains(rendered, tc.wantWarningHost) || !strings.Contains(rendered, "self-signed certificate") {
+					t.Errorf("Expected TLS warning for host %q, got report:\n%s", tc.wantWarningHost, rendered)
+				}
+			} else {
+				if strings.Contains(rendered, "self-signed certificate") {
+					t.Errorf("Expected no TLS warning, but got report:\n%s", rendered)
+				}
+			}
+		})
+	}
 }

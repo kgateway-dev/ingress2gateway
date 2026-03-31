@@ -1,22 +1,3 @@
-apiVersion: agentgateway.dev/v1alpha1
-kind: AgentgatewayPolicy
-metadata:
-  name: ingress-myservicea1
-  namespace: default
-spec:
-  targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: ingress-myservicea1-myservicea-foo-org
-  traffic:
-    transformation:
-      request:
-        set:
-          - name: :path
-            value: '"/rewritten"'
-status:
-  ancestors: null
----
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -52,10 +33,17 @@ spec:
     - backendRefs:
         - name: myservicea
           port: 80
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              replaceFullPath: /rewritten
+              type: ReplaceFullPath
       matches:
         - path:
             type: PathPrefix
             value: /
+      name: rule-0
 status:
   parents: []
 ---
@@ -79,5 +67,6 @@ spec:
         - path:
             type: PathPrefix
             value: /path2
+      name: rule-0
 status:
   parents: []

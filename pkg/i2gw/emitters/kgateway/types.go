@@ -18,6 +18,13 @@ package kgateway
 
 import "k8s.io/apimachinery/pkg/runtime/schema"
 
+const (
+	// RouteRuleAllIndex is used to indicate a policy applies to all rules in an HTTPRoute.
+	RouteRuleAllIndex = -1
+
+	sourceIngressAnnotation = "ingress2gateway.kubernetes.io/source-ingress"
+)
+
 var (
 	// TrafficPolicyGVK is the GroupVersionKind for TrafficPolicy.
 	TrafficPolicyGVK = schema.GroupVersionKind{
@@ -49,5 +56,3 @@ var (
 		Kind:    "Backend",
 	}
 )
-
-const sourceIngressAnnotation = "ingress2gateway.kubernetes.io/source-ingress"

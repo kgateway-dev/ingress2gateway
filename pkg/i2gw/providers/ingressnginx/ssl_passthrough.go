@@ -19,6 +19,7 @@ package ingressnginx
 import (
 	"strings"
 
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
 
@@ -30,22 +31,16 @@ import (
 	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
-const (
-	sslPassthroughAnnotation = "nginx.ingress.kubernetes.io/ssl-passthrough"
-)
-
 // sslPassthroughFeature extracts the "ssl-passthrough" annotation and converts
 // HTTPRoutes to TLSRoutes with TLS passthrough Gateway listeners.
 // When ssl-passthrough is enabled, TLS termination happens at the backend service
 // rather than at the ingress controller, requiring TLSRoute instead of HTTPRoute.
 func sslPassthroughFeature(
+	_ notifications.NotifyFunc,
 	ingresses []networkingv1.Ingress,
-	servicePorts map[types.NamespacedName]map[string]int32,
+	_ map[types.NamespacedName]map[string]int32,
 	ir *providerir.ProviderIR,
 ) field.ErrorList {
-
-	var errs field.ErrorList
-
 	// Track ingresses with ssl-passthrough enabled
 	passthroughIngresses := make(map[types.NamespacedName]bool)
 
@@ -56,7 +51,7 @@ func sslPassthroughFeature(
 			continue
 		}
 
-		sslPassthroughRaw := strings.TrimSpace(ing.Annotations[sslPassthroughAnnotation])
+		sslPassthroughRaw := strings.TrimSpace(ing.Annotations[SSLPassthroughAnnotation])
 		if strings.EqualFold(sslPassthroughRaw, "true") {
 			key := types.NamespacedName{Namespace: ing.Namespace, Name: ing.Name}
 			passthroughIngresses[key] = true
@@ -64,7 +59,7 @@ func sslPassthroughFeature(
 	}
 
 	if len(passthroughIngresses) == 0 {
-		return errs
+		return nil
 	}
 
 	// Get rule groups to map ingresses to HTTPRoutes
@@ -110,8 +105,10 @@ func sslPassthroughFeature(
 		// Create TLSRoute
 		tlsRoute := gatewayv1alpha2.TLSRoute{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      routeKey.Name,
-				Namespace: routeKey.Namespace,
+				Name:        routeKey.Name,
+				Namespace:   routeKey.Namespace,
+				Labels:      httpRouteCtx.Labels,
+				Annotations: httpRouteCtx.Annotations,
 			},
 			Spec: gatewayv1alpha2.TLSRouteSpec{
 				CommonRouteSpec: gatewayv1.CommonRouteSpec{
@@ -138,16 +135,7 @@ func sslPassthroughFeature(
 
 			// Convert backendRefs from HTTPBackendRef to BackendRef
 			for _, httpBackendRef := range httpRule.BackendRefs {
-				backendRef := gatewayv1.BackendRef{
-					BackendObjectReference: gatewayv1.BackendObjectReference{
-						Name: httpBackendRef.Name,
-					},
-				}
-
-				// Copy namespace if specified
-				if httpBackendRef.Namespace != nil {
-					backendRef.Namespace = httpBackendRef.Namespace
-				}
+				backendRef := httpBackendRef.BackendRef
 
 				// Copy port (default to 443 for TLS if not specified)
 				if httpBackendRef.Port != nil {
@@ -221,19 +209,15 @@ func sslPassthroughFeature(
 				listenerPort = 443 // Use standard HTTPS port when hostname is specified
 			}
 
-			// Check if TLS passthrough listener already exists
+			// Remove HTTP listeners that were created for this passthrough ingress
+			// The common converter creates HTTP listeners, but for TLS passthrough we only want TLS listeners
+			var filteredListeners []gatewayv1.Listener
 			listenerExists := false
 			for _, existingListener := range gatewayCtx.Spec.Listeners {
 				if existingListener.Name == gatewayv1.SectionName(listenerName) {
 					listenerExists = true
-					break
 				}
-			}
 
-			// Remove HTTP listeners that were created for this passthrough ingress
-			// The common converter creates HTTP listeners, but for TLS passthrough we only want TLS listeners
-			var filteredListeners []gatewayv1.Listener
-			for _, existingListener := range gatewayCtx.Spec.Listeners {
 				// Remove HTTP listeners that match the hostname of this TLSRoute
 				if existingListener.Protocol == gatewayv1.HTTPProtocolType {
 					if len(tlsRoute.Spec.Hostnames) > 0 && tlsRoute.Spec.Hostnames[0] != "" {
@@ -267,16 +251,16 @@ func sslPassthroughFeature(
 				}
 
 				gatewayCtx.Spec.Listeners = append(gatewayCtx.Spec.Listeners, listener)
-				ir.Gateways[gatewayKey] = gatewayCtx
-
-				// Update TLSRoute parentRef to reference the specific listener
-				for i := range ir.TLSRoutes[routeKey].Spec.ParentRefs {
-					sectionName := gatewayv1.SectionName(listenerName)
-					ir.TLSRoutes[routeKey].Spec.ParentRefs[i].SectionName = &sectionName
-				}
 			}
+
+			sectionName := gatewayv1.SectionName(listenerName)
+			for i := range ir.TLSRoutes[routeKey].Spec.ParentRefs {
+				ir.TLSRoutes[routeKey].Spec.ParentRefs[i].SectionName = &sectionName
+			}
+
+			ir.Gateways[gatewayKey] = gatewayCtx
 		}
 	}
 
-	return errs
+	return nil
 }

@@ -32,10 +32,10 @@ import (
 //   - GatewayClasses, Routes, and ReferenceGrants are grouped into the same maps
 //   - Gateways may have the same NamespaceName even if they come from different
 //     ingresses, as they have a their GatewayClass' name as name. For this reason,
-//     if there are mutiple gateways named the same, their listeners are merged into
+//     if there are multiple gateways named the same, their listeners are merged into
 //     a unique Gateway.
 //
-// This behavior is likely to change after https://github.com/kubernetes-sigs/gateway-api/pull/1863 takes place.
+// This behavior is likely to change after https://github.com/kgateway-dev/gateway-api/pull/1863 takes place.
 func MergeIRs(irs ...ProviderIR) (ProviderIR, field.ErrorList) {
 	mergedIRs := ProviderIR{
 		Gateways:           make(map[types.NamespacedName]GatewayContext),
@@ -44,7 +44,7 @@ func MergeIRs(irs ...ProviderIR) (ProviderIR, field.ErrorList) {
 		TLSRoutes:          make(map[types.NamespacedName]gatewayv1alpha2.TLSRoute),
 		TCPRoutes:          make(map[types.NamespacedName]gatewayv1alpha2.TCPRoute),
 		UDPRoutes:          make(map[types.NamespacedName]gatewayv1alpha2.UDPRoute),
-		GRPCRoutes:         make(map[types.NamespacedName]gatewayv1.GRPCRoute),
+		GRPCRoutes:         make(map[types.NamespacedName]GRPCRouteContext),
 		BackendTLSPolicies: make(map[types.NamespacedName]gatewayv1.BackendTLSPolicy),
 		ReferenceGrants:    make(map[types.NamespacedName]gatewayv1beta1.ReferenceGrant),
 	}

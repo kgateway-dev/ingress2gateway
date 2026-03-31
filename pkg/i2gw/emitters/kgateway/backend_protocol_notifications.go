@@ -41,6 +41,7 @@ type backendProtoPatchKey struct {
 //   - We also skip backends that have been rewritten to a kgateway Backend (service-upstream case),
 //     because the generated Backend will carry appProtocol instead.
 func emitBackendProtocolPatchNotifications(
+	notify notifications.NotifyFunc,
 	pol emitterir.Policy,
 	sourceIngressName string,
 	httpRouteKey types.NamespacedName,
@@ -132,9 +133,6 @@ Apply the equivalent behavior by patching your existing Service port's appProtoc
 			cmd,
 		)
 
-		notifications.NotificationAggr.DispatchNotification(
-			notifications.NewNotification(notifications.InfoNotification, msg),
-			"ingress-nginx",
-		)
+		notify(notifications.InfoNotification, msg)
 	}
 }

@@ -22,143 +22,57 @@ import (
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
-	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/shared"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// applyBufferPolicy projects the buffer-related policy IR into a Kgateway TrafficPolicy,
-// returning true if it modified/created a TrafficPolicy for this ingress.
-//
-// Semantics are as follows:
-//   - If the "nginx.ingress.kubernetes.io/proxy-body-size" annotation is present, that value
-//     is used as the effective max request size.
-//   - Otherwise, if the "nginx.ingress.kubernetes.io/client-body-buffer-size" annotation is present,
-//     that value is used.
-//   - If neither is set, no Kgateway Buffer policy is emitted.
-//
-// Note: Kgateway's Buffer.MaxRequestSize has "max body size" semantics (413 on exceed),
-// which matches NGINX's proxy-body-size more directly. client-body-buffer-size is
-// treated as a fallback when proxy-body-size is not configured.
-func applyBufferPolicy(
-	pol emitterir.Policy,
-	ingressName, namespace string,
-	tp map[string]*kgateway.TrafficPolicy,
-) bool {
-	if pol.ClientBodyBufferSize == nil && pol.ProxyBodySize == nil {
-		return false
-	}
+// EmitRateLimit projects provider-neutral per-rule rate limit intent into
+// section-scoped Kgateway TrafficPolicies.
+func (e *Emitter) EmitRateLimit(ir emitterir.EmitterIR) {
+	for _, ctx := range ir.HTTPRoutes {
+		for idx, rl := range ctx.RateLimitByRuleIdx {
+			if rl == nil || idx < 0 || idx >= len(ctx.Spec.Rules) || rl.Limit <= 0 {
+				continue
+			}
 
-	// Prefer proxy-body-size if present; otherwise fall back to client-body-buffer-size.
-	size := pol.ProxyBodySize
-	if size == nil {
-		size = pol.ClientBodyBufferSize
-	}
-	if size == nil {
-		return false
-	}
+			var (
+				maxTokens     int32
+				tokensPerFill int32
+				fillInterval  metav1.Duration
+			)
 
-	t := ensureTrafficPolicy(tp, ingressName, namespace)
-	t.Spec.Buffer = &kgateway.Buffer{
-		MaxRequestSize: size,
+			burstMult := rl.BurstMultiplier
+			if burstMult <= 0 {
+				burstMult = 1
+			}
+
+			switch rl.Unit {
+			case emitterir.RateLimitUnitRPS:
+				tokensPerFill = rl.Limit
+				maxTokens = rl.Limit * burstMult
+				fillInterval = metav1.Duration{Duration: time.Second}
+			case emitterir.RateLimitUnitRPM:
+				tokensPerFill = rl.Limit
+				maxTokens = rl.Limit * burstMult
+				fillInterval = metav1.Duration{Duration: time.Minute}
+			default:
+				continue
+			}
+
+			sectionName := e.getSectionName(ctx, idx)
+			trafficPolicy := e.getOrBuildTrafficPolicy(ctx, sectionName, idx)
+			if trafficPolicy.Spec.RateLimit == nil {
+				trafficPolicy.Spec.RateLimit = &kgateway.RateLimit{}
+			}
+			if trafficPolicy.Spec.RateLimit.Local == nil {
+				trafficPolicy.Spec.RateLimit.Local = &kgateway.LocalRateLimitPolicy{}
+			}
+			trafficPolicy.Spec.RateLimit.Local.TokenBucket = &kgateway.TokenBucket{
+				MaxTokens:     maxTokens,
+				TokensPerFill: int32Ptr(tokensPerFill),
+				FillInterval:  fillInterval,
+			}
+		}
 	}
-	return true
 }
 
-// applyRateLimitPolicy projects the rate limit policy IR into a Kgateway TrafficPolicy.
-// returning true if it modified/created a TrafficPolicy for this ingress.
-func applyRateLimitPolicy(
-	pol emitterir.Policy,
-	ingressName, namespace string,
-	tp map[string]*kgateway.TrafficPolicy,
-) bool {
-	if pol.RateLimit == nil {
-		return false
-	}
-
-	rl := pol.RateLimit
-	if rl.Limit <= 0 {
-		return false
-	}
-
-	// Default burst multiplier to 1 if unset/zero.
-	burstMult := rl.BurstMultiplier
-	if burstMult <= 0 {
-		burstMult = 1
-	}
-
-	var (
-		maxTokens     int32
-		tokensPerFill int32
-		fillInterval  metav1.Duration
-	)
-
-	switch rl.Unit {
-	case emitterir.RateLimitUnitRPS:
-		// Requests per second.
-		tokensPerFill = rl.Limit
-		maxTokens = rl.Limit * burstMult
-		fillInterval = metav1.Duration{Duration: time.Second}
-	case emitterir.RateLimitUnitRPM:
-		// Requests per minute.
-		tokensPerFill = rl.Limit
-		maxTokens = rl.Limit * burstMult
-		fillInterval = metav1.Duration{Duration: time.Minute}
-	default:
-		// Unknown unit; ignore for now.
-		return false
-	}
-
-	t := ensureTrafficPolicy(tp, ingressName, namespace)
-
-	if t.Spec.RateLimit == nil {
-		t.Spec.RateLimit = &kgateway.RateLimit{}
-	}
-	if t.Spec.RateLimit.Local == nil {
-		t.Spec.RateLimit.Local = &kgateway.LocalRateLimitPolicy{}
-	}
-
-	// Helper to create *int32 without extra imports.
-	int32Ptr := func(v int32) *int32 { return &v }
-
-	t.Spec.RateLimit.Local.TokenBucket = &kgateway.TokenBucket{
-		MaxTokens:     maxTokens,
-		TokensPerFill: int32Ptr(tokensPerFill),
-		FillInterval:  fillInterval,
-	}
-
-	return true
-}
-
-// applyTimeoutPolicy projects the timeout-related policy IR into a Kgateway TrafficPolicy,
-// returning true if it modified/created a TrafficPolicy for this ingress.
-//
-// Semantics:
-//   - If ProxySendTimeout is set, it is mapped to the Request timeout in Kgateway.
-//   - If ProxyReadTimeout is set, it is mapped to the StreamIdle timeout in Kgateway.
-func applyTimeoutPolicy(
-	pol emitterir.Policy,
-	ingressName, namespace string,
-	tp map[string]*kgateway.TrafficPolicy,
-) bool {
-	if pol.ProxySendTimeout == nil && pol.ProxyReadTimeout == nil {
-		return false
-	}
-
-	t := ensureTrafficPolicy(tp, ingressName, namespace)
-
-	if t.Spec.Timeouts == nil {
-		t.Spec.Timeouts = &shared.Timeouts{}
-	}
-
-	// Map proxy-send-timeout → Timeouts.Request
-	if pol.ProxySendTimeout != nil {
-		t.Spec.Timeouts.Request = pol.ProxySendTimeout
-	}
-
-	// Map proxy-read-timeout → Timeouts.StreamIdle
-	if pol.ProxyReadTimeout != nil {
-		t.Spec.Timeouts.StreamIdle = pol.ProxyReadTimeout
-	}
-
-	return true
-}
+func int32Ptr(v int32) *int32 { return &v }

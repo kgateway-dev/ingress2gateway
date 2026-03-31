@@ -36,14 +36,16 @@ spec:
     matches:
     - path:
         type: RegularExpression
-        value: ^/path/one
+        value: (?i)/path/one.*
+    name: rule-0
   - backendRefs:
     - name: echo-backend
       port: 8080
     matches:
     - path:
-        type: PathPrefix
-        value: /path/two
+        type: RegularExpression
+        value: (?i)/path/two.*
+    name: rule-1
 status:
   parents: []
 ---
@@ -67,5 +69,6 @@ spec:
     - path:
         type: PathPrefix
         value: /
+    name: rule-0
 status:
   parents: []

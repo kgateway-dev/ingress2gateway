@@ -39,5 +39,6 @@ spec:
     - path:
         type: PathPrefix
         value: /before/rewrite
+    name: rule-0
 status:
   parents: []

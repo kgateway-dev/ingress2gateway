@@ -18,6 +18,7 @@ package kgateway_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -35,7 +36,7 @@ import (
 func getModuleRoot(t *testing.T) string {
 	t.Helper()
 
-	cmd := exec.Command("go", "env", "GOMOD")
+	cmd := exec.CommandContext(context.Background(), "go", "env", "GOMOD")
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("failed to run 'go env GOMOD': %v", err)
@@ -128,7 +129,8 @@ func runGoldenTest(t *testing.T, inputRel, goldenRel string) {
 	inputPath := filepath.Join(moduleRoot, inputRel)
 	goldenPath := filepath.Join(moduleRoot, goldenRel)
 
-	cmd := exec.Command(
+	//nolint:gosec // G204: integration test runs the local module with fixed argv shape.
+	cmd := exec.CommandContext(context.Background(),
 		"go", "run", ".",
 		"print",
 		"--providers=ingress-nginx",
@@ -153,6 +155,7 @@ func runGoldenTest(t *testing.T, inputRel, goldenRel string) {
 
 	// Golden file handling
 	writeGolden := false
+	//nolint:gosec // G304: golden path is resolved under module root from known rel paths.
 	goldenBytes, err := os.ReadFile(goldenPath)
 	if os.IsNotExist(err) {
 		writeGolden = true
@@ -331,6 +334,15 @@ func TestKgatewayIngressNginxIntegration_Golden(t *testing.T) {
 			),
 			goldenRel: filepath.Join(
 				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "session_affinity.yaml",
+			),
+		},
+		{
+			name: "timeouts",
+			inputRel: filepath.Join(
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "input", "timeouts.yaml",
+			),
+			goldenRel: filepath.Join(
+				"pkg", "i2gw", "emitters", "kgateway", "testing", "testdata", "output", "timeouts.yaml",
 			),
 		},
 	}

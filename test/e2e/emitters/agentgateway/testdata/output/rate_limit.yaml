@@ -37,6 +37,7 @@ spec:
     - path:
         type: PathPrefix
         value: /
+    name: rule-0
 status:
   parents: []
 ---
@@ -60,6 +61,7 @@ spec:
     - path:
         type: PathPrefix
         value: /
+    name: rule-0
   - backendRefs:
     - name: echo-backend
       port: 8080
@@ -67,6 +69,7 @@ spec:
     - path:
         type: PathPrefix
         value: /rpm
+    name: rule-1
 status:
   parents: []
 ---

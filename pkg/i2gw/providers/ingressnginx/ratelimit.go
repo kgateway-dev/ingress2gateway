@@ -17,141 +17,131 @@ limitations under the License.
 package ingressnginx
 
 import (
+	"fmt"
 	"strconv"
 
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	networkingv1 "k8s.io/api/networking/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-const (
-	nginxLimitRPS             = "nginx.ingress.kubernetes.io/limit-rps"
-	nginxLimitRPM             = "nginx.ingress.kubernetes.io/limit-rpm"
-	nginxLimitBurstMultiplier = "nginx.ingress.kubernetes.io/limit-burst-multiplier"
-)
-
-// rateLimitPolicyFeature parses the rate limiting annotations from Ingresses
-// and records them as ingress-nginx specific IR Policies.
-func rateLimitPolicyFeature(
-	ingresses []networkingv1.Ingress,
-	_ map[types.NamespacedName]map[string]int32,
-	ir *providerir.ProviderIR,
-) field.ErrorList {
-	var errs field.ErrorList
-
-	// Build a map of raw per-Ingress RateLimitPolicy
-	perIngress := map[string]*providerir.RateLimitPolicy{}
-
-	for _, ing := range ingresses {
-		anns := ing.GetAnnotations()
-		if anns == nil {
+// applyRateLimitToEmitterIR reads ingress-nginx rate limit annotations from ProviderIR sources and stores
+// provider-neutral rate limit intent into EmitterIR, which will later be converted by each custom emitter.
+//
+// Currently supported annotations are:
+// - nginx.ingress.kubernetes.io/limit-rps
+// - nginx.ingress.kubernetes.io/limit-rpm
+// - nginx.ingress.kubernetes.io/limit-burst-multiplier
+func (p *Provider) applyRateLimitToEmitterIR(pIR providerir.ProviderIR, eIR *emitterir.EmitterIR) {
+	for key, pRouteCtx := range pIR.HTTPRoutes {
+		eRouteCtx, ok := eIR.HTTPRoutes[key]
+		if !ok {
 			continue
 		}
 
-		var (
-			limit     int32
-			unit      providerir.RateLimitUnit
-			hasLimit  bool
-			burstMult int32 = 1
-		)
-
-		// Prefer RPS over RPM
-		if v, ok := anns[nginxLimitRPS]; ok && v != "" {
-			if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
-				limit = int32(parsed)
-				unit = providerir.RateLimitUnitRPS
-				hasLimit = true
+		for ruleIdx := range eRouteCtx.Spec.Rules {
+			if ruleIdx >= len(pRouteCtx.RuleBackendSources) {
+				continue
 			}
-		}
-		if !hasLimit {
-			if v, ok := anns[nginxLimitRPM]; ok && v != "" {
-				if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
-					limit = int32(parsed)
-					unit = providerir.RateLimitUnitRPM
-					hasLimit = true
-				}
-			}
-		}
-
-		if !hasLimit {
-			continue
-		}
-
-		if v, ok := anns[nginxLimitBurstMultiplier]; ok && v != "" {
-			if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
-				burstMult = int32(parsed)
-			}
-		}
-
-		perIngress[ing.Name] = &providerir.RateLimitPolicy{
-			Limit:           limit,
-			Unit:            unit,
-			BurstMultiplier: burstMult,
-		}
-	}
-
-	if len(perIngress) == 0 {
-		return errs // nothing to do
-	}
-
-	// For each HTTPRoute, map sources to provider-specific IR Policies
-	for routeKey, httpCtx := range ir.HTTPRoutes {
-		// Ensure provider IR exists
-		if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx =
-				&providerir.IngressNginxHTTPRouteIR{Policies: map[string]providerir.Policy{}}
-		}
-		if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
-		}
-
-		// Group PolicyIndex entries by ingress name
-		sourceIndexes := map[string][]providerir.PolicyIndex{}
-		for ruleIdx, perRule := range httpCtx.RuleBackendSources {
-			for backIdx, src := range perRule {
-				if src.Ingress == nil {
-					continue
-				}
-				name := src.Ingress.Name
-				sourceIndexes[name] = append(
-					sourceIndexes[name],
-					providerir.PolicyIndex{Rule: ruleIdx, Backend: backIdx},
-				)
-			}
-		}
-
-		// For each ingress source, attach the rate limit policy
-		for ingressName, idxs := range sourceIndexes {
-			rl, exists := perIngress[ingressName]
-			if !exists {
+			ing := getNonCanaryIngress(pRouteCtx.RuleBackendSources[ruleIdx])
+			if ing == nil {
 				continue
 			}
 
-			// Fetch/Create provider policy
-			existing := httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingressName]
-
-			// Merge rate limit settings
-			if existing.RateLimit == nil {
-				existing.RateLimit = rl
-			} else {
-				// Merge semantics = "last writer wins" (consistent with other providers)
-				existing.RateLimit.Limit = rl.Limit
-				existing.RateLimit.Unit = rl.Unit
-				if rl.BurstMultiplier > 0 {
-					existing.RateLimit.BurstMultiplier = rl.BurstMultiplier
-				}
+			limitPolicy, parsedAnnotations := p.parseIngressNginxRateLimit(ing)
+			if limitPolicy == nil {
+				continue
 			}
 
-			// Dedupe (rule, backend) pairs.
-			existing = existing.AddRuleBackendSources(idxs)
+			if eRouteCtx.RateLimitByRuleIdx == nil {
+				eRouteCtx.RateLimitByRuleIdx = make(map[int]*emitterir.RateLimitPolicy)
+			}
 
-			httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingressName] = existing
+			source := fmt.Sprintf("%s/%s", ing.Namespace, ing.Name)
+			message := "Rate limiting usually requires implementation-specific policy configuration"
+			paths := make([]*field.Path, len(parsedAnnotations))
+			for i, ann := range parsedAnnotations {
+				paths[i] = field.NewPath(ing.Namespace, ing.Name, "metadata", "annotations", fmt.Sprintf("%q", ann))
+			}
+			limitPolicy.Metadata = emitterir.NewExtensionFeatureMetadata(
+				source,
+				paths,
+				message,
+			)
+
+			eRouteCtx.RateLimitByRuleIdx[ruleIdx] = limitPolicy
 		}
 
-		// Write back updated route context
-		ir.HTTPRoutes[routeKey] = httpCtx
+		eIR.HTTPRoutes[key] = eRouteCtx
+	}
+}
+
+func (p *Provider) parseIngressNginxRateLimit(ing *networkingv1.Ingress) (*emitterir.RateLimitPolicy, []string) {
+	var (
+		limit             int32
+		unit              emitterir.RateLimitUnit
+		hasLimit          bool
+		burstMultiplier   int32 = 1
+		parsedAnnotations       = make([]string, 0, 2)
+	)
+
+	if val, ok := ing.Annotations[LimitRPSAnnotation]; ok && val != "" {
+		parsedAnnotations = append(parsedAnnotations, LimitRPSAnnotation)
+		parsed, err := strconv.ParseInt(val, 10, 32)
+		if err != nil || parsed <= 0 {
+			p.notify(
+				notifications.WarningNotification,
+				fmt.Sprintf("Invalid limit-rps annotation %q: must be a positive integer, skipping rate limit", val),
+				ing,
+			)
+			return nil, nil
+		}
+		limit = int32(parsed)
+		unit = emitterir.RateLimitUnitRPS
+		hasLimit = true
 	}
 
-	return errs
+	if !hasLimit {
+		if val, ok := ing.Annotations[LimitRPMAnnotation]; ok && val != "" {
+			parsedAnnotations = append(parsedAnnotations, LimitRPMAnnotation)
+			parsed, err := strconv.ParseInt(val, 10, 32)
+			if err != nil || parsed <= 0 {
+				p.notify(
+					notifications.WarningNotification,
+					fmt.Sprintf("Invalid limit-rpm annotation %q: must be a positive integer, skipping rate limit", val),
+					ing,
+				)
+				return nil, nil
+			}
+			limit = int32(parsed)
+			unit = emitterir.RateLimitUnitRPM
+			hasLimit = true
+		}
+	}
+
+	if !hasLimit {
+		return nil, nil
+	}
+
+	if val, ok := ing.Annotations[LimitBurstMultiplierAnnotation]; ok && val != "" {
+		parsedAnnotations = append(parsedAnnotations, LimitBurstMultiplierAnnotation)
+		parsed, err := strconv.ParseInt(val, 10, 32)
+		if err != nil || parsed <= 0 {
+			p.notify(
+				notifications.WarningNotification,
+				fmt.Sprintf("Invalid limit-burst-multiplier annotation %q: must be a positive integer, using default burst multiplier 1", val),
+				ing,
+			)
+		} else {
+			burstMultiplier = int32(parsed)
+		}
+	}
+
+	return &emitterir.RateLimitPolicy{
+		Limit:           limit,
+		Unit:            unit,
+		BurstMultiplier: burstMultiplier,
+	}, parsedAnnotations
 }

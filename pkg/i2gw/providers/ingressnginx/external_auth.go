@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Kubernetes Authors.
+Copyright The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,253 +19,143 @@ package ingressnginx
 import (
 	"strings"
 
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
-
 	networkingv1 "k8s.io/api/networking/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
 const (
 	authURLAnnotation             = "nginx.ingress.kubernetes.io/auth-url"
 	authResponseHeadersAnnotation = "nginx.ingress.kubernetes.io/auth-response-headers"
 	authTypeAnnotation            = "nginx.ingress.kubernetes.io/auth-type"
-	authSecretAnnotation          = "nginx.ingress.kubernetes.io/auth-secret"
-	authSecretTypeAnnotation      = "nginx.ingress.kubernetes.io/auth-secret-type"
+	authSecretAnnotation          = "nginx.ingress.kubernetes.io/auth-secret"      //nolint:gosec // G101: annotation key, not a credential
+	authSecretTypeAnnotation      = "nginx.ingress.kubernetes.io/auth-secret-type" //nolint:gosec // G101: annotation key, not a credential
 )
 
-// extAuthFeature extracts the "auth-url" and "auth-response-headers" annotations and
-// projects them into the provider-specific IR similarly to other annotation features.
-func extAuthFeature(
-	ingresses []networkingv1.Ingress,
-	_ map[types.NamespacedName]map[string]int32,
-	ir *providerir.ProviderIR,
-) field.ErrorList {
-
-	var errs field.ErrorList
-	ingressPolicies := map[types.NamespacedName]*providerir.Policy{}
-
-	for i := range ingresses {
-		ing := &ingresses[i]
-		authURLRaw := strings.TrimSpace(ing.Annotations[authURLAnnotation])
-		authResponseHeadersRaw := strings.TrimSpace(ing.Annotations[authResponseHeadersAnnotation])
-
-		// Skip if neither annotation is present
-		if authURLRaw == "" && authResponseHeadersRaw == "" {
-			continue
-		}
-
-		key := types.NamespacedName{Namespace: ing.Namespace, Name: ing.Name}
-		pol := ingressPolicies[key]
-		if pol == nil {
-			pol = &providerir.Policy{}
-			ingressPolicies[key] = pol
-		}
-
-		if pol.ExtAuth == nil {
-			pol.ExtAuth = &providerir.ExtAuthPolicy{}
-		}
-
-		if authURLRaw != "" {
-			pol.ExtAuth.AuthURL = authURLRaw
-		}
-
-		if authResponseHeadersRaw != "" {
-			var headers []string
-			for _, part := range strings.Split(authResponseHeadersRaw, ",") {
-				v := strings.TrimSpace(part)
-				if v != "" {
-					headers = append(headers, v)
-				}
-			}
-			pol.ExtAuth.ResponseHeaders = headers
-		}
-	}
-
-	if len(ingressPolicies) == 0 {
-		return errs
-	}
-
-	// Map policies to HTTPRoutes (same pattern as other features)
-	ruleGroups := common.GetRuleGroups(ingresses)
-
-	for _, rg := range ruleGroups {
-		routeKey := types.NamespacedName{
-			Namespace: rg.Namespace,
-			Name:      common.RouteName(rg.Name, rg.Host),
-		}
-
-		httpCtx, ok := ir.HTTPRoutes[routeKey]
-		if !ok {
-			continue
-		}
-
-		for ruleIdx, backendSources := range httpCtx.RuleBackendSources {
-			for backendIdx, src := range backendSources {
-				if src.Ingress == nil {
-					continue
-				}
-
-				ingKey := types.NamespacedName{
-					Namespace: src.Ingress.Namespace,
-					Name:      src.Ingress.Name,
-				}
-
-				pol := ingressPolicies[ingKey]
-				if pol == nil || pol.ExtAuth == nil {
-					continue
-				}
-
-				// Ensure provider-specific IR exists
-				if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-					httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
-						Policies: map[string]providerir.Policy{},
-					}
-				} else if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-					httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
-				}
-
-				existing := httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name]
-				if existing.ExtAuth == nil {
-					existing.ExtAuth = pol.ExtAuth
-				} else {
-					// Merge ExtAuth policy: preserve existing values if new ones are empty
-					if pol.ExtAuth.AuthURL != "" {
-						existing.ExtAuth.AuthURL = pol.ExtAuth.AuthURL
-					}
-					if len(pol.ExtAuth.ResponseHeaders) > 0 {
-						existing.ExtAuth.ResponseHeaders = pol.ExtAuth.ResponseHeaders
-					}
-				}
-
-				// Dedupe (rule, backend) pairs.
-				existing = existing.AddRuleBackendSources([]providerir.PolicyIndex{
-					{Rule: ruleIdx, Backend: backendIdx},
-				})
-
-				httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name] = existing
-			}
-		}
-
-		ir.HTTPRoutes[routeKey] = httpCtx
-	}
-
-	return errs
+type extAuthConfig struct {
+	authURL         string
+	responseHeaders []string
 }
 
-// basicAuthFeature extracts the "auth-type" and "auth-secret" annotations and
-// projects them into the provider-specific IR similarly to other annotation features.
-func basicAuthFeature(
-	ingresses []networkingv1.Ingress,
-	_ map[types.NamespacedName]map[string]int32,
-	ir *providerir.ProviderIR,
-) field.ErrorList {
-	var errs field.ErrorList
-	ingressPolicies := map[types.NamespacedName]*providerir.Policy{}
+type basicAuthConfig struct {
+	secretName string
+	authType   string
+}
 
-	for i := range ingresses {
-		ing := &ingresses[i]
-		authTypeRaw := strings.TrimSpace(ing.Annotations[authTypeAnnotation])
-		authSecretRaw := strings.TrimSpace(ing.Annotations[authSecretAnnotation])
-		authSecretTypeRaw := strings.TrimSpace(ing.Annotations[authSecretTypeAnnotation])
+func parseExtAuthConfig(ing *networkingv1.Ingress) *extAuthConfig {
+	authURL := strings.TrimSpace(ing.Annotations[authURLAnnotation])
+	responseHeaders := splitAndTrimCSV(ing.Annotations[authResponseHeadersAnnotation])
+	if authURL == "" && len(responseHeaders) == 0 {
+		return nil
+	}
+	return &extAuthConfig{
+		authURL:         authURL,
+		responseHeaders: responseHeaders,
+	}
+}
 
-		// Only process if auth-type is "basic" and auth-secret is present
-		if authTypeRaw != "basic" || authSecretRaw == "" {
+func parseBasicAuthConfig(ing *networkingv1.Ingress) *basicAuthConfig {
+	authType := strings.TrimSpace(ing.Annotations[authTypeAnnotation])
+	authSecret := strings.TrimSpace(ing.Annotations[authSecretAnnotation])
+	if authType != "basic" || authSecret == "" {
+		return nil
+	}
+
+	secretName := authSecret
+	if strings.Contains(authSecret, "/") {
+		parts := strings.SplitN(authSecret, "/", 2)
+		if len(parts) == 2 {
+			secretName = parts[1]
+		}
+	}
+
+	secretType := strings.TrimSpace(ing.Annotations[authSecretTypeAnnotation])
+	if secretType == "" {
+		secretType = "auth-file"
+	}
+
+	return &basicAuthConfig{
+		secretName: secretName,
+		authType:   secretType,
+	}
+}
+
+func splitAndTrimCSV(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+
+	rawValues := strings.Split(value, ",")
+	values := make([]string, 0, len(rawValues))
+	for _, rawValue := range rawValues {
+		value := strings.TrimSpace(rawValue)
+		if value == "" {
 			continue
 		}
-
-		key := types.NamespacedName{Namespace: ing.Namespace, Name: ing.Name}
-		pol := ingressPolicies[key]
-		if pol == nil {
-			pol = &providerir.Policy{}
-			ingressPolicies[key] = pol
-		}
-
-		// Parse secret reference (format: namespace/name or just name)
-		secretName := authSecretRaw
-		if strings.Contains(authSecretRaw, "/") {
-			parts := strings.SplitN(authSecretRaw, "/", 2)
-			if len(parts) == 2 {
-				// If secret is in different namespace, use just the name
-				// (kgateway expects secret in same namespace as TrafficPolicy)
-				secretName = parts[1]
-			}
-		}
-
-		// Determine auth type based on auth-secret-type annotation
-		// auth-file (default): htpasswd file in key "auth"
-		// auth-map: keys are usernames, values are hashed passwords
-		authType := authSecretTypeRaw
-		if authType == "" {
-			authType = "auth-file" // default
-		}
-
-		pol.BasicAuth = &providerir.BasicAuthPolicy{
-			SecretName: secretName,
-			AuthType:   authType,
-		}
+		values = append(values, value)
 	}
-
-	if len(ingressPolicies) == 0 {
-		return errs
+	if len(values) == 0 {
+		return nil
 	}
+	return values
+}
 
-	// Map policies to HTTPRoutes (same pattern as other features)
-	ruleGroups := common.GetRuleGroups(ingresses)
-
-	for _, rg := range ruleGroups {
-		routeKey := types.NamespacedName{
-			Namespace: rg.Namespace,
-			Name:      common.RouteName(rg.Name, rg.Host),
-		}
-
-		httpCtx, ok := ir.HTTPRoutes[routeKey]
+// applyAuthToEmitterIR projects ingress-nginx auth annotations into the
+// emitter-neutral per-ingress policy map used by custom emitters.
+func (p *Provider) applyAuthToEmitterIR(pIR providerir.ProviderIR, eIR *emitterir.EmitterIR) {
+	for key, pRouteCtx := range pIR.HTTPRoutes {
+		eRouteCtx, ok := eIR.HTTPRoutes[key]
 		if !ok {
 			continue
 		}
 
-		for ruleIdx, backendSources := range httpCtx.RuleBackendSources {
-			for backendIdx, src := range backendSources {
-				if src.Ingress == nil {
-					continue
-				}
-
-				ingKey := types.NamespacedName{
-					Namespace: src.Ingress.Namespace,
-					Name:      src.Ingress.Name,
-				}
-
-				pol := ingressPolicies[ingKey]
-				if pol == nil || pol.BasicAuth == nil {
-					continue
-				}
-
-				// Ensure provider-specific IR exists
-				if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-					httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
-						Policies: map[string]providerir.Policy{},
-					}
-				} else if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-					httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
-				}
-
-				existing := httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name]
-				if existing.BasicAuth == nil {
-					existing.BasicAuth = pol.BasicAuth
-				}
-
-				// Dedupe (rule, backend) pairs.
-				existing = existing.AddRuleBackendSources([]providerir.PolicyIndex{
-					{Rule: ruleIdx, Backend: backendIdx},
-				})
-
-				httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name] = existing
+		for ruleIdx := range pRouteCtx.HTTPRoute.Spec.Rules {
+			if ruleIdx >= len(pRouteCtx.RuleBackendSources) {
+				continue
 			}
+			if ruleIdx >= len(eRouteCtx.Spec.Rules) {
+				continue
+			}
+
+			ing := getNonCanaryIngress(pRouteCtx.RuleBackendSources[ruleIdx])
+			if ing == nil {
+				continue
+			}
+
+			extAuth := parseExtAuthConfig(ing)
+			basicAuth := parseBasicAuthConfig(ing)
+			if extAuth == nil && basicAuth == nil {
+				continue
+			}
+
+			if eRouteCtx.PoliciesBySourceIngressName == nil {
+				eRouteCtx.PoliciesBySourceIngressName = make(map[string]emitterir.Policy)
+			}
+
+			policy := eRouteCtx.PoliciesBySourceIngressName[ing.Name]
+			if extAuth != nil {
+				policy.ExtAuth = &emitterir.ExtAuthPolicy{
+					AuthURL:         extAuth.authURL,
+					ResponseHeaders: append([]string(nil), extAuth.responseHeaders...),
+				}
+			}
+			if basicAuth != nil {
+				policy.BasicAuth = &emitterir.BasicAuthPolicy{
+					SecretName: basicAuth.secretName,
+					AuthType:   basicAuth.authType,
+				}
+			}
+
+			for backendIdx := range eRouteCtx.Spec.Rules[ruleIdx].BackendRefs {
+				policy = policy.AddRuleBackendSources([]emitterir.PolicyIndex{{
+					Rule:    ruleIdx,
+					Backend: backendIdx,
+				}})
+			}
+
+			eRouteCtx.PoliciesBySourceIngressName[ing.Name] = policy
 		}
 
-		ir.HTTPRoutes[routeKey] = httpCtx
+		eIR.HTTPRoutes[key] = eRouteCtx
 	}
-
-	return errs
 }

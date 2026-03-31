@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The Kubernetes Authors.
+Copyright The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -97,11 +97,8 @@ func TestApplyBackendProtocolProjectsBackendRefToKgatewayBackend(t *testing.T) {
 }
 
 func TestEmitBackendProtocolPatchNotificationsExplainsNoGRPCRouteProjection(t *testing.T) {
-	origNotifications := notifications.NotificationAggr.Notifications
-	defer func() {
-		notifications.NotificationAggr.Notifications = origNotifications
-	}()
-	notifications.NotificationAggr.Notifications = map[string][]notifications.Notification{}
+	report := notifications.NewReport(true)
+	notify := report.Notifier("ingress-nginx")
 
 	grpcProtocol := emitterir.BackendProtocolGRPC
 	backendRefPort := gatewayv1.PortNumber(9090)
@@ -129,6 +126,7 @@ func TestEmitBackendProtocolPatchNotificationsExplainsNoGRPCRouteProjection(t *t
 	}
 
 	emitBackendProtocolPatchNotifications(
+		notify,
 		policy,
 		"ingress-grpc",
 		httpRouteKey,
@@ -136,11 +134,11 @@ func TestEmitBackendProtocolPatchNotificationsExplainsNoGRPCRouteProjection(t *t
 		map[backendProtoPatchKey]struct{}{},
 	)
 
-	got := notifications.NotificationAggr.Notifications["ingress-nginx"]
-	if len(got) != 1 {
-		t.Fatalf("expected 1 ingress-nginx notification, got %d", len(got))
+	got := report.Render()
+	if strings.Count(got, "source: INGRESS-NGINX") != 1 {
+		t.Fatalf("expected 1 ingress-nginx notification, got:\n%s", got)
 	}
-	if !strings.Contains(got[0].Message, "does not emit a GRPCRoute") {
-		t.Fatalf("expected message to explain GRPCRoute is not emitted; got:\n%s", got[0].Message)
+	if !strings.Contains(got, "does not emit a GRPCRoute") {
+		t.Fatalf("expected message to explain GRPCRoute is not emitted; got:\n%s", got)
 	}
 }

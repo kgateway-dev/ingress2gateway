@@ -18,12 +18,16 @@ package utils
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
-
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
@@ -37,8 +41,8 @@ type uniqueBackendRefsKey struct {
 	Kind      gatewayv1.Kind
 }
 
-// RemoveBackendRefsDuplicates removes duplicate backendRefs from a list of backendRefs.
-func RemoveBackendRefsDuplicates(backendRefs []gatewayv1.HTTPBackendRef) []gatewayv1.HTTPBackendRef {
+// removeBackendRefsDuplicates removes duplicate backendRefs from a list of backendRefs.
+func removeBackendRefsDuplicates(backendRefs []gatewayv1.HTTPBackendRef) []gatewayv1.HTTPBackendRef {
 	uniqueBackendRefs := map[uniqueBackendRefsKey]*gatewayv1.HTTPBackendRef{}
 
 	for _, backendRef := range backendRefs {
@@ -99,7 +103,7 @@ func ToGatewayResources(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Er
 		gatewayResources.HTTPRoutes[key] = httpRouteContext.HTTPRoute
 		hr := gatewayResources.HTTPRoutes[key]
 		for i := range hr.Spec.Rules {
-			hr.Spec.Rules[i].BackendRefs = RemoveBackendRefsDuplicates(hr.Spec.Rules[i].BackendRefs)
+			hr.Spec.Rules[i].BackendRefs = removeBackendRefsDuplicates(hr.Spec.Rules[i].BackendRefs)
 		}
 		gatewayResources.HTTPRoutes[key] = hr
 	}
@@ -124,11 +128,65 @@ func ToGatewayResources(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Er
 	for key, val := range ir.ReferenceGrants {
 		gatewayResources.ReferenceGrants[key] = val.ReferenceGrant
 	}
-
-	// Dedupe TLS certificateRefs within each Gateway listener.
-	dedupeGatewayListenerCertificateRefs(&gatewayResources)
-
 	return gatewayResources, nil
+}
+
+func LogUnparsedErrors(ir emitterir.EmitterIR, notify notifications.NotifyFunc) {
+	// currently, we only really have unparsed errors in the HTTPRouteContext, but we can expand this function as needed if we have unparsed errors in other contexts in the future.
+	for _, httpRouteContext := range ir.HTTPRoutes {
+		for _, unparsedExtension := range httpRouteContext.UnparsedExtensions() {
+			if unparsedExtension == nil {
+				continue
+			}
+			source := unparsedExtension.Source()
+			paths := strings.Builder{}
+			for _, p := range unparsedExtension.Paths() {
+				paths.WriteString(p.String())
+				paths.WriteString(", ")
+			}
+
+			message := unparsedExtension.FailureMessage()
+
+			notify(notifications.WarningNotification,
+				fmt.Sprintf("Failed to apply %s from %s: %s", strings.TrimSuffix(paths.String(), ", "), source, message),
+				&httpRouteContext.HTTPRoute,
+			)
+		}
+	}
+
+	for svcKey, serviceContext := range ir.Services {
+		for _, unparsedExtension := range serviceContext.UnparsedExtensions() {
+			if unparsedExtension == nil {
+				continue
+			}
+			meta := unparsedExtension
+
+			source := meta.Source()
+			paths := strings.Builder{}
+			for _, p := range meta.Paths() {
+				paths.WriteString(p.String())
+				paths.WriteString(", ")
+			}
+
+			message := meta.FailureMessage()
+
+			svc := corev1.Service{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Service",
+					APIVersion: "v1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      svcKey.Name,
+					Namespace: svcKey.Namespace,
+				},
+			}
+
+			notify(notifications.WarningNotification,
+				fmt.Sprintf("failed to parse %s from Ingress %s: %s", source, strings.TrimSuffix(paths.String(), ", "), message),
+				&svc,
+			)
+		}
+	}
 }
 
 func dedupeGatewayListenerCertificateRefs(gr *i2gw.GatewayResources) {

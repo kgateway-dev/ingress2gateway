@@ -17,6 +17,8 @@ limitations under the License.
 package kgateway
 
 import (
+	"time"
+
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
@@ -26,90 +28,6 @@ import (
 	"k8s.io/utils/ptr"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
-
-// applyProxyConnectTimeoutPolicy projects the ProxyConnectTimeout IR policy into one or more
-// Kgateway BackendConfigPolicies.
-func applyProxyConnectTimeoutPolicy(
-	pol emitterir.Policy,
-	ingressName string,
-	httpRouteKey types.NamespacedName,
-	httpRouteCtx emitterir.HTTPRouteContext,
-	backendCfg map[types.NamespacedName]*kgateway.BackendConfigPolicy,
-	svcTimeouts map[types.NamespacedName]map[string]*metav1.Duration,
-) bool {
-	if pol.ProxyConnectTimeout == nil {
-		return false
-	}
-
-	for _, idx := range pol.RuleBackendSources {
-		if idx.Rule >= len(httpRouteCtx.Spec.Rules) {
-			continue
-		}
-		rule := httpRouteCtx.Spec.Rules[idx.Rule]
-		if idx.Backend >= len(rule.BackendRefs) {
-			continue
-		}
-
-		br := rule.BackendRefs[idx.Backend]
-
-		if br.BackendRef.Group != nil && *br.BackendRef.Group != "" {
-			continue
-		}
-		if br.BackendRef.Kind != nil && *br.BackendRef.Kind != "Service" {
-			continue
-		}
-
-		svcName := string(br.BackendRef.Name)
-		if svcName == "" {
-			continue
-		}
-
-		svcKey := types.NamespacedName{
-			Namespace: httpRouteKey.Namespace,
-			Name:      svcName,
-		}
-
-		// Track per-Service timeout contributors
-		if svcTimeouts[svcKey] == nil {
-			svcTimeouts[svcKey] = map[string]*metav1.Duration{}
-		}
-		svcTimeouts[svcKey][ingressName] = pol.ProxyConnectTimeout
-
-		// Create or reuse BackendConfigPolicy per Service
-		bcp, exists := backendCfg[svcKey]
-		if !exists {
-			// Use a generic name that works for all backend config features
-			policyName := svcName + "-backend-config"
-			bcp = &kgateway.BackendConfigPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      policyName,
-					Namespace: httpRouteKey.Namespace,
-				},
-				Spec: kgateway.BackendConfigPolicySpec{
-					TargetRefs: []shared.LocalPolicyTargetReference{
-						{
-							Group: "",
-							Kind:  "Service",
-							Name:  gatewayv1.ObjectName(svcName),
-						},
-					},
-					ConnectTimeout: pol.ProxyConnectTimeout,
-				},
-			}
-			bcp.SetGroupVersionKind(BackendConfigPolicyGVK)
-			backendCfg[svcKey] = bcp
-		} else {
-			// enforce "lowest timeout wins"
-			cur := bcp.Spec.ConnectTimeout.Duration
-			next := pol.ProxyConnectTimeout.Duration
-			if next < cur {
-				bcp.Spec.ConnectTimeout = pol.ProxyConnectTimeout
-			}
-		}
-	}
-
-	return true
-}
 
 // applySessionAffinityPolicy projects the SessionAffinity IR policy into one or more
 // Kgateway BackendConfigPolicies.
@@ -195,7 +113,9 @@ func applySessionAffinityPolicy(
 		}
 
 		if sessionAffinity.CookieExpires != nil {
-			cookieHashPolicy.TTL = sessionAffinity.CookieExpires
+			cookieHashPolicy.TTL = &metav1.Duration{
+				Duration: time.Duration(*sessionAffinity.CookieExpires) * time.Second,
+			}
 		}
 
 		if sessionAffinity.CookieSecure != nil {
@@ -223,6 +143,30 @@ func applySessionAffinityPolicy(
 	}
 
 	return true
+}
+
+// EmitSessionAffinity projects per-route session affinity policy intent into
+// Kgateway BackendConfigPolicies. This runs before load balancing so ring-hash
+// affinity takes precedence over round-robin when both are present.
+func (e *Emitter) EmitSessionAffinity(ir emitterir.EmitterIR) {
+	for httpRouteKey, httpRouteCtx := range ir.HTTPRoutes {
+		if len(httpRouteCtx.PoliciesBySourceIngressName) == 0 {
+			continue
+		}
+
+		for _, pol := range httpRouteCtx.PoliciesBySourceIngressName {
+			if pol.SessionAffinity == nil {
+				continue
+			}
+			pol.RuleBackendSources = uniquePolicyIndices(pol.RuleBackendSources)
+			applySessionAffinityPolicy(
+				pol,
+				httpRouteKey,
+				httpRouteCtx,
+				e.builderMap.BackendConfigPolicies,
+			)
+		}
+	}
 }
 
 // applyAccessLogPolicy projects the EnableAccessLog IR policy into one or more
@@ -299,4 +243,34 @@ func applyAccessLogPolicy(
 	}
 
 	return true
+}
+
+// EmitAccessLog projects per-route access log policy intent into Kgateway
+// HTTPListenerPolicies targeting the parent Gateway.
+func (e *Emitter) EmitAccessLog(ir emitterir.EmitterIR) {
+	for httpRouteKey, httpRouteCtx := range ir.HTTPRoutes {
+		for ruleIdx, accessLog := range httpRouteCtx.EnableAccessLogByRuleIdx {
+			if accessLog == nil || !accessLog.Enabled || ruleIdx < 0 || ruleIdx >= len(httpRouteCtx.Spec.Rules) {
+				continue
+			}
+
+			coverage := make([]emitterir.PolicyIndex, 0, len(httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs))
+			for backendIdx := range httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs {
+				coverage = append(coverage, emitterir.PolicyIndex{
+					Rule:    ruleIdx,
+					Backend: backendIdx,
+				})
+			}
+
+			applyAccessLogPolicy(
+				emitterir.Policy{
+					EnableAccessLog:    ptr.To(true),
+					RuleBackendSources: coverage,
+				},
+				httpRouteKey,
+				httpRouteCtx,
+				e.builderMap.HTTPListenerPolicies,
+			)
+		}
+	}
 }

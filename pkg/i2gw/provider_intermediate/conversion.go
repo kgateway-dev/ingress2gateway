@@ -18,10 +18,10 @@ package providerir
 
 import (
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate/gce"
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// ToEmitterIR converts a ProviderIR to an EmitterIR.
 func ToEmitterIR(pIR ProviderIR) emitterir.EmitterIR {
 	eIR := emitterir.EmitterIR{
 		Gateways:           make(map[types.NamespacedName]emitterir.GatewayContext),
@@ -33,15 +33,20 @@ func ToEmitterIR(pIR ProviderIR) emitterir.EmitterIR {
 		GRPCRoutes:         make(map[types.NamespacedName]emitterir.GRPCRouteContext),
 		BackendTLSPolicies: make(map[types.NamespacedName]emitterir.BackendTLSPolicyContext),
 		ReferenceGrants:    make(map[types.NamespacedName]emitterir.ReferenceGrantContext),
+		Services:           make(map[types.NamespacedName]emitterir.ServiceContext),
+		GceServices:        make(map[types.NamespacedName]gce.ServiceIR),
 	}
 
 	for k, v := range pIR.Gateways {
-		eIR.Gateways[k] = emitterir.GatewayContext{Gateway: v.Gateway}
+		ctx := emitterir.GatewayContext{Gateway: v.Gateway}
+		if v.ProviderSpecificIR.Gce != nil {
+			ctx.Gce = v.ProviderSpecificIR.Gce
+		}
+		eIR.Gateways[k] = ctx
 	}
 	for k, v := range pIR.HTTPRoutes {
-		httpRouteContext := emitterir.HTTPRouteContext{HTTPRoute: v.HTTPRoute}
-		applyProviderSpecificHTTPRouteIR(&httpRouteContext, v)
-		eIR.HTTPRoutes[k] = httpRouteContext
+		ctx := emitterir.HTTPRouteContext{HTTPRoute: v.HTTPRoute}
+		eIR.HTTPRoutes[k] = ctx
 	}
 	for k, v := range pIR.GatewayClasses {
 		eIR.GatewayClasses[k] = emitterir.GatewayClassContext{GatewayClass: v}
@@ -56,13 +61,21 @@ func ToEmitterIR(pIR ProviderIR) emitterir.EmitterIR {
 		eIR.UDPRoutes[k] = emitterir.UDPRouteContext{UDPRoute: v}
 	}
 	for k, v := range pIR.GRPCRoutes {
-		eIR.GRPCRoutes[k] = emitterir.GRPCRouteContext{GRPCRoute: v}
+		eIR.GRPCRoutes[k] = emitterir.GRPCRouteContext{GRPCRoute: v.GRPCRoute}
 	}
 	for k, v := range pIR.BackendTLSPolicies {
 		eIR.BackendTLSPolicies[k] = emitterir.BackendTLSPolicyContext{BackendTLSPolicy: v}
 	}
 	for k, v := range pIR.ReferenceGrants {
 		eIR.ReferenceGrants[k] = emitterir.ReferenceGrantContext{ReferenceGrant: v}
+	}
+	for k, v := range pIR.Services {
+		eIR.Services[k] = emitterir.ServiceContext{
+			SessionAffinity: v.SessionAffinity,
+		}
+		if v.Gce != nil {
+			eIR.GceServices[k] = *v.Gce
+		}
 	}
 
 	return eIR

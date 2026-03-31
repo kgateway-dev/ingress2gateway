@@ -149,10 +149,14 @@ func Test_getNamespaceFilter(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			var inputFile []string
+			if tc.inputfile != "" {
+				inputFile = []string{tc.inputfile}
+			}
 			pr := PrintRunner{
 				namespace:     tc.namespace,
 				allNamespaces: tc.allNamespaces,
-				inputFile:     tc.inputfile,
+				inputFile:     inputFile,
 			}
 			err = pr.initializeNamespaceFilter()
 
@@ -224,7 +228,7 @@ preferences: {}
 
 	kubeConfigFile := fmt.Sprintf("%s/config", dir)
 
-	f, err := os.Create(kubeConfigFile)
+	f, err := os.Create(filepath.Clean(kubeConfigFile))
 	if err != nil {
 		return nil, err
 	}

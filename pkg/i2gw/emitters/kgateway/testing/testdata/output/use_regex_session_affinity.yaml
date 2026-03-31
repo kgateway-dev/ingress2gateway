@@ -1,3 +1,22 @@
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: BackendConfigPolicy
+metadata:
+  name: myservicea-backend-config
+  namespace: default
+spec:
+  loadBalancer:
+    ringHash:
+      hashPolicies:
+        - cookie:
+            name: session-id
+            path: /api
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: myservicea
+status:
+  ancestors: null
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -8,14 +27,14 @@ metadata:
 spec:
   gatewayClassName: kgateway
   listeners:
-  - hostname: myservicea.foo.org
-    name: myservicea-foo-org-http
-    port: 80
-    protocol: HTTP
-  - hostname: myserviceb.foo.org
-    name: myserviceb-foo-org-http
-    port: 80
-    protocol: HTTP
+    - hostname: myservicea.foo.org
+      name: myservicea-foo-org-http
+      port: 80
+      protocol: HTTP
+    - hostname: myserviceb.foo.org
+      name: myserviceb-foo-org-http
+      port: 80
+      protocol: HTTP
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -26,24 +45,26 @@ metadata:
   namespace: default
 spec:
   hostnames:
-  - myservicea.foo.org
+    - myservicea.foo.org
   parentRefs:
-  - name: nginx
+    - name: nginx
   rules:
-  - backendRefs:
-    - name: myservicea
-      port: 80
-    matches:
-    - path:
-        type: RegularExpression
-        value: ^/path/one
-  - backendRefs:
-    - name: myservicea
-      port: 80
-    matches:
-    - path:
-        type: RegularExpression
-        value: ^/path/two
+    - backendRefs:
+        - name: myservicea
+          port: 80
+      matches:
+        - path:
+            type: RegularExpression
+            value: (?i)/path/one.*
+      name: rule-0
+    - backendRefs:
+        - name: myservicea
+          port: 80
+      matches:
+        - path:
+            type: RegularExpression
+            value: (?i)/path/two.*
+      name: rule-1
 status:
   parents: []
 ---
@@ -56,35 +77,17 @@ metadata:
   namespace: default
 spec:
   hostnames:
-  - myserviceb.foo.org
+    - myserviceb.foo.org
   parentRefs:
-  - name: nginx
+    - name: nginx
   rules:
-  - backendRefs:
-    - name: myserviceb
-      port: 80
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
+    - backendRefs:
+        - name: myserviceb
+          port: 80
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
+      name: rule-0
 status:
   parents: []
----
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: BackendConfigPolicy
-metadata:
-  name: myservicea-backend-config
-  namespace: default
-spec:
-  loadBalancer:
-    ringHash:
-      hashPolicies:
-      - cookie:
-          name: session-id
-          path: /api
-  targetRefs:
-  - group: ""
-    kind: Service
-    name: myservicea
-status:
-  ancestors: null

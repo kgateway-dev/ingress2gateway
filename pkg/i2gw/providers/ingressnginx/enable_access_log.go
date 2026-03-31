@@ -17,109 +17,73 @@ limitations under the License.
 package ingressnginx
 
 import (
+	"fmt"
 	"strings"
 
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
-	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
-
 	networkingv1 "k8s.io/api/networking/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-// this is actually enabled by default
-const enableAccessLogAnnotation = "nginx.ingress.kubernetes.io/enable-access-log"
-
-// enableAccessLogFeature extracts the "enable-access-log" annotation and
-// projects it into the provider-specific IR similarly to other annotation features.
-func enableAccessLogFeature(
-	ingresses []networkingv1.Ingress,
-	_ map[types.NamespacedName]map[string]int32,
-	ir *providerir.ProviderIR,
-) field.ErrorList {
-
-	var errs field.ErrorList
-	ingressPolicies := map[types.NamespacedName]*providerir.Policy{}
-
-	for i := range ingresses {
-		ing := &ingresses[i]
-		raw := strings.TrimSpace(ing.Annotations[enableAccessLogAnnotation])
-		if raw == "" {
-			continue
-		}
-
-		// Parse boolean value - only "true" (case-sensitive) enables access log
-		enableAccessLog := raw == "true"
-
-		key := types.NamespacedName{Namespace: ing.Namespace, Name: ing.Name}
-		pol := ingressPolicies[key]
-		if pol == nil {
-			pol = &providerir.Policy{}
-			ingressPolicies[key] = pol
-		}
-
-		pol.EnableAccessLog = &enableAccessLog
-	}
-
-	if len(ingressPolicies) == 0 {
-		return errs
-	}
-
-	// Map policies to HTTPRoutes (same pattern as other features)
-	ruleGroups := common.GetRuleGroups(ingresses)
-
-	for _, rg := range ruleGroups {
-		routeKey := types.NamespacedName{
-			Namespace: rg.Namespace,
-			Name:      common.RouteName(rg.Name, rg.Host),
-		}
-
-		httpCtx, ok := ir.HTTPRoutes[routeKey]
+// applyAccessLogToEmitterIR reads ingress-nginx access log annotations from ProviderIR sources and stores
+// provider-neutral access log intent into EmitterIR, which will later be converted by each custom emitter.
+//
+// Currently supported annotations are:
+// - nginx.ingress.kubernetes.io/enable-access-log
+func (p *Provider) applyAccessLogToEmitterIR(pIR providerir.ProviderIR, eIR *emitterir.EmitterIR) {
+	for key, pRouteCtx := range pIR.HTTPRoutes {
+		eRouteCtx, ok := eIR.HTTPRoutes[key]
 		if !ok {
 			continue
 		}
 
-		for ruleIdx, backendSources := range httpCtx.RuleBackendSources {
-			for backendIdx, src := range backendSources {
-				if src.Ingress == nil {
-					continue
-				}
-
-				ingKey := types.NamespacedName{
-					Namespace: src.Ingress.Namespace,
-					Name:      src.Ingress.Name,
-				}
-
-				pol := ingressPolicies[ingKey]
-				if pol == nil || pol.EnableAccessLog == nil {
-					continue
-				}
-
-				// Ensure provider-specific IR exists
-				if httpCtx.ProviderSpecificIR.IngressNginx == nil {
-					httpCtx.ProviderSpecificIR.IngressNginx = &providerir.IngressNginxHTTPRouteIR{
-						Policies: map[string]providerir.Policy{},
-					}
-				} else if httpCtx.ProviderSpecificIR.IngressNginx.Policies == nil {
-					httpCtx.ProviderSpecificIR.IngressNginx.Policies = map[string]providerir.Policy{}
-				}
-
-				existing := httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name]
-				if existing.EnableAccessLog == nil {
-					existing.EnableAccessLog = pol.EnableAccessLog
-				}
-
-				// Dedupe (rule, backend) pairs.
-				existing = existing.AddRuleBackendSources([]providerir.PolicyIndex{
-					{Rule: ruleIdx, Backend: backendIdx},
-				})
-
-				httpCtx.ProviderSpecificIR.IngressNginx.Policies[ingKey.Name] = existing
+		for ruleIdx := range eRouteCtx.Spec.Rules {
+			if ruleIdx >= len(pRouteCtx.RuleBackendSources) {
+				continue
 			}
+			ing := getNonCanaryIngress(pRouteCtx.RuleBackendSources[ruleIdx])
+			if ing == nil {
+				continue
+			}
+
+			accessLog, parsedAnnotations := p.parseIngressNginxAccessLog(ing)
+			if accessLog == nil {
+				continue
+			}
+
+			if eRouteCtx.EnableAccessLogByRuleIdx == nil {
+				eRouteCtx.EnableAccessLogByRuleIdx = make(map[int]*emitterir.AccessLog)
+			}
+
+			source := fmt.Sprintf("%s/%s", ing.Namespace, ing.Name)
+			message := "Access log configuration is implementation-specific and may not map exactly across Gateway API implementations"
+			paths := make([]*field.Path, len(parsedAnnotations))
+			for i, ann := range parsedAnnotations {
+				paths[i] = field.NewPath(ing.Namespace, ing.Name, "metadata", "annotations", fmt.Sprintf("%q", ann))
+			}
+			accessLog.Metadata = emitterir.NewExtensionFeatureMetadata(
+				source,
+				paths,
+				message,
+			)
+
+			eRouteCtx.EnableAccessLogByRuleIdx[ruleIdx] = accessLog
 		}
 
-		ir.HTTPRoutes[routeKey] = httpCtx
+		eIR.HTTPRoutes[key] = eRouteCtx
+	}
+}
+
+func (p *Provider) parseIngressNginxAccessLog(ing *networkingv1.Ingress) (*emitterir.AccessLog, []string) {
+	raw := strings.TrimSpace(ing.Annotations[EnableAccessLogAnnotation])
+	if raw == "" {
+		return nil, nil
 	}
 
-	return errs
+	// ingress-nginx defaults access logs on; only an explicit "true" should enable
+	// and any other non-empty value is treated as false to preserve prior behavior.
+	return &emitterir.AccessLog{
+		Enabled: raw == "true",
+	}, []string{EnableAccessLogAnnotation}
 }

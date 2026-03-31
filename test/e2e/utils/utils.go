@@ -136,7 +136,7 @@ func CompareAndGenerateOutput(ctx context.Context, t *testing.T, emitter, root, 
 	}
 
 	// Read expected output
-	expectedYAML, err := os.ReadFile(expectedOutputFile)
+	expectedYAML, err := os.ReadFile(expectedOutputFile) //nolint:gosec
 	if err != nil {
 		return "", fmt.Errorf("failed to read expected output file %q: %w", expectedOutputFile, err)
 	}

@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The Kubernetes Authors.
+Copyright The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import (
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitters/utils"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 
 	agentgatewayv1alpha1 "github.com/agentgateway/agentgateway/controller/api/v1alpha1/agentgateway"
 	"github.com/agentgateway/agentgateway/controller/api/v1alpha1/shared"
@@ -32,17 +33,20 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-const gatewayClassName = "agentgateway"
+const emitterName = "agentgateway"
 
 func init() {
-	i2gw.EmitterConstructorByName["agentgateway"] = NewEmitter
+	i2gw.EmitterConstructorByName[emitterName] = NewEmitter
 }
 
-type Emitter struct{}
+type Emitter struct {
+	notify notifications.NotifyFunc
+}
 
-// NewEmitter returns a new instance of AgentgatewayEmitter.
-func NewEmitter(_ *i2gw.EmitterConf) i2gw.Emitter {
-	return &Emitter{}
+func NewEmitter(conf *i2gw.EmitterConf) i2gw.Emitter {
+	return &Emitter{
+		notify: conf.Report.Notifier(emitterName),
+	}
 }
 
 // Emit converts EmitterIR to Gateway API resources plus agentgateway-specific extensions.
@@ -55,9 +59,25 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 	// Set GatewayClassName to "agentgateway" for all Gateways
 	for key := range gatewayResources.Gateways {
 		gateway := gatewayResources.Gateways[key]
-		gateway.Spec.GatewayClassName = gatewayClassName
+		gateway.Spec.GatewayClassName = emitterName
 		gatewayResources.Gateways[key] = gateway
 	}
+
+	errs = e.ToAgentgatewayResources(ir, &gatewayResources)
+	if len(errs) > 0 {
+		return gatewayResources, errs
+	}
+
+	return gatewayResources, nil
+}
+
+// ToAgentgatewayResources processes emitter IR and adds agentgateway-specific extensions
+// to gatewayResources.
+func (e *Emitter) ToAgentgatewayResources(
+	ir emitterir.EmitterIR,
+	gatewayResources *i2gw.GatewayResources,
+) field.ErrorList {
+	var errs field.ErrorList
 
 	// Track agentgateway-specific resources
 	var agentgatewayObjs []client.Object
@@ -78,7 +98,8 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 	basicAuthSecretSeen := map[basicAuthSecretKey]struct{}{}
 
 	for httpRouteKey, httpRouteContext := range ir.HTTPRoutes {
-		if len(httpRouteContext.PoliciesBySourceIngressName) == 0 {
+		effectivePolicies := effectivePoliciesWithPerRuleFeatures(httpRouteContext)
+		if len(effectivePolicies) == 0 {
 			continue
 		}
 
@@ -86,14 +107,14 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 		// TODO: implement regex path matching if needed
 
 		// deterministic policy iteration
-		policyNames := make([]string, 0, len(httpRouteContext.PoliciesBySourceIngressName))
-		for name := range httpRouteContext.PoliciesBySourceIngressName {
+		policyNames := make([]string, 0, len(effectivePolicies))
+		for name := range effectivePolicies {
 			policyNames = append(policyNames, name)
 		}
 		sort.Strings(policyNames)
 
 		for _, polSourceIngressName := range policyNames {
-			pol := httpRouteContext.PoliciesBySourceIngressName[polSourceIngressName]
+			pol := effectivePolicies[polSourceIngressName]
 
 			// Normalize (rule, backend) coverage to unique pairs to avoid
 			// generating duplicate filters on the same backendRef.
@@ -184,6 +205,7 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 				touched = true
 				// Emit an INFO notification with guidance about Secret key expectations.
 				emitBasicAuthSecretNotifications(
+					e.notify,
 					pol,
 					polSourceIngressName,
 					httpRouteKey.Namespace,
@@ -383,5 +405,5 @@ func (e *Emitter) Emit(ir emitterir.EmitterIR) (i2gw.GatewayResources, field.Err
 		gatewayResources.GatewayExtensions = append(gatewayResources.GatewayExtensions, *u)
 	}
 
-	return gatewayResources, errs
+	return errs
 }

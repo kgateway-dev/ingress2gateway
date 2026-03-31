@@ -18,9 +18,11 @@ package i2gw
 
 import (
 	"context"
+	"io"
 	"sync"
 
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -47,6 +49,7 @@ type ProviderConf struct {
 	Client                client.Client
 	Namespace             string
 	ProviderSpecificFlags map[string]map[string]string
+	Report                *notifications.Report
 }
 
 // The Provider interface specifies the required functionality which needs to be
@@ -65,7 +68,7 @@ type CustomResourceReader interface {
 
 	// ReadResourcesFromFile reads custom resources associated with
 	// the underlying Provider implementation from the file.
-	ReadResourcesFromFile(ctx context.Context, filename string) error
+	ReadResourcesFromFile(ctx context.Context, reader io.Reader) error
 }
 
 // The ResourcesToIRConverter interface specifies conversion functions from Ingress
@@ -91,7 +94,7 @@ type ProviderImplementationSpecificOptions struct {
 //
 // Different FeatureParsers will run in undetermined order. The function must
 // modify / create only the required fields of the IR and nothing else.
-type FeatureParser func([]networkingv1.Ingress, map[types.NamespacedName]map[string]int32, *providerir.ProviderIR) field.ErrorList
+type FeatureParser func(notifications.NotifyFunc, []networkingv1.Ingress, map[types.NamespacedName]map[string]int32, *providerir.ProviderIR) field.ErrorList
 
 var providerSpecificFlagDefinitions = providerSpecificFlags{
 	flags: make(map[ProviderName]map[string]ProviderSpecificFlag),

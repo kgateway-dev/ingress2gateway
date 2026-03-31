@@ -17,67 +17,127 @@ limitations under the License.
 package ingressnginx
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 // resourcesToIRConverter implements the ToIR function of i2gw.ResourcesToIRConverter interface.
 type resourcesToIRConverter struct {
 	featureParsers []i2gw.FeatureParser
+	notify         notifications.NotifyFunc
 }
 
 // newResourcesToIRConverter returns an ingress-nginx resourcesToIRConverter instance.
-func newResourcesToIRConverter() *resourcesToIRConverter {
+func newResourcesToIRConverter(notify notifications.NotifyFunc) *resourcesToIRConverter {
 	return &resourcesToIRConverter{
 		featureParsers: []i2gw.FeatureParser{
 			canaryFeature,
-			bufferPolicyFeature,
-			corsPolicyFeature,
-			rateLimitPolicyFeature,
-			proxyBodySizeFeature,
-			proxySendTimeoutFeature,
-			proxyReadTimeoutFeature,
-			proxyConnectTimeoutFeature,
-			enableAccessLogFeature,
-			extAuthFeature,
-			basicAuthFeature,
-			sessionAffinityFeature,
-			loadBalancingFeature,
-			backendTLSFeature,
-			serviceUpstreamFeature,
-			backendProtocolFeature, // Must come after serviceUpstreamFeature.
-			sslRedirectFeature,
-			sslPassthroughFeature,
-			rewriteTargetFeature,
-			useRegexFeature,
+			createBackendTLSPolicies,
+			redirectFeature,
 			headerModifierFeature,
+			regexFeature,
+			backendTLSFeature,
+			sessionAffinityFeature,
+			sslPassthroughFeature,
 		},
+		notify: notify,
 	}
 }
 
-func (c *resourcesToIRConverter) convert(storage *storage) (providerir.ProviderIR, field.ErrorList) {
+func (c *resourcesToIRConverter) convert(notify notifications.NotifyFunc, storage *storage) (providerir.ProviderIR, field.ErrorList) {
 
 	// TODO(liorliberman) temporary until we decide to change ToIR and featureParsers to get a map of [types.NamespacedName]*networkingv1.Ingress instead of a list
 	ingressList := storage.Ingresses.List()
 
+	// Filter Ingresses for common conversion.
+	//
+	// backend-protocol annotations are now projected by emitter-specific logic,
+	// so even GRPC/GRPCS upstreams still convert to HTTPRoutes here. Emitters can
+	// then project backend protocol behavior without forcing GRPCRoute output.
+	var httpIngresses []networkingv1.Ingress
+
+	for _, ing := range ingressList {
+		if val, ok := ing.Annotations[BackendProtocolAnnotation]; ok {
+			switch strings.ToUpper(val) {
+			case "GRPC", "GRPCS", "HTTP", "HTTPS", "AUTO_HTTP":
+				httpIngresses = append(httpIngresses, ing)
+			default:
+				// Should cover FCGI and unknown
+				notify(notifications.WarningNotification, fmt.Sprintf("%s backend-protocol is not supported in Gateway API conversion for ingress %s/%s", val, ing.Namespace, ing.Name), nil)
+				httpIngresses = append(httpIngresses, ing)
+			}
+		} else {
+			httpIngresses = append(httpIngresses, ing)
+		}
+	}
+
 	// Convert plain ingress resources to gateway resources, ignoring all
 	// provider-specific features.
-	ir, errs := common.ToIR(ingressList, storage.ServicePorts, i2gw.ProviderImplementationSpecificOptions{})
+	pIR, errs := common.ToIR(httpIngresses, nil, storage.ServicePorts, i2gw.ProviderImplementationSpecificOptions{
+		ToImplementationSpecificHTTPPathTypeMatch: implementationSpecificPathMatch,
+	})
+
+	// Warn about hosts that lack TLS certificates. Ingress NGINX serves TLS
+	// for all hosts using a self-signed certificate when no explicit cert is
+	// configured. We do not translate this behavior.
+	for _, gwCtx := range pIR.Gateways {
+		httpsHosts := map[string]struct{}{}
+		var httpHosts []string
+		for _, listener := range gwCtx.Gateway.Spec.Listeners {
+			if listener.Hostname == nil {
+				continue
+			}
+			host := string(*listener.Hostname)
+			switch listener.Port {
+			case 443:
+				httpsHosts[host] = struct{}{}
+			case 80:
+				httpHosts = append(httpHosts, host)
+			}
+		}
+		for _, host := range httpHosts {
+			if _, ok := httpsHosts[host]; !ok {
+				c.notify(notifications.WarningNotification, fmt.Sprintf(
+					"Ingress NGINX serves TLS traffic for host %q with a self-signed certificate. This behavior will not be translated and the host will not be accessible via HTTPS.",
+					host))
+			}
+		}
+	}
+
+	for _, ingress := range ingressList {
+		for annotation := range ingress.Annotations {
+			if _, ok := parsedAnnotations[annotation]; !ok && strings.HasPrefix(annotation, ingressNGINXAnnotationsPrefix) {
+				c.notify(notifications.WarningNotification, fmt.Sprintf("Unsupported annotation %v", annotation), &ingress)
+			}
+		}
+	}
+
 	if len(errs) > 0 {
 		return providerir.ProviderIR{}, errs
 	}
 
 	for _, parseFeatureFunc := range c.featureParsers {
 		// Apply the feature parsing function to the gateway resources, one by one.
-		parseErrs := parseFeatureFunc(ingressList, storage.ServicePorts, &ir)
+		parseErrs := parseFeatureFunc(c.notify, ingressList, storage.ServicePorts, &pIR)
 		// Append the parsing errors to the error list.
 		errs = append(errs, parseErrs...)
 	}
 
-	// Cross-feature validation that depends on derived host-wide regex mode.
-	errs = append(errs, validateRegexCookiePath(&ir)...)
+	return pIR, errs
+}
 
-	return ir, errs
+func implementationSpecificPathMatch(path *gatewayv1.HTTPPathMatch) {
+	// Nginx Ingress Controller treats ImplementationSpecific as Prefix by default,
+	// unless regex characters are present (handled by regexFeature).
+	// We safely default to Prefix here to pass the common.ToIR check.
+	t := gatewayv1.PathMatchPathPrefix
+	path.Type = &t
 }

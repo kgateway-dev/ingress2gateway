@@ -17,104 +17,49 @@ limitations under the License.
 package kgateway
 
 import (
-	"fmt"
-	"sort"
-
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
 
 	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1/kgateway"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// applyRewriteTargetPolicies projects ingress-nginx rewrite-target into *per-rule* Kgateway TrafficPolicies
-// and attaches them via ExtensionRef filters to the covered backendRefs.
-//
-// Why per-rule?
-//   - The regex rewrite pattern must align with the rule's path regex so capture groups ($1, $2, ...)
-//     behave like ingress-nginx.
-//
-// Assumptions:
-//   - applyRegexPathMatchingForHost(...) has already run (if host-wide regex location mode is enabled),
-//     so rule path matches will already be RegularExpression where needed.
-func applyRewriteTargetPolicies(
-	pol emitterir.Policy,
-	sourceIngressName, namespace string,
-	httpRouteCtx *emitterir.HTTPRouteContext,
-	tp map[string]*kgateway.TrafficPolicy,
-) {
-	if pol.RewriteTarget == nil || *pol.RewriteTarget == "" {
-		return
-	}
-	if httpRouteCtx == nil {
-		return
-	}
+// EmitPathRewrite projects provider-neutral rewrite intent into either native
+// HTTPRoute filters or section-scoped Kgateway TrafficPolicies for regex capture
+// group rewrites.
+func (e *Emitter) EmitPathRewrite(ir emitterir.EmitterIR, gwResources *i2gw.GatewayResources) {
+	for httpRouteKey, ctx := range ir.HTTPRoutes {
+		changed := false
 
-	// Group covered backendRefs by rule index.
-	byRule := map[int]map[int]struct{}{}
-	for _, idx := range pol.RuleBackendSources {
-		if idx.Rule < 0 || idx.Backend < 0 {
-			continue
-		}
-		if _, ok := byRule[idx.Rule]; !ok {
-			byRule[idx.Rule] = map[int]struct{}{}
-		}
-		byRule[idx.Rule][idx.Backend] = struct{}{}
-	}
-	if len(byRule) == 0 {
-		return
-	}
-
-	// Deterministic iteration for stable goldens.
-	ruleIdxs := make([]int, 0, len(byRule))
-	for r := range byRule {
-		ruleIdxs = append(ruleIdxs, r)
-	}
-	sort.Ints(ruleIdxs)
-
-	for _, ruleIdx := range ruleIdxs {
-		if ruleIdx >= len(httpRouteCtx.Spec.Rules) {
-			continue
-		}
-
-		// Regex rewrite only when use-regex=true.
-		if pol.UseRegexPaths != nil && *pol.UseRegexPaths {
-			pattern := deriveRulePathRegexPattern(httpRouteCtx.Spec.Rules[ruleIdx])
-			tpName := fmt.Sprintf("%s-rewrite-%d", sourceIngressName, ruleIdx)
-			t := ensureTrafficPolicy(tp, tpName, namespace)
-			t.Spec.UrlRewrite = &kgateway.URLRewrite{
-				PathRegex: &kgateway.PathRegexRewrite{
-					Pattern:      pattern,
-					Substitution: *pol.RewriteTarget,
-				},
+		for idx, rewrite := range ctx.PathRewriteByRuleIdx {
+			if rewrite == nil || idx < 0 || idx >= len(ctx.Spec.Rules) {
+				continue
 			}
 
-			backendSet := byRule[ruleIdx]
-			backendIdxs := make([]int, 0, len(backendSet))
-			for b := range backendSet {
-				backendIdxs = append(backendIdxs, b)
-			}
-			sort.Ints(backendIdxs)
-			for _, backendIdx := range backendIdxs {
-				if backendIdx >= len(httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs) {
-					continue
-				}
-				httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs[backendIdx].Filters = append(
-					httpRouteCtx.Spec.Rules[ruleIdx].BackendRefs[backendIdx].Filters,
-					gatewayv1.HTTPRouteFilter{
-						Type: gatewayv1.HTTPRouteFilterExtensionRef,
-						ExtensionRef: &gatewayv1.LocalObjectReference{
-							Group: gatewayv1.Group(TrafficPolicyGVK.Group),
-							Kind:  gatewayv1.Kind(TrafficPolicyGVK.Kind),
-							Name:  gatewayv1.ObjectName(t.Name),
-						},
+			if rewrite.RegexCaptureGroupReferences {
+				sectionName := e.getSectionName(ctx, idx)
+				trafficPolicy := e.getOrBuildTrafficPolicy(ctx, sectionName, idx)
+				trafficPolicy.Spec.UrlRewrite = &kgateway.URLRewrite{
+					PathRegex: &kgateway.PathRegexRewrite{
+						Pattern:      deriveRulePathRegexPattern(ctx.Spec.Rules[idx]),
+						Substitution: rewrite.ReplaceFullPath,
 					},
-				)
+				}
+			} else {
+				ensureRuleURLRewriteReplaceFullPath(&ctx.Spec.Rules[idx], rewrite.ReplaceFullPath)
+				changed = true
 			}
-			continue
+
+			if len(rewrite.Headers) > 0 {
+				ensureRuleRequestHeaderModifierSet(&ctx.Spec.Rules[idx], rewrite.Headers)
+				changed = true
+			}
 		}
 
-		// Non-regex: use native Gateway API URLRewrite/ReplaceFullPath at the rule level.
-		ensureRuleURLRewriteReplaceFullPath(&httpRouteCtx.Spec.Rules[ruleIdx], *pol.RewriteTarget)
+		if changed {
+			ir.HTTPRoutes[httpRouteKey] = ctx
+			gwResources.HTTPRoutes[httpRouteKey] = ctx.HTTPRoute
+		}
 	}
 }
 
@@ -179,4 +124,43 @@ func ensureRuleURLRewriteReplaceFullPath(rule *gatewayv1.HTTPRouteRule, replaceF
 			},
 		},
 	})
+}
+
+func ensureRuleRequestHeaderModifierSet(rule *gatewayv1.HTTPRouteRule, headers map[string]string) {
+	for i := range rule.Filters {
+		if rule.Filters[i].Type != gatewayv1.HTTPRouteFilterRequestHeaderModifier {
+			continue
+		}
+		if rule.Filters[i].RequestHeaderModifier == nil {
+			rule.Filters[i].RequestHeaderModifier = &gatewayv1.HTTPHeaderFilter{}
+		}
+		upsertRequestHeaders(rule.Filters[i].RequestHeaderModifier, headers)
+		return
+	}
+
+	filter := &gatewayv1.HTTPHeaderFilter{}
+	upsertRequestHeaders(filter, headers)
+	rule.Filters = append(rule.Filters, gatewayv1.HTTPRouteFilter{
+		Type:                  gatewayv1.HTTPRouteFilterRequestHeaderModifier,
+		RequestHeaderModifier: filter,
+	})
+}
+
+func upsertRequestHeaders(filter *gatewayv1.HTTPHeaderFilter, headers map[string]string) {
+	for name, value := range headers {
+		found := false
+		for i := range filter.Set {
+			if string(filter.Set[i].Name) == name {
+				filter.Set[i].Value = value
+				found = true
+				break
+			}
+		}
+		if !found {
+			filter.Set = append(filter.Set, gatewayv1.HTTPHeader{
+				Name:  gatewayv1.HTTPHeaderName(name),
+				Value: value,
+			})
+		}
+	}
 }

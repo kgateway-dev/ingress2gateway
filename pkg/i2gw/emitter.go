@@ -18,6 +18,7 @@ package i2gw
 
 import (
 	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -60,5 +61,7 @@ type EmitterName string
 type EmitterConstructor func(conf *EmitterConf) Emitter
 
 type EmitterConf struct {
-	// TODO: add fields as needed.
+	// AllowExperimentalGatewayAPI indicates whether Experimental Gateway API features (like URLRewrite) should be included in the output.
+	AllowExperimentalGatewayAPI bool
+	Report                      *notifications.Report
 }
