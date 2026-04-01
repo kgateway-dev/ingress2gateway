@@ -21,9 +21,6 @@ import (
 
 	"github.com/spf13/cobra"
 	
-     // Register providers by importing their packages
-	_ "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/glooedge"
-	_ "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/ingressnginx"
 )
 
 // kubeconfig indicates kubeconfig file location.

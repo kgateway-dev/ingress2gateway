@@ -32,6 +32,7 @@ import (
 
 	// Call init function for the providers
 	_ "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/ingressnginx"
+	_ "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/glooedge"
 
 	// Call init for notifications
 	_ "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/notifications"
