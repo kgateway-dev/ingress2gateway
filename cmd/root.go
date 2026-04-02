@@ -19,8 +19,7 @@ package cmd
 import (
 	"os"
 
-	"github.com/spf13/cobra"
-	
+	"github.com/spf13/cobra"	
 )
 
 // kubeconfig indicates kubeconfig file location.
