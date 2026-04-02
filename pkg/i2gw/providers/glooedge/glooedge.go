@@ -63,7 +63,7 @@ func (p *Provider) ReadResourcesFromCluster(ctx context.Context) error {
 func (p *Provider) ReadResourcesFromFile(_ context.Context, filename string) error {
 	storage, err := p.resourceReader.readResourcesFromFile(filename)
 	if err != nil {
-		return fmt.Errorf("failed to read gloo edge resources from file: %w", err)
+		return fmt.Errorf("failed to read resources from file: %w", err)
 	}
 	p.storage = storage
 	return nil
