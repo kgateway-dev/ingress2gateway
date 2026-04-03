@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	kubeyaml "k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // ReadIngressesFromCluster reads Ingress resources from the cluster, filtering by the specified ingress classes.
@@ -160,4 +161,47 @@ func ExtractObjectsFromReader(reader io.Reader, namespace string) ([]*unstructur
 	}
 
 	return finalObjs, nil
+}
+// ReadVirtualServicesFromFile reads VirtualService objects from a file reader
+func ReadVirtualServicesFromFile(reader io.Reader, namespace string) (map[types.NamespacedName]*unstructured.Unstructured, error) {
+	unstructuredObjects, err := ExtractObjectsFromReader(reader, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract objects: %w", err)
+	}
+
+	virtualServices := map[types.NamespacedName]*unstructured.Unstructured{}
+	for _, f := range unstructuredObjects {
+		if !f.GroupVersionKind().Empty() && f.GroupVersionKind().Kind == "VirtualService" {
+			ns := f.GetNamespace()
+			if ns == "" {
+				ns = namespace
+			}
+			virtualServices[types.NamespacedName{Namespace: ns, Name: f.GetName()}] = f
+		}
+	}
+
+	return virtualServices, nil
+}
+
+// ReadVirtualServicesFromCluster reads VirtualService objects from the cluster
+func ReadVirtualServicesFromCluster(ctx context.Context, client client.Client) (map[types.NamespacedName]*unstructured.Unstructured, error) {
+	var virtualServiceList unstructured.UnstructuredList
+	virtualServiceList.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "gateway.solo.io",
+		Version: "v1",
+		Kind:    "VirtualService",
+	})
+
+	err := client.List(ctx, &virtualServiceList)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list VirtualServices from cluster: %w", err)
+	}
+
+	virtualServices := map[types.NamespacedName]*unstructured.Unstructured{}
+	for i := range virtualServiceList.Items {
+		vs := &virtualServiceList.Items[i]
+		virtualServices[types.NamespacedName{Namespace: vs.GetNamespace(), Name: vs.GetName()}] = vs
+	}
+
+	return virtualServices, nil
 }

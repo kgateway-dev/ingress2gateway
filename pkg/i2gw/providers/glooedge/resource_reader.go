@@ -19,9 +19,11 @@ package glooedge
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
 )
 
 type resourceReader struct {
@@ -37,72 +39,39 @@ func newResourceReader(conf *i2gw.ProviderConf) *resourceReader {
 func (r *resourceReader) readResourcesFromCluster(ctx context.Context) (*storage, error) {
 	storage := newResourcesStorage()
 
-	virtualServices, err := r.readVirtualServicesFromCluster(ctx)
+	virtualServices, err := common.ReadVirtualServicesFromCluster(ctx, r.conf.Client)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, vs := range virtualServices {
-		storage.addVirtualService(vs)
-	}
-
-	return storage, nil
-}
-
-func (r *resourceReader) readResourcesFromFile(filename string) (*storage, error) {
-	storage := newResourcesStorage()
-
-	virtualServices, err := r.readVirtualServicesFromFile(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, vs := range virtualServices {
-		storage.addVirtualService(vs)
-	}
-
-	return storage, nil
-}
-
-func (r *resourceReader) readVirtualServicesFromCluster(ctx context.Context) ([]*VirtualService, error) {
-	var unstructuredList unstructured.UnstructuredList
-	unstructuredList.SetGroupVersionKind(versionKind)
-
-	err := r.conf.Client.List(ctx, &unstructuredList)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list VirtualServices from cluster: %w", err)
-	}
-
-	var virtualServices []*VirtualService
-	for _, u := range unstructuredList.Items {
-		vs, err := unstructuredToVirtualService(&u, r.conf.Namespace)
+	for _, u := range virtualServices {
+		vs, err := unstructuredToVirtualService(u, r.conf.Namespace)
 		if err != nil {
 			return nil, err
 		}
-		virtualServices = append(virtualServices, vs)
+		storage.addVirtualService(vs)
 	}
 
-	return virtualServices, nil
+	return storage, nil
 }
 
-func (r *resourceReader) readVirtualServicesFromFile(filename string) ([]*VirtualService, error) {
-	unstructuredObjects, err := readObjectsFromFile(filename, r.conf.Namespace)
+func (r *resourceReader) readResourcesFromFile(ctx context.Context, reader io.Reader) (*storage, error) {
+	storage := newResourcesStorage()
+
+	virtualServices, err := common.ReadVirtualServicesFromFile(reader, r.conf.Namespace)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read objects from file: %w", err)
+		return nil, err
 	}
 
-	var virtualServices []*VirtualService
-	for _, u := range unstructuredObjects {
-		if u.GroupVersionKind().Kind == "VirtualService" {
-			vs, err := unstructuredToVirtualService(u, r.conf.Namespace)
-			if err != nil {
-				return nil, err
-			}
-			virtualServices = append(virtualServices, vs)
+	for _, u := range virtualServices {
+		vs, err := unstructuredToVirtualService(u, r.conf.Namespace)
+		if err != nil {
+			return nil, err
 		}
+		storage.addVirtualService(vs)
 	}
 
-	return virtualServices, nil
+	return storage, nil
 }
 
 func unstructuredToVirtualService(u *unstructured.Unstructured, defaultNamespace string) (*VirtualService, error) {
