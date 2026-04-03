@@ -19,6 +19,7 @@ package glooedge
 import (
 	"fmt"
 	"regexp"
+	
 
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -58,6 +59,9 @@ func (c *resourcesToIRConverter) convert(storage *storage) (providerir.ProviderI
 func basicRoutingFeature(storage *storage, ir *providerir.ProviderIR) field.ErrorList {
 	var errs field.ErrorList
 
+	// Track listeners by host
+	listenersByHost := make(map[string]*gatewayv1.Listener)
+
 	for _, vs := range storage.VirtualServices {
 		// Create one HTTPRoute per host in the VirtualService
 		for _, host := range vs.Spec.Hosts {
@@ -65,6 +69,17 @@ func basicRoutingFeature(storage *storage, ir *providerir.ProviderIR) field.Erro
 			routeKey := types.NamespacedName{
 				Namespace: vs.Namespace,
 				Name:      routeName,
+			}
+
+			// Create listener for this host if not exists
+			if _, exists := listenersByHost[host]; !exists {
+				listenerName := fmt.Sprintf("%s-http", sanitizeHostname(host))
+				listenersByHost[host] = &gatewayv1.Listener{
+					Name:     gatewayv1.SectionName(listenerName),
+					Hostname: ptrTo(gatewayv1.Hostname(host)),
+					Port:     80,
+					Protocol: "HTTP",
+				}
 			}
 
 			// Create HTTPRoute context
@@ -79,6 +94,13 @@ func basicRoutingFeature(storage *storage, ir *providerir.ProviderIR) field.Erro
 						Namespace: vs.Namespace,
 					},
 					Spec: gatewayv1.HTTPRouteSpec{
+						CommonRouteSpec: gatewayv1.CommonRouteSpec{
+							ParentRefs: []gatewayv1.ParentReference{
+								{
+									Name: "gloo-edge",
+								},
+							},
+						},
 						Hostnames: []gatewayv1.Hostname{gatewayv1.Hostname(host)},
 					},
 				},
@@ -113,9 +135,6 @@ func basicRoutingFeature(storage *storage, ir *providerir.ProviderIR) field.Erro
 							},
 						},
 					}
-					if route.RouteAction.Single.Upstream.Namespace != "" {
-						backendRef.BackendRef.Namespace = ptrTo(gatewayv1.Namespace(route.RouteAction.Single.Upstream.Namespace))
-					}
 					rule.BackendRefs = []gatewayv1.HTTPBackendRef{backendRef}
 				}
 
@@ -125,6 +144,33 @@ func basicRoutingFeature(storage *storage, ir *providerir.ProviderIR) field.Erro
 
 			ir.HTTPRoutes[routeKey] = httpRouteContext
 		}
+	}
+
+	// Create Gateway with collected listeners
+	gatewayKey := types.NamespacedName{
+		Namespace: "default",
+		Name:      "gloo-edge",
+	}
+	listeners := make([]gatewayv1.Listener, 0)
+	for _, listener := range listenersByHost {
+		listeners = append(listeners, *listener)
+	}
+
+	ir.Gateways[gatewayKey] = providerir.GatewayContext{
+		Gateway: gatewayv1.Gateway{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "gateway.networking.k8s.io/v1",
+				Kind:       "Gateway",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "gloo-edge",
+				Namespace: "default",
+			},
+			Spec: gatewayv1.GatewaySpec{
+				GatewayClassName: "gloo-edge",
+				Listeners:        listeners,
+			},
+		},
 	}
 
 	return errs
