@@ -2,7 +2,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
+    gateway.networking.k8s.io/generator: ingress2gateway-v0.5.0
   name: nginx
   namespace: default
 spec:
@@ -25,7 +25,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
+    gateway.networking.k8s.io/generator: ingress2gateway-v0.5.0
   name: ingress-timeout-proxy-read-timeout-proxy-read-example-org
   namespace: default
 spec:
@@ -49,7 +49,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
+    gateway.networking.k8s.io/generator: ingress2gateway-v0.5.0
   name: ingress-timeout-proxy-send-timeout-proxy-send-example-org
   namespace: default
 spec:
@@ -73,7 +73,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
+    gateway.networking.k8s.io/generator: ingress2gateway-v0.5.0
   name: ingress-timeout-send-and-read-timeout-send-and-read-example-org
   namespace: default
 spec:

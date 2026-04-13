@@ -32,7 +32,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
+    gateway.networking.k8s.io/generator: ingress2gateway-v0.5.0
   name: nginx
   namespace: default
 spec:
@@ -51,7 +51,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
+    gateway.networking.k8s.io/generator: ingress2gateway-v0.5.0
   name: ingress-myservicea1-myservicea-foo-org
   namespace: default
 spec:
@@ -84,7 +84,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
+    gateway.networking.k8s.io/generator: ingress2gateway-v0.5.0
   name: ingress-myserviceb-myserviceb-foo-org
   namespace: default
 spec:

@@ -2,7 +2,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
+    gateway.networking.k8s.io/generator: ingress2gateway-v0.5.0
   name: nginx
   namespace: default
 spec:
@@ -72,7 +72,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
+    gateway.networking.k8s.io/generator: ingress2gateway-v0.5.0
   name: ingress-auth-different-ns-app4-example-org
   namespace: default
 spec:
@@ -96,7 +96,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
+    gateway.networking.k8s.io/generator: ingress2gateway-v0.5.0
   name: ingress-auth-full-fqdn-app1-example-org
   namespace: default
 spec:
@@ -120,7 +120,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
+    gateway.networking.k8s.io/generator: ingress2gateway-v0.5.0
   name: ingress-auth-same-ns-app3-example-org
   namespace: default
 spec:

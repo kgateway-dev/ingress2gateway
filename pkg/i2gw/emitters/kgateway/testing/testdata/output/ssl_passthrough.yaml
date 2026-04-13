@@ -2,7 +2,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
+    gateway.networking.k8s.io/generator: ingress2gateway-v0.5.0
   name: nginx
   namespace: default
 spec:
@@ -19,7 +19,7 @@ apiVersion: gateway.networking.k8s.io/v1alpha2
 kind: TLSRoute
 metadata:
   annotations:
-    gateway.networking.k8s.io/generator: ingress2gateway-dev
+    gateway.networking.k8s.io/generator: ingress2gateway-v0.5.0
   name: tls-passthrough-nginx-example-com
   namespace: default
 spec:
