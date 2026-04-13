@@ -1,0 +1,378 @@
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: llm-scads-ai-health-rewrite-ingress
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: llm-scads-ai-documentation-redirect-ingress-llm-scads-ai
+      sectionName: rule-2
+  traffic:
+    cors:
+      allowCredentials: true
+      allowHeaders:
+        - DNT
+        - Keep-Alive
+        - User-Agent
+        - X-Requested-With
+        - If-Modified-Since
+        - Cache-Control
+        - Content-Type
+        - Range
+        - Authorization
+      allowMethods:
+        - GET
+        - PUT
+        - POST
+        - DELETE
+        - PATCH
+        - OPTIONS
+      allowOrigins:
+        - '*'
+      maxAge: 1728000
+status:
+  ancestors: null
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: llm-scads-ai-ingress
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: llm-scads-ai-documentation-redirect-ingress-llm-scads-ai
+      sectionName: rule-3
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: llm-scads-ai-documentation-redirect-ingress-llm-scads-ai
+      sectionName: rule-4
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: llm-scads-ai-documentation-redirect-ingress-llm-scads-ai
+      sectionName: rule-5
+  traffic:
+    cors:
+      allowCredentials: true
+      allowHeaders:
+        - DNT
+        - Keep-Alive
+        - User-Agent
+        - X-Requested-With
+        - If-Modified-Since
+        - Cache-Control
+        - Content-Type
+        - Range
+        - Authorization
+      allowMethods:
+        - GET
+        - PUT
+        - POST
+        - DELETE
+        - PATCH
+        - OPTIONS
+      allowOrigins:
+        - '*'
+      maxAge: 1728000
+status:
+  ancestors: null
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: nginx
+spec:
+  gatewayClassName: agentgateway
+  listeners:
+    - hostname: llm.scads.ai
+      name: llm-scads-ai-http
+      port: 80
+      protocol: HTTP
+    - hostname: llm.scads.ai
+      name: llm-scads-ai-https
+      port: 443
+      protocol: HTTPS
+      tls:
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: llm.scads.ai-acme
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: llm-scads-ai-documentation-redirect-ingress-llm-scads-ai
+spec:
+  hostnames:
+    - llm.scads.ai
+  parentRefs:
+    - name: nginx
+      port: 443
+  rules:
+    - filters:
+        - requestRedirect:
+            path:
+              replaceFullPath: /docs/
+              type: ReplaceFullPath
+            statusCode: 301
+          type: RequestRedirect
+      matches:
+        - path:
+            type: RegularExpression
+            value: (?i)/$.*
+      name: rule-0
+    - backendRefs:
+        - name: documentation-service
+          port: 80
+      matches:
+        - path:
+            type: RegularExpression
+            value: (?i)/docs(.*)$.*
+      name: rule-1
+    - backendRefs:
+        - name: api-state-service
+          port: 80
+      filters:
+        - cors:
+            allowCredentials: true
+            allowHeaders:
+              - DNT
+              - Keep-Alive
+              - User-Agent
+              - X-Requested-With
+              - If-Modified-Since
+              - Cache-Control
+              - Content-Type
+              - Range
+              - Authorization
+            allowMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+              - PATCH
+              - OPTIONS
+            allowOrigins:
+              - '*'
+            maxAge: 1728000
+          type: CORS
+        - responseHeaderModifier:
+            remove:
+              - Access-Control-Allow-Origin
+              - Access-Control-Allow-Methods
+              - Access-Control-Allow-Headers
+              - Access-Control-Expose-Headers
+              - Access-Control-Max-Age
+              - Access-Control-Allow-Credentials
+          type: ResponseHeaderModifier
+      matches:
+        - path:
+            type: RegularExpression
+            value: (?i)/status(.*)$.*
+      name: rule-2
+    - backendRefs:
+        - name: blocked-service
+          port: 80
+      filters:
+        - cors:
+            allowCredentials: true
+            allowHeaders:
+              - DNT
+              - Keep-Alive
+              - User-Agent
+              - X-Requested-With
+              - If-Modified-Since
+              - Cache-Control
+              - Content-Type
+              - Range
+              - Authorization
+            allowMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+              - PATCH
+              - OPTIONS
+            allowOrigins:
+              - '*'
+            maxAge: 1728000
+          type: CORS
+        - responseHeaderModifier:
+            remove:
+              - Access-Control-Allow-Origin
+              - Access-Control-Allow-Methods
+              - Access-Control-Allow-Headers
+              - Access-Control-Expose-Headers
+              - Access-Control-Max-Age
+              - Access-Control-Allow-Credentials
+          type: ResponseHeaderModifier
+      matches:
+        - path:
+            type: RegularExpression
+            value: (?i)/metrics/?.*
+      name: rule-3
+      timeouts:
+        request: 1h40m0s
+    - backendRefs:
+        - name: keycloak
+          port: 80
+      filters:
+        - cors:
+            allowCredentials: true
+            allowHeaders:
+              - DNT
+              - Keep-Alive
+              - User-Agent
+              - X-Requested-With
+              - If-Modified-Since
+              - Cache-Control
+              - Content-Type
+              - Range
+              - Authorization
+            allowMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+              - PATCH
+              - OPTIONS
+            allowOrigins:
+              - '*'
+            maxAge: 1728000
+          type: CORS
+        - responseHeaderModifier:
+            remove:
+              - Access-Control-Allow-Origin
+              - Access-Control-Allow-Methods
+              - Access-Control-Allow-Headers
+              - Access-Control-Expose-Headers
+              - Access-Control-Max-Age
+              - Access-Control-Allow-Credentials
+          type: ResponseHeaderModifier
+      matches:
+        - path:
+            type: RegularExpression
+            value: (?i)/auth.*
+      name: rule-4
+      timeouts:
+        request: 1h40m0s
+    - backendRefs:
+        - name: llm-scads-ai-service
+          port: 80
+      filters:
+        - cors:
+            allowCredentials: true
+            allowHeaders:
+              - DNT
+              - Keep-Alive
+              - User-Agent
+              - X-Requested-With
+              - If-Modified-Since
+              - Cache-Control
+              - Content-Type
+              - Range
+              - Authorization
+            allowMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+              - PATCH
+              - OPTIONS
+            allowOrigins:
+              - '*'
+            maxAge: 1728000
+          type: CORS
+        - responseHeaderModifier:
+            remove:
+              - Access-Control-Allow-Origin
+              - Access-Control-Allow-Methods
+              - Access-Control-Allow-Headers
+              - Access-Control-Expose-Headers
+              - Access-Control-Max-Age
+              - Access-Control-Allow-Credentials
+          type: ResponseHeaderModifier
+      matches:
+        - path:
+            type: RegularExpression
+            value: (?i)/.*
+      name: rule-5
+      timeouts:
+        request: 1h40m0s
+status:
+  parents: []
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    gateway.networking.k8s.io/generator: ingress2gateway-dev
+  name: llm-scads-ai-documentation-redirect-ingress-llm-scads-ai-http
+spec:
+  hostnames:
+    - llm.scads.ai
+  parentRefs:
+    - name: nginx
+      port: 80
+  rules:
+    - filters:
+        - requestRedirect:
+            scheme: https
+            statusCode: 308
+          type: RequestRedirect
+      matches:
+        - path:
+            type: RegularExpression
+            value: (?i)/$.*
+    - filters:
+        - requestRedirect:
+            scheme: https
+            statusCode: 308
+          type: RequestRedirect
+      matches:
+        - path:
+            type: RegularExpression
+            value: (?i)/docs(.*)$.*
+    - filters:
+        - requestRedirect:
+            scheme: https
+            statusCode: 308
+          type: RequestRedirect
+      matches:
+        - path:
+            type: RegularExpression
+            value: (?i)/status(.*)$.*
+    - filters:
+        - requestRedirect:
+            scheme: https
+            statusCode: 308
+          type: RequestRedirect
+      matches:
+        - path:
+            type: RegularExpression
+            value: (?i)/metrics/?.*
+    - filters:
+        - requestRedirect:
+            scheme: https
+            statusCode: 308
+          type: RequestRedirect
+      matches:
+        - path:
+            type: RegularExpression
+            value: (?i)/auth.*
+    - filters:
+        - requestRedirect:
+            scheme: https
+            statusCode: 308
+          type: RequestRedirect
+      matches:
+        - path:
+            type: RegularExpression
+            value: (?i)/.*
+status:
+  parents: null
