@@ -76,10 +76,10 @@ func buildTrafficPolicyAttachment(
 			}
 		}
 
-		switch {
-		case validCoveredBackends == 0:
+		switch validCoveredBackends {
+		case 0:
 			continue
-		case validCoveredBackends == backendCount:
+		case backendCount:
 			attachment.CoveredRuleIdxs[ruleIdx] = struct{}{}
 		default:
 			ruleName := ruleSectionName(rule, ruleIdx)
