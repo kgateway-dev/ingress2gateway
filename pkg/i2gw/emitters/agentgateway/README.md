@@ -192,6 +192,8 @@ This is mapped into `AgentgatewayPolicy.spec.frontend.accessLog`:
 
 - ingress-nginx enables access logs by default when this annotation is absent.
 - The emitter only projects access-log behavior when the annotation is explicitly present on the source Ingress.
+- If the source Ingress contributes only some rules of a merged `HTTPRoute`, the emitter currently skips access-log
+  projection and emits a warning. Agentgateway frontend policies cannot target individual `HTTPRoute` rules.
 
 #### Basic Authentication
 
@@ -439,6 +441,8 @@ These are projected into an `AgentgatewayPolicy` by setting:
 - `proxy-body-size` is preferred when both annotations are present.
 - `client-body-buffer-size` is used as a fallback when `proxy-body-size` is unset.
 - The selected quantity is resolved to bytes for `maxBufferSize`.
+- If the source Ingress contributes only some rules of a merged `HTTPRoute`, the emitter currently skips this
+  projection and emits a warning. Agentgateway frontend policies cannot target individual `HTTPRoute` rules.
 
 #### Service Upstream
 
@@ -469,11 +473,13 @@ Mappings:
 
 ## AgentgatewayPolicy Projection
 
-Rate limit, timeout, CORS, rewrite target, access log, etc. annotations are converted into AgentgatewayPolicy resources.
-The agentgateway emitter emits AgentgatewayPolicy resources in two shapes:
+Rate limit, timeout, CORS, rewrite target, access log, etc. annotations are converted into `AgentgatewayPolicy`
+resources. The agentgateway emitter emits `AgentgatewayPolicy` resources in three shapes:
 
-- HTTPRoute-scoped policies for traffic-level behavior (rate limit, request timeouts, CORS, rewrite target,
-  basic auth, ext auth, access log, request/body buffer size).
+- Route- or rule-scoped traffic policies for traffic-level behavior (rate limit, request timeouts, CORS, rewrite
+  target, basic auth, ext auth).
+- HTTPRoute-wide frontend policies for frontend behavior (access log, request/body buffer size) when the source
+  Ingress effectively covers the whole generated route.
 - Service-scoped policies for backend connection behavior (backend TLS, proxy connect timeout, backend protocol).
 
 ### Naming
@@ -500,29 +506,46 @@ Backend protocol policies are created **per targeted backend object**:
 
 ### Attachment Semantics
 
-If a policy covers all backends of the generated HTTPRoute, the policy is attached using `spec.targetRefs`
-to the HTTPRoute.
+Traffic policies are attached as precisely as Agentgateway allows:
 
-If a policy only covers some (rule, backendRef) pairs, the emitter **returns an error** and does not emit
-+agentgateway resources for that Ingress.
+- If a policy covers all backends of the generated `HTTPRoute`, the emitter attaches it to the `HTTPRoute`.
+- If a policy covers all backends of one or more specific `HTTPRoute` rules, the emitter attaches it to those rules
+  using `spec.targetRefs[].sectionName`.
+- If a policy covers only some backendRefs within a single `HTTPRoute` rule, the emitter **returns an error** and does
+  not emit that `AgentgatewayPolicy`.
+
+Frontend policies are more restrictive:
+
+- Frontend policy fields such as `spec.frontend.accessLog` and `spec.frontend.http.maxBufferSize` can only be emitted
+  when they can target the whole generated route.
+- If those annotations appear on an Ingress that contributes only some rules of a merged `HTTPRoute`, the emitter skips
+  the frontend projection and emits a warning instead of failing the entire conversion.
 
 Conceptually:
 
-- **Full coverage** → `AgentgatewayPolicy.spec.targetRefs[]` references the HTTPRoute
-- **Partial coverage** → **error** (agentgateway does not support attaching `AgentgatewayPolicy` via per-backend
-  `HTTPRoute` `ExtensionRef` filters)
+- **Whole-route coverage** → `AgentgatewayPolicy.spec.targetRefs[]` references the `HTTPRoute`
+- **Whole-rule coverage** → `AgentgatewayPolicy.spec.targetRefs[]` references the `HTTPRoute` with
+  `sectionName: <rule-name>`
+- **Partial backend coverage within one rule** → **error**
+- **Partial merged-route frontend coverage** → skipped with warning
 
 #### Why?
 
 Agentgateway does not support `HTTPRoute` `backendRefs[].filters[].type: ExtensionRef` for attaching policies.
 Attempting to generate per-backend `ExtensionRef` filters results in `HTTPRoute` status failures (e.g.
-`ResolvedRefs=False` with an `IncompatibleFilters` error). To avoid emitting manifests that will be rejected or
-non-functional at runtime, the emitter fails fast during generation when only partial attachment is possible.
+`ResolvedRefs=False` with an `IncompatibleFilters` error). Agentgateway does, however, support targeting an
+`HTTPRoute` rule by `targetRefs[].sectionName`, so the emitter uses rule-scoped attachment whenever a policy cleanly
+applies to complete rules. The remaining failure case is when only some backendRefs within one rule are covered,
+because that would still require per-backend attachment. Frontend policy fields remain route-wide only, so partial
+merged-route frontend projection is skipped.
 
 #### Workarounds
 
-- Split the source Ingress into separate Ingress resources so each generated HTTPRoute can be fully covered by a policy.
-- Adjust annotations so the policy applies uniformly to all paths/backends of the resulting HTTPRoute.
+- Split the source Ingress into separate Ingress resources so each generated `HTTPRoute` rule or route can be covered
+  cleanly.
+- Adjust annotations so a traffic policy applies uniformly to complete rules of the resulting `HTTPRoute`.
+- For frontend behavior on merged routes, either apply the annotation uniformly across the merged route or split the
+  source Ingress resources so the frontend policy can target a whole route.
 
 For backend TLS, prefer targeting the **Service** via a backend policy (as emitted) so TLS settings apply cleanly without
 needing per-backend HTTPRoute filters.

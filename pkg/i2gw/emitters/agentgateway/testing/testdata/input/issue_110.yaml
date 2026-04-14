@@ -1,0 +1,112 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: llm-scads-ai-ingress
+  annotations:
+    cert-manager.io/cluster-issuer: tud-acme
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: 16m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "180"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - llm.scads.ai
+    secretName: llm.scads.ai-acme
+  rules:
+  - host: llm.scads.ai
+    http:
+      paths:
+      - path: /metrics/?
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: blocked-service
+            port:
+              number: 80
+      - path: /auth
+        pathType: Prefix
+        backend:
+          service:
+            name: keycloak
+            port:
+              number: 80
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: llm-scads-ai-service
+            port:
+              number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: llm-scads-ai-documentation-redirect-ingress
+  annotations:
+    cert-manager.io/cluster-issuer: tud-acme
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/permanent-redirect: /docs/
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: llm.scads.ai
+    http:
+      paths:
+      - path: /$
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: documentation-service
+            port:
+              number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: llm-scads-ai-documentation-rewrite-ingress
+  annotations:
+    cert-manager.io/cluster-issuer: tud-acme
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: $1
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: llm.scads.ai
+    http:
+      paths:
+      - path: /docs(.*)$
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: documentation-service
+            port:
+              number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: llm-scads-ai-health-rewrite-ingress
+  annotations:
+    cert-manager.io/cluster-issuer: tud-acme
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: $1
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: llm.scads.ai
+    http:
+      paths:
+      - path: /status(.*)$
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: api-state-service
+            port:
+              number: 80

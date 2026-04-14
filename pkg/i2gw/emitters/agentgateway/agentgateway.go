@@ -120,17 +120,18 @@ func (e *Emitter) ToAgentgatewayResources(
 			// generating duplicate filters on the same backendRef.
 			coverage := uniquePolicyIndices(pol.RuleBackendSources)
 
-			touched := false
+			trafficTouched := false
+			frontendTouched := false
 			corsTouched := false
 
 			// Apply rate limit policy features that map to AgentgatewayPolicy.
 			if applyRateLimitPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
-				touched = true
+				trafficTouched = true
 			}
 
 			// Apply timeout policy features that map to AgentgatewayPolicy.
 			if applyRequestTimeoutPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
-				touched = true
+				trafficTouched = true
 			}
 
 			// Check if SSL redirect is enabled but don't apply it yet (will split route later).
@@ -149,25 +150,24 @@ func (e *Emitter) ToAgentgatewayResources(
 			)
 
 			// rewrite-target maps to AgentgatewayPolicy.spec.traffic.transformation.
-			// Note: agentgateway attaches policies at the HTTPRoute scope; this feature is only safe when
-			// it fully covers the route (enforced by the full-coverage check below).
+			// Note: agentgateway can target either the whole HTTPRoute or specific rules via targetRefs.sectionName.
 			if applyRewriteTargetPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, &httpRouteContext, agentgatewayPolicies) {
-				touched = true
+				trafficTouched = true
 			}
 
 			// CORS maps to AgentgatewayPolicy.spec.traffic.cors.
 			if applyCorsPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
-				touched, corsTouched = true, true
+				trafficTouched, corsTouched = true, true
 			}
 
 			// enable-access-log maps to AgentgatewayPolicy.spec.frontend.accessLog.
 			if applyAccessLogPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
-				touched = true
+				frontendTouched = true
 			}
 
 			// ExtAuth maps to AgentgatewayPolicy.spec.traffic.extAuth.
 			if applyExtAuthPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
-				touched = true
+				trafficTouched = true
 			}
 
 			// Backend TLS maps to AgentgatewayPolicy.spec.backend.tls, targeting the covered Service backends.
@@ -202,7 +202,7 @@ func (e *Emitter) ToAgentgatewayResources(
 			// BasicAuth maps to AgentgatewayPolicy.spec.traffic.basicAuthentication.
 			// Note: agentgateway expects htpasswd content under a '.htaccess' key; see BasicAuthentication docs.
 			if applyBasicAuthPolicy(pol, polSourceIngressName, httpRouteKey.Namespace, agentgatewayPolicies) {
-				touched = true
+				trafficTouched = true
 				// Emit an INFO notification with guidance about Secret key expectations.
 				emitBasicAuthSecretNotifications(
 					e.notify,
@@ -222,46 +222,92 @@ func (e *Emitter) ToAgentgatewayResources(
 			); bufferErr != nil {
 				errs = append(errs, bufferErr)
 			} else if bufferTouched {
-				touched = true
+				frontendTouched = true
 			}
 
-			// Attach the resulting AgentgatewayPolicy to the HTTPRoute, but only if the policy fully covers the route.
-			// Unlike kgateway, agentgateway does not support attaching policies via HTTPRoute filter ExtensionRef.
-			if touched {
-				agp := agentgatewayPolicies[polSourceIngressName]
-				if agp != nil {
-					total := numRules(httpRouteContext.HTTPRoute)
-					covered := len(coverage)
-					// Some ingress-nginx features are recorded at the Ingress scope (not per rule/backend pair).
-					// In that case RuleBackendSources may be empty; treat this as "applies to all backends".
-					// This avoids false "subset coverage" errors like (0/1) for Ingress-wide annotations.
-					if covered == 0 {
-						covered = total
-					}
+			if !trafficTouched && !frontendTouched {
+				continue
+			}
 
-					if covered == total {
-						agp.Spec.TargetRefs = []shared.LocalPolicyTargetReferenceWithSectionName{{
-							LocalPolicyTargetReference: shared.LocalPolicyTargetReference{
-								Group: gatewayv1.Group("gateway.networking.k8s.io"),
-								Kind:  gatewayv1.Kind("HTTPRoute"),
-								Name:  gatewayv1.ObjectName(httpRouteKey.Name),
-							},
-						}}
-						// Strip upstream CORS headers when CORS is enabled and policy is attached.
-						if corsTouched {
-							utils.EnsureStripUpstreamCORSHeaders(&httpRouteContext.HTTPRoute)
-						}
-					} else {
-						errs = append(errs, field.Invalid(
-							field.NewPath("emitter", "agentgateway", "AgentgatewayPolicy"),
+			agp := agentgatewayPolicies[polSourceIngressName]
+			if agp == nil {
+				continue
+			}
+
+			if frontendTouched && trafficTouched {
+				attachment, attachErr := buildTrafficPolicyAttachment(httpRouteKey, httpRouteContext, coverage, polSourceIngressName)
+				if attachErr != nil {
+					errs = append(errs, attachErr)
+					delete(agentgatewayPolicies, polSourceIngressName)
+					continue
+				}
+
+				// Frontend-scoped settings cannot target individual HTTPRoute rules. If the traffic policy needs
+				// sectionName attachments, drop the frontend projection so the valid traffic policy can still be emitted.
+				if len(attachment.TargetRefs) != 1 || attachment.TargetRefs[0].SectionName != nil {
+					e.notify(
+						notifications.WarningNotification,
+						fmt.Sprintf(
+							"Skipping frontend-scoped policy projection for Ingress %s: agentgateway frontend policies cannot target individual HTTPRoute rules within merged routes",
 							polSourceIngressName,
-							fmt.Sprintf("policy only applies to a subset of backendRefs within the HTTPRoute (%d/%d); "+
-								"agentgateway requires full policy coverage because it does not support attaching policies "+
-								"via HTTPRoute filter ExtensionRef", covered, total),
-						))
-						delete(agentgatewayPolicies, polSourceIngressName)
+						),
+						&httpRouteContext.HTTPRoute,
+					)
+					agp.Spec.Frontend = nil
+					frontendTouched = false
+				}
+
+				agp.Spec.TargetRefs = attachment.TargetRefs
+				if corsTouched {
+					if len(attachment.TargetRefs) == 1 && attachment.TargetRefs[0].SectionName == nil {
+						utils.EnsureStripUpstreamCORSHeaders(&httpRouteContext.HTTPRoute)
+					} else {
+						utils.EnsureStripUpstreamCORSHeadersForRules(&httpRouteContext.HTTPRoute, attachment.CoveredRuleIdxs)
 					}
 				}
+				continue
+			}
+
+			if trafficTouched {
+				attachment, attachErr := buildTrafficPolicyAttachment(httpRouteKey, httpRouteContext, coverage, polSourceIngressName)
+				if attachErr != nil {
+					errs = append(errs, attachErr)
+					delete(agentgatewayPolicies, polSourceIngressName)
+					continue
+				}
+
+				agp.Spec.TargetRefs = attachment.TargetRefs
+				if corsTouched {
+					if len(attachment.TargetRefs) == 1 && attachment.TargetRefs[0].SectionName == nil {
+						utils.EnsureStripUpstreamCORSHeaders(&httpRouteContext.HTTPRoute)
+					} else {
+						utils.EnsureStripUpstreamCORSHeadersForRules(&httpRouteContext.HTTPRoute, attachment.CoveredRuleIdxs)
+					}
+				}
+				continue
+			}
+
+			if frontendTouched {
+				if !hasFullBackendCoverage(httpRouteContext.HTTPRoute, coverage) {
+					e.notify(
+						notifications.WarningNotification,
+						fmt.Sprintf(
+							"Skipping frontend-scoped policy projection for Ingress %s: agentgateway frontend policies cannot target only part of a merged HTTPRoute",
+							polSourceIngressName,
+						),
+						&httpRouteContext.HTTPRoute,
+					)
+					delete(agentgatewayPolicies, polSourceIngressName)
+					continue
+				}
+
+				agp.Spec.TargetRefs = []shared.LocalPolicyTargetReferenceWithSectionName{{
+					LocalPolicyTargetReference: shared.LocalPolicyTargetReference{
+						Group: gatewayv1.Group("gateway.networking.k8s.io"),
+						Kind:  gatewayv1.Kind("HTTPRoute"),
+						Name:  gatewayv1.ObjectName(httpRouteKey.Name),
+					},
+				}}
 			}
 		}
 
