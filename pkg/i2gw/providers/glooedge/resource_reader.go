@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The Kubernetes Authors.
+Copyright The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@ import (
 	"io"
 
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw/providers/common"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 type resourceReader struct {
@@ -55,7 +55,7 @@ func (r *resourceReader) readResourcesFromCluster(ctx context.Context) (*storage
 	return storage, nil
 }
 
-func (r *resourceReader) readResourcesFromFile(ctx context.Context, reader io.Reader) (*storage, error) {
+func (r *resourceReader) readResourcesFromFile(reader io.Reader) (*storage, error) {
 	storage := newResourcesStorage()
 
 	virtualServices, err := common.ReadVirtualServicesFromFile(reader, r.conf.Namespace)
@@ -118,7 +118,7 @@ func unstructuredToVirtualService(u *unstructured.Unstructured, defaultNamespace
 		if ok {
 			for _, matcherRaw := range matchersRaw {
 				matcherMap := matcherRaw.(map[string]interface{})
-				if prefix, ok := matcherMap["prefix"].(string); ok {
+				if prefix, prefixOk := matcherMap["prefix"].(string); prefixOk {
 					matchers = append(matchers, Matcher{Prefix: prefix})
 				}
 			}

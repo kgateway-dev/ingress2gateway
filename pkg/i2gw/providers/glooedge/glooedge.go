@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The Kubernetes Authors.
+Copyright The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -62,7 +62,7 @@ func (p *Provider) ReadResourcesFromCluster(ctx context.Context) error {
 }
 
 func (p *Provider) ReadResourcesFromFile(ctx context.Context, reader io.Reader) error {
-	storage, err := p.resourceReader.readResourcesFromFile(ctx, reader)
+	storage, err := p.resourceReader.readResourcesFromFile(reader)
 	if err != nil {
 		return fmt.Errorf("failed to read gloo edge resources from file: %w", err)
 	}

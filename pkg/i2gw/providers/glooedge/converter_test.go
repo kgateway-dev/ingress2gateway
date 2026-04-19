@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The Kubernetes Authors.
+Copyright The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,10 +36,10 @@ func Test_ToIR(t *testing.T) {
 	gPathPrefix := gatewayv1.PathMatchPathPrefix
 
 	testCases := []struct {
-		name            string
-		virtualService  *VirtualService
-		expectedIR      providerir.ProviderIR
-		expectedErrors  field.ErrorList
+		name           string
+		virtualService *VirtualService
+		expectedIR     providerir.ProviderIR
+		expectedErrors field.ErrorList
 	}{
 		{
 			name: "basic single upstream conversion",
