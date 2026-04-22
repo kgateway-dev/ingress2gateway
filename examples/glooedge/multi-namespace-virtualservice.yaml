@@ -1,0 +1,46 @@
+apiVersion: gateway.solo.io/v1
+kind: VirtualService
+metadata:
+  name: prod-api-vs
+  namespace: production
+spec:
+  virtualHost:
+    domains:
+    - api.production.example.com
+    routes:
+    - matchers:
+      - prefix: /users
+      routeAction:
+        single:
+          upstream:
+            name: user-service
+            namespace: production
+    - matchers:
+      - prefix: /orders
+      routeAction:
+        single:
+          upstream:
+            name: order-service
+            namespace: production
+---
+apiVersion: gloo.solo.io/v1
+kind: Upstream
+metadata:
+  name: user-service
+  namespace: production
+spec:
+  kube:
+    serviceName: users-api
+    serviceNamespace: production
+    servicePort: 9090
+---
+apiVersion: gloo.solo.io/v1
+kind: Upstream
+metadata:
+  name: order-service
+  namespace: production
+spec:
+  kube:
+    serviceName: orders-api
+    serviceNamespace: production
+    servicePort: 9091

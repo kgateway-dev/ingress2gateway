@@ -22,11 +22,13 @@ import (
 
 type storage struct {
 	VirtualServices map[types.NamespacedName]*VirtualService
+	Upstreams       map[types.NamespacedName]*Upstream
 }
 
 func newResourcesStorage() *storage {
 	return &storage{
 		VirtualServices: make(map[types.NamespacedName]*VirtualService),
+		Upstreams:       make(map[types.NamespacedName]*Upstream),
 	}
 }
 
@@ -36,4 +38,12 @@ func (s *storage) addVirtualService(vs *VirtualService) {
 		Name:      vs.Name,
 	}
 	s.VirtualServices[key] = vs
+}
+
+func (s *storage) addUpstream(upstream *Upstream) {
+	key := types.NamespacedName{
+		Namespace: upstream.Namespace,
+		Name:      upstream.Name,
+	}
+	s.Upstreams[key] = upstream
 }

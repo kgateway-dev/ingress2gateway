@@ -39,6 +39,7 @@ func newResourceReader(conf *i2gw.ProviderConf) *resourceReader {
 func (r *resourceReader) readResourcesFromCluster(ctx context.Context) (*storage, error) {
 	storage := newResourcesStorage()
 
+	// Read VirtualServices from cluster
 	virtualServices, err := common.ReadVirtualServicesFromCluster(ctx, r.conf.Client)
 	if err != nil {
 		return nil, err
@@ -52,12 +53,22 @@ func (r *resourceReader) readResourcesFromCluster(ctx context.Context) (*storage
 		storage.addVirtualService(vs)
 	}
 
+	// Read Upstreams from cluster (NEW - similar to how nginx reads Services)
+	upstreams, err := readUpstreamsFromCluster(ctx, r.conf.Client)
+	if err != nil {
+		return nil, err
+	}
+	for _, upstream := range upstreams {
+		storage.addUpstream(upstream)
+	}
+
 	return storage, nil
 }
 
 func (r *resourceReader) readResourcesFromFile(reader io.Reader) (*storage, error) {
 	storage := newResourcesStorage()
 
+	// Read VirtualServices from file
 	virtualServices, err := common.ReadVirtualServicesFromFile(reader, r.conf.Namespace)
 	if err != nil {
 		return nil, err
@@ -69,6 +80,15 @@ func (r *resourceReader) readResourcesFromFile(reader io.Reader) (*storage, erro
 			return nil, err
 		}
 		storage.addVirtualService(vs)
+	}
+
+	// Read Upstreams from file (NEW)
+	upstreams, err := readUpstreamsFromFile(reader, r.conf.Namespace)
+	if err != nil {
+		return nil, err
+	}
+	for _, upstream := range upstreams {
+		storage.addUpstream(upstream)
 	}
 
 	return storage, nil
@@ -86,20 +106,25 @@ func unstructuredToVirtualService(u *unstructured.Unstructured, defaultNamespace
 		return nil, fmt.Errorf("invalid VirtualService spec for %s/%s", namespace, u.GetName())
 	}
 
-	// Extract hosts
-	hostsRaw, ok := spec["hosts"].([]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid hosts in VirtualService %s/%s", namespace, u.GetName())
-	}
-	var hosts []string
-	for _, h := range hostsRaw {
-		hosts = append(hosts, h.(string))
-	}
-
 	// Extract virtualHost
 	vhRaw, ok := spec["virtualHost"].(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("invalid virtualHost in VirtualService %s/%s", namespace, u.GetName())
+	}
+	// Try spec.virtualHost.domains first (real schema)
+	domainsRaw, ok := vhRaw["domains"].([]interface{})
+	if !ok {
+		// Fallback to spec.hosts if domains not found
+		hostsRaw, ok := spec["hosts"].([]interface{})
+		if !ok {
+			return nil, fmt.Errorf("invalid hosts/domains in VirtualService %s/%s", namespace, u.GetName())
+		}
+		domainsRaw = hostsRaw
+	}
+
+	var hosts []string
+	for _, h := range domainsRaw {
+		hosts = append(hosts, h.(string))
 	}
 
 	// Extract routes
@@ -118,7 +143,7 @@ func unstructuredToVirtualService(u *unstructured.Unstructured, defaultNamespace
 		if ok {
 			for _, matcherRaw := range matchersRaw {
 				matcherMap := matcherRaw.(map[string]interface{})
-				if prefix, prefixOk := matcherMap["prefix"].(string); prefixOk {
+				if prefix, ok := matcherMap["prefix"].(string); ok {
 					matchers = append(matchers, Matcher{Prefix: prefix})
 				}
 			}
@@ -166,4 +191,18 @@ func unstructuredToVirtualService(u *unstructured.Unstructured, defaultNamespace
 			},
 		},
 	}, nil
+}
+
+// NEW FUNCTIONS TO READ UPSTREAMS (like nginx reads Services)
+
+func readUpstreamsFromCluster(ctx context.Context, client interface{}) ([]*Upstream, error) {
+	// TODO: Implement reading Upstreams from cluster
+	// For now, return empty list as fallback
+	return []*Upstream{}, nil
+}
+
+func readUpstreamsFromFile(reader io.Reader, defaultNamespace string) ([]*Upstream, error) {
+	// TODO: Implement reading Upstreams from file
+	// For now, return empty list as fallback
+	return []*Upstream{}, nil
 }

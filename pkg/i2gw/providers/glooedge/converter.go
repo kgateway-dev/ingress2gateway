@@ -58,10 +58,33 @@ func (c *resourcesToIRConverter) convert(storage *storage) (providerir.ProviderI
 func basicRoutingFeature(storage *storage, ir *providerir.ProviderIR) field.ErrorList {
 	var errs field.ErrorList
 
-	// Track listeners by host
-	listenersByHost := make(map[string]*gatewayv1.Listener)
+	// Track gateways and listeners by namespace
+	gatewaysByNamespace := make(map[string]*gatewayv1.Gateway)
+	listenersByNamespaceHost := make(map[string]map[string]*gatewayv1.Listener)
 
 	for _, vs := range storage.VirtualServices {
+		// Initialize namespace gateway if needed
+		if _, exists := gatewaysByNamespace[vs.Namespace]; !exists {
+			gatewaysByNamespace[vs.Namespace] = &gatewayv1.Gateway{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "gateway.networking.k8s.io/v1",
+					Kind:       "Gateway",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "gloo-edge",
+					Namespace: vs.Namespace,
+				},
+				Spec: gatewayv1.GatewaySpec{
+					GatewayClassName: "gloo-edge",
+					Listeners:        []gatewayv1.Listener{},
+				},
+			}
+		}
+
+		if _, exists := listenersByNamespaceHost[vs.Namespace]; !exists {
+			listenersByNamespaceHost[vs.Namespace] = make(map[string]*gatewayv1.Listener)
+		}
+
 		// Create one HTTPRoute per host in the VirtualService
 		for _, host := range vs.Spec.Hosts {
 			routeName := fmt.Sprintf("%s-%s", vs.Name, sanitizeHostname(host))
@@ -71,9 +94,9 @@ func basicRoutingFeature(storage *storage, ir *providerir.ProviderIR) field.Erro
 			}
 
 			// Create listener for this host if not exists
-			if _, exists := listenersByHost[host]; !exists {
+			if _, exists := listenersByNamespaceHost[vs.Namespace][host]; !exists {
 				listenerName := fmt.Sprintf("%s-http", sanitizeHostname(host))
-				listenersByHost[host] = &gatewayv1.Listener{
+				listenersByNamespaceHost[vs.Namespace][host] = &gatewayv1.Listener{
 					Name:     gatewayv1.SectionName(listenerName),
 					Hostname: ptrTo(gatewayv1.Hostname(host)),
 					Port:     80,
@@ -127,10 +150,28 @@ func basicRoutingFeature(storage *storage, ir *providerir.ProviderIR) field.Erro
 
 				// Add backend ref from upstream
 				if route.RouteAction.Single.Upstream.Name != "" {
+					upstreamKey := types.NamespacedName{
+						Name:      route.RouteAction.Single.Upstream.Name,
+						Namespace: route.RouteAction.Single.Upstream.Namespace,
+					}
+
+					// Resolve upstream from storage
+					upstream, exists := storage.Upstreams[upstreamKey]
+					if !exists {
+						// Fallback: create basic upstream reference with port 0
+						upstream = &Upstream{
+							Name:      route.RouteAction.Single.Upstream.Name,
+							Namespace: route.RouteAction.Single.Upstream.Namespace,
+							Port:      0,
+						}
+					}
+
 					backendRef := gatewayv1.HTTPBackendRef{
 						BackendRef: gatewayv1.BackendRef{
 							BackendObjectReference: gatewayv1.BackendObjectReference{
-								Name: gatewayv1.ObjectName(route.RouteAction.Single.Upstream.Name),
+								Name:      gatewayv1.ObjectName(upstream.Name),
+								Namespace: ptrTo(gatewayv1.Namespace(upstream.Namespace)),
+								Port:      ptrTo(gatewayv1.PortNumber(upstream.Port)),
 							},
 						},
 					}
@@ -145,31 +186,21 @@ func basicRoutingFeature(storage *storage, ir *providerir.ProviderIR) field.Erro
 		}
 	}
 
-	// Create Gateway with collected listeners
-	gatewayKey := types.NamespacedName{
-		Namespace: "default",
-		Name:      "gloo-edge",
-	}
-	listeners := make([]gatewayv1.Listener, 0)
-	for _, listener := range listenersByHost {
-		listeners = append(listeners, *listener)
-	}
+	// Create Gateways with collected listeners
+	for namespace, gateway := range gatewaysByNamespace {
+		listeners := make([]gatewayv1.Listener, 0)
+		for _, listener := range listenersByNamespaceHost[namespace] {
+			listeners = append(listeners, *listener)
+		}
+		gateway.Spec.Listeners = listeners
 
-	ir.Gateways[gatewayKey] = providerir.GatewayContext{
-		Gateway: gatewayv1.Gateway{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "gateway.networking.k8s.io/v1",
-				Kind:       "Gateway",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "gloo-edge",
-				Namespace: "default",
-			},
-			Spec: gatewayv1.GatewaySpec{
-				GatewayClassName: "gloo-edge",
-				Listeners:        listeners,
-			},
-		},
+		gatewayKey := types.NamespacedName{
+			Namespace: namespace,
+			Name:      "gloo-edge",
+		}
+		ir.Gateways[gatewayKey] = providerir.GatewayContext{
+			Gateway: *gateway,
+		}
 	}
 
 	return errs

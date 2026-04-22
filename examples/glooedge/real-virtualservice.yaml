@@ -1,0 +1,47 @@
+apiVersion: gateway.solo.io/v1
+kind: VirtualService
+metadata:
+  name: petstore-vs
+  namespace: default
+spec:
+  virtualHost:
+    domains:
+    - petstore.example.com
+    - api.petstore.example.com
+    routes:
+    - matchers:
+      - prefix: /api/v1
+      routeAction:
+        single:
+          upstream:
+            name: petstore-api
+            namespace: default
+    - matchers:
+      - prefix: /swagger
+      routeAction:
+        single:
+          upstream:
+            name: swagger-ui
+            namespace: default
+---
+apiVersion: gloo.solo.io/v1
+kind: Upstream
+metadata:
+  name: petstore-api
+  namespace: default
+spec:
+  kube:
+    serviceName: petstore
+    serviceNamespace: default
+    servicePort: 8080
+---
+apiVersion: gloo.solo.io/v1
+kind: Upstream
+metadata:
+  name: swagger-ui
+  namespace: default
+spec:
+  kube:
+    serviceName: swagger
+    serviceNamespace: default
+    servicePort: 3000

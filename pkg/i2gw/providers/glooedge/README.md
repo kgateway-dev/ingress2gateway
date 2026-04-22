@@ -12,10 +12,9 @@ This provider enables conversion of Gloo Edge VirtualService resources to Kubern
 ## Usage
 
 ```bash
-ingress2gateway \
+ingress2gateway print\
   --provider gloo-edge \
   --input-file virtualservice.yaml \
-  --output-file gateway-resources.yaml
 ```
 
 ## Supported Gloo Edge Features
