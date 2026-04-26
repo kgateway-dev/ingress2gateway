@@ -54,9 +54,9 @@ func (r *resourceReader) readResourcesFromCluster(ctx context.Context) (*storage
 	}
 
 	// Read Upstreams from cluster (NEW - similar to how nginx reads Services)
-	upstreams, err := readUpstreamsFromCluster(ctx, r.conf.Client)
+	upstreams, errUpstream := readUpstreamsFromCluster(ctx, r.conf.Client)
 	if err != nil {
-		return nil, err
+		return nil, errUpstream
 	}
 	for _, upstream := range upstreams {
 		storage.addUpstream(upstream)
@@ -75,9 +75,9 @@ func (r *resourceReader) readResourcesFromFile(reader io.Reader) (*storage, erro
 	}
 
 	for _, u := range virtualServices {
-		vs, err := unstructuredToVirtualService(u, r.conf.Namespace)
+		vs, vsErr := unstructuredToVirtualService(u, r.conf.Namespace)
 		if err != nil {
-			return nil, err
+			return nil, vsErr
 		}
 		storage.addVirtualService(vs)
 	}
@@ -115,8 +115,8 @@ func unstructuredToVirtualService(u *unstructured.Unstructured, defaultNamespace
 	domainsRaw, ok := vhRaw["domains"].([]interface{})
 	if !ok {
 		// Fallback to spec.hosts if domains not found
-		hostsRaw, ok := spec["hosts"].([]interface{})
-		if !ok {
+		hostsRaw, hostsOk := spec["hosts"].([]interface{})
+		if !hostsOk {
 			return nil, fmt.Errorf("invalid hosts/domains in VirtualService %s/%s", namespace, u.GetName())
 		}
 		domainsRaw = hostsRaw
@@ -143,7 +143,7 @@ func unstructuredToVirtualService(u *unstructured.Unstructured, defaultNamespace
 		if ok {
 			for _, matcherRaw := range matchersRaw {
 				matcherMap := matcherRaw.(map[string]interface{})
-				if prefix, ok := matcherMap["prefix"].(string); ok {
+				if prefix, prefixOk := matcherMap["prefix"].(string); prefixOk {
 					matchers = append(matchers, Matcher{Prefix: prefix})
 				}
 			}
@@ -195,13 +195,13 @@ func unstructuredToVirtualService(u *unstructured.Unstructured, defaultNamespace
 
 // NEW FUNCTIONS TO READ UPSTREAMS (like nginx reads Services)
 
-func readUpstreamsFromCluster(ctx context.Context, client interface{}) ([]*Upstream, error) {
+func readUpstreamsFromCluster(_ context.Context, _ interface{}) ([]*Upstream, error) {
 	// TODO: Implement reading Upstreams from cluster
 	// For now, return empty list as fallback
 	return []*Upstream{}, nil
 }
 
-func readUpstreamsFromFile(reader io.Reader, defaultNamespace string) ([]*Upstream, error) {
+func readUpstreamsFromFile(_ io.Reader, _ string) ([]*Upstream, error) {
 	// TODO: Implement reading Upstreams from file
 	// For now, return empty list as fallback
 	return []*Upstream{}, nil
