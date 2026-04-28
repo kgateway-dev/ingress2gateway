@@ -46,16 +46,16 @@ func (r *resourceReader) readResourcesFromCluster(ctx context.Context) (*storage
 	}
 
 	for _, u := range virtualServices {
-		vs, err := unstructuredToVirtualService(u, r.conf.Namespace)
-		if err != nil {
-			return nil, err
+		vs, vsErr := unstructuredToVirtualService(u, r.conf.Namespace)
+		if vsErr != nil {
+			return nil, vsErr
 		}
 		storage.addVirtualService(vs)
 	}
 
 	// Read Upstreams from cluster (NEW - similar to how nginx reads Services)
 	upstreams, errUpstream := readUpstreamsFromCluster(ctx, r.conf.Client)
-	if err != nil {
+	if errUpstream != nil {
 		return nil, errUpstream
 	}
 	for _, upstream := range upstreams {
@@ -76,7 +76,7 @@ func (r *resourceReader) readResourcesFromFile(reader io.Reader) (*storage, erro
 
 	for _, u := range virtualServices {
 		vs, vsErr := unstructuredToVirtualService(u, r.conf.Namespace)
-		if err != nil {
+		if vsErr != nil {
 			return nil, vsErr
 		}
 		storage.addVirtualService(vs)
