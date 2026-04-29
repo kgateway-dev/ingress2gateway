@@ -19,6 +19,7 @@ package glooedge
 import (
 	"fmt"
 	"regexp"
+	"sort"
 
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -192,6 +193,9 @@ func basicRoutingFeature(storage *storage, ir *providerir.ProviderIR) field.Erro
 		for _, listener := range listenersByNamespaceHost[namespace] {
 			listeners = append(listeners, *listener)
 		}
+		sort.Slice(listeners, func(i, j int) bool {
+			return listeners[i].Name < listeners[j].Name
+		})
 		gateway.Spec.Listeners = listeners
 
 		gatewayKey := types.NamespacedName{
