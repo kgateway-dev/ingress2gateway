@@ -1,0 +1,71 @@
+/*
+Copyright The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package glooedge
+
+import (
+	"context"
+	"fmt"
+	"io"
+
+	"github.com/kgateway-dev/ingress2gateway/pkg/i2gw"
+	emitterir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/emitter_intermediate"
+	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
+	"k8s.io/apimachinery/pkg/util/validation/field"
+)
+
+const Name = "gloo-edge"
+
+func init() {
+	i2gw.ProviderConstructorByName[Name] = NewProvider
+}
+
+type Provider struct {
+	storage                *storage
+	resourceReader         *resourceReader
+	resourcesToIRConverter *resourcesToIRConverter
+}
+
+func NewProvider(conf *i2gw.ProviderConf) i2gw.Provider {
+	return &Provider{
+		storage:                newResourcesStorage(),
+		resourceReader:         newResourceReader(conf),
+		resourcesToIRConverter: newResourcesToIRConverter(),
+	}
+}
+
+func (p *Provider) ToIR() (emitterir.EmitterIR, field.ErrorList) {
+	pIR, errs := p.resourcesToIRConverter.convert(p.storage)
+	return providerir.ToEmitterIR(pIR), errs
+}
+
+func (p *Provider) ReadResourcesFromCluster(ctx context.Context) error {
+	storage, err := p.resourceReader.readResourcesFromCluster(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to read gloo edge resources from cluster: %w", err)
+	}
+	p.storage = storage
+	return nil
+}
+
+func (p *Provider) ReadResourcesFromFile(ctx context.Context, reader io.Reader) error {
+	storage, err := p.resourceReader.readResourcesFromFile(reader)
+	if err != nil {
+		return fmt.Errorf("failed to read gloo edge resources from file: %w", err)
+	}
+	p.storage = storage
+	return nil
+}
