@@ -53,10 +53,10 @@ func (r *resourceReader) readResourcesFromCluster(ctx context.Context) (*storage
 		storage.addVirtualService(vs)
 	}
 
-	// Read Upstreams from cluster (NEW - similar to how nginx reads Services)
-	upstreams, errUpstream := readUpstreamsFromCluster(ctx, r.conf.Client)
-	if errUpstream != nil {
-		return nil, errUpstream
+	// Read Upstreams from cluster
+	upstreams, err := readUpstreamsFromCluster(ctx, r.conf.Client)
+	if err != nil {
+		return nil, err
 	}
 	for _, upstream := range upstreams {
 		storage.addUpstream(upstream)
@@ -67,28 +67,34 @@ func (r *resourceReader) readResourcesFromCluster(ctx context.Context) (*storage
 
 func (r *resourceReader) readResourcesFromFile(reader io.Reader) (*storage, error) {
 	storage := newResourcesStorage()
-
-	// Read VirtualServices from file
-	virtualServices, err := common.ReadVirtualServicesFromFile(reader, r.conf.Namespace)
+	allResources, err := common.ExtractObjectsFromReader(reader, "")
 	if err != nil {
 		return nil, err
 	}
-
-	for _, u := range virtualServices {
-		vs, vsErr := unstructuredToVirtualService(u, r.conf.Namespace)
-		if vsErr != nil {
-			return nil, vsErr
+	
+	// Separate VirtualServices and Upstreams
+	for _, resource := range allResources {
+		if resource.GetKind() == "VirtualService" {
+			namespace := resource.GetNamespace()
+			if namespace == "" {
+				namespace = r.conf.Namespace
+			}
+			vs, vsErr := unstructuredToVirtualService(resource, namespace)
+			if vsErr != nil {
+				continue
+			}
+			storage.addVirtualService(vs)
+		} else if resource.GetKind() == "Upstream" && resource.GetAPIVersion() == "gloo.solo.io/v1" {
+			namespace := resource.GetNamespace()
+			if namespace == "" {
+				namespace = r.conf.Namespace
+			}
+			upstream, upErr := unstructuredToUpstream(resource, namespace)
+			if upErr != nil {
+				continue
+			}
+			storage.addUpstream(upstream)
 		}
-		storage.addVirtualService(vs)
-	}
-
-	// Read Upstreams from file (NEW)
-	upstreams, err := readUpstreamsFromFile(reader, r.conf.Namespace)
-	if err != nil {
-		return nil, err
-	}
-	for _, upstream := range upstreams {
-		storage.addUpstream(upstream)
 	}
 
 	return storage, nil
@@ -111,6 +117,7 @@ func unstructuredToVirtualService(u *unstructured.Unstructured, defaultNamespace
 	if !ok {
 		return nil, fmt.Errorf("invalid virtualHost in VirtualService %s/%s", namespace, u.GetName())
 	}
+
 	// Try spec.virtualHost.domains first (real schema)
 	domainsRaw, ok := vhRaw["domains"].([]interface{})
 	if !ok {
@@ -193,16 +200,64 @@ func unstructuredToVirtualService(u *unstructured.Unstructured, defaultNamespace
 	}, nil
 }
 
-// NEW FUNCTIONS TO READ UPSTREAMS (like nginx reads Services)
+// unstructuredToUpstream converts an unstructured Upstream to typed Upstream
+func unstructuredToUpstream(u *unstructured.Unstructured, defaultNamespace string) (*Upstream, error) {
+	namespace := u.GetNamespace()
+	if namespace == "" {
+		namespace = defaultNamespace
+	}
 
-func readUpstreamsFromCluster(_ context.Context, _ interface{}) ([]*Upstream, error) {
-	// TODO: Implement reading Upstreams from cluster
-	// For now, return empty list as fallback
-	return []*Upstream{}, nil
+	// Extract spec
+	spec, ok := u.Object["spec"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid Upstream spec for %s/%s", namespace, u.GetName())
+	}
+
+	upstream := &Upstream{
+		Name:      u.GetName(),
+		Namespace: namespace,
+	}
+
+	// Extract kube configuration (service details)
+	kubeRaw, ok := spec["kube"].(map[string]interface{})
+	if ok {
+		if svcName, ok := kubeRaw["serviceName"].(string); ok {
+			upstream.ServiceName = svcName
+		}
+		if svcNs, ok := kubeRaw["serviceNamespace"].(string); ok {
+			upstream.ServiceNamespace = svcNs
+		} else {
+			upstream.ServiceNamespace = namespace
+		}
+		
+		// Try multiple types for port
+		if portVal, ok := kubeRaw["servicePort"]; ok {
+			switch v := portVal.(type) {
+			case float64:
+				upstream.ServicePort = int32(v)
+			case int:
+				upstream.ServicePort = int32(v)
+			case int64:
+				upstream.ServicePort = int32(v)
+			case string:
+				var port int32
+				_, err := fmt.Sscanf(v, "%d", &port)
+				if err == nil {
+					upstream.ServicePort = port
+				}
+			}
+		}
+	}
+
+	return upstream, nil
 }
 
-func readUpstreamsFromFile(_ io.Reader, _ string) ([]*Upstream, error) {
-	// TODO: Implement reading Upstreams from file
+// readUpstreamsFromCluster reads Upstream resources from cluster
+// TODO: Implement cluster reading for Upstreams using dynamic client
+// https://github.com/kgateway-dev/ingress2gateway/issues/112
+func readUpstreamsFromCluster(ctx context.Context, client interface{}) ([]*Upstream, error) {
+	// TODO: Implement cluster reading for Upstreams using dynamic client
 	// For now, return empty list as fallback
+	// This would use client.Resource(upstreamGVR).List(ctx, metav1.ListOptions{})
 	return []*Upstream{}, nil
 }

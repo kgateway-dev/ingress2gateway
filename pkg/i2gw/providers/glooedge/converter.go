@@ -19,6 +19,7 @@ package glooedge
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 
 	providerir "github.com/kgateway-dev/ingress2gateway/pkg/i2gw/provider_intermediate"
@@ -167,12 +168,28 @@ func basicRoutingFeature(storage *storage, ir *providerir.ProviderIR) field.Erro
 						}
 					}
 
+					// Use resolved service details if available, otherwise fallback to upstream name
+
+					backendName := upstream.ServiceName
+					backendNamespace := upstream.ServiceNamespace
+					backendPort := upstream.ServicePort
+
+					// Fallback to upstream name if service not resolved
+
+					if backendName == "" {
+						backendName = upstream.Name
+						if backendNamespace == "" {
+							backendNamespace = upstream.Namespace
+						}
+						backendPort = upstream.Port
+					}
+
 					backendRef := gatewayv1.HTTPBackendRef{
 						BackendRef: gatewayv1.BackendRef{
 							BackendObjectReference: gatewayv1.BackendObjectReference{
-								Name:      gatewayv1.ObjectName(upstream.Name),
-								Namespace: ptrTo(gatewayv1.Namespace(upstream.Namespace)),
-								Port:      ptrTo(gatewayv1.PortNumber(upstream.Port)),
+								Name:      gatewayv1.ObjectName(backendName),
+								Namespace: ptrTo(gatewayv1.Namespace(backendNamespace)),
+								Port:      ptrTo(gatewayv1.PortNumber(backendPort)),
 							},
 						},
 					}
@@ -189,6 +206,13 @@ func basicRoutingFeature(storage *storage, ir *providerir.ProviderIR) field.Erro
 
 	// Create Gateways with collected listeners
 	for namespace, gateway := range gatewaysByNamespace {
+		// Sort hostnames to ensure deterministic listener order
+		hostKeys := make([]string, 0, len(listenersByNamespaceHost[namespace]))
+		for host := range listenersByNamespaceHost[namespace] {
+			hostKeys = append(hostKeys, host)
+		}
+		slices.Sort(hostKeys)
+
 		listeners := make([]gatewayv1.Listener, 0)
 		for _, listener := range listenersByNamespaceHost[namespace] {
 			listeners = append(listeners, *listener)

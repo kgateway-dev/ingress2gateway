@@ -84,43 +84,43 @@ func Test_ToIR(t *testing.T) {
 						},
 					},
 				},
-			HTTPRoutes: map[types.NamespacedName]providerir.HTTPRouteContext{
-			{Namespace: "default", Name: "example-vs-example-com"}: {
-				HTTPRoute: gatewayv1.HTTPRoute{
-					ObjectMeta: metav1.ObjectMeta{Name: "example-vs-example-com", Namespace: "default"},
-					Spec: gatewayv1.HTTPRouteSpec{
-						CommonRouteSpec: gatewayv1.CommonRouteSpec{
-							ParentRefs: []gatewayv1.ParentReference{{
-								Name: "gloo-edge",
-							}},
-						},
-						Hostnames: []gatewayv1.Hostname{"example.com"},
-						Rules: []gatewayv1.HTTPRouteRule{{
-							Matches: []gatewayv1.HTTPRouteMatch{{
-								Path: &gatewayv1.HTTPPathMatch{
-									Type:  &gPathPrefix,
-									Value: ptr.To("/api"),
+				HTTPRoutes: map[types.NamespacedName]providerir.HTTPRouteContext{
+					{Namespace: "default", Name: "example-vs-example-com"}: {
+						HTTPRoute: gatewayv1.HTTPRoute{
+							ObjectMeta: metav1.ObjectMeta{Name: "example-vs-example-com", Namespace: "default"},
+							Spec: gatewayv1.HTTPRouteSpec{
+								CommonRouteSpec: gatewayv1.CommonRouteSpec{
+									ParentRefs: []gatewayv1.ParentReference{{
+										Name: "gloo-edge",
+									}},
 								},
-							}},
-							BackendRefs: []gatewayv1.HTTPBackendRef{
-								{
-									BackendRef: gatewayv1.BackendRef{
-										BackendObjectReference: gatewayv1.BackendObjectReference{
-											Name:      "my-service",
-											Namespace: ptr.To(gatewayv1.Namespace("default")),  
-											Port:      ptr.To(gatewayv1.PortNumber(0)),         
+								Hostnames: []gatewayv1.Hostname{"example.com"},
+								Rules: []gatewayv1.HTTPRouteRule{{
+									Matches: []gatewayv1.HTTPRouteMatch{{
+										Path: &gatewayv1.HTTPPathMatch{
+											Type:  &gPathPrefix,
+											Value: ptr.To("/api"),
+										},
+									}},
+									BackendRefs: []gatewayv1.HTTPBackendRef{
+										{
+											BackendRef: gatewayv1.BackendRef{
+												BackendObjectReference: gatewayv1.BackendObjectReference{
+													Name:      "my-service",
+													Namespace: ptr.To(gatewayv1.Namespace("default")),
+													Port:      ptr.To(gatewayv1.PortNumber(0)),
+												},
+											},
 										},
 									},
-								},
+								}},
 							},
-						}},
+						},
 					},
 				},
 			},
+			expectedErrors: field.ErrorList{},
 		},
-	},
-	expectedErrors: field.ErrorList{},
-	},
 		{
 			name: "VirtualService with discovered upstream",
 			virtualService: &VirtualService{
@@ -187,9 +187,9 @@ func Test_ToIR(t *testing.T) {
 										{
 											BackendRef: gatewayv1.BackendRef{
 												BackendObjectReference: gatewayv1.BackendObjectReference{
-													Name:      "my-service",
+													Name:      "my-svc",
 													Namespace: ptr.To(gatewayv1.Namespace("default")),
-													Port:      ptr.To(gatewayv1.PortNumber(0)), // Port is 0 since it's not discovered in this test
+													Port:      ptr.To(gatewayv1.PortNumber(8080)), // Port is 8080 since it's not discovered in this test
 												},
 											},
 										},
@@ -469,7 +469,16 @@ func Test_ToIR(t *testing.T) {
 			geProvider := provider.(*Provider)
 			// Create storage and add the VirtualService
 			geProvider.storage.addVirtualService(tc.virtualService)
-
+			// ADD: Seed upstreams for tests that expect resolved services
+			if tc.name == "VirtualService with discovered upstream" {
+				geProvider.storage.addUpstream(&Upstream{
+					Name:             "my-service",
+					Namespace:        "default",
+					ServiceName:      "my-svc",
+					ServiceNamespace: "default",
+					ServicePort:      8080,
+				})
+			}
 			ir, errs := provider.ToIR()
 
 			// Validate error count

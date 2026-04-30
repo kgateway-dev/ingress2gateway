@@ -52,7 +52,10 @@ type SingleUpstream struct {
 // Upstream represents a Gloo Edge Upstream resource
 
 type Upstream struct {
-	Name      string
-	Namespace string
-	Port      int32
+	Name             string
+	Namespace        string
+	Port             int32
+	ServiceName      string
+	ServicePort      int32
+	ServiceNamespace string
 }
